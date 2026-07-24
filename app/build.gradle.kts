@@ -16,13 +16,24 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0-beta4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../draarl-release.jks")
+            storePassword = "draarl123"
+            keyAlias = "draarl"
+            keyPassword = "draarl123"
+        }
+    }
+
     buildTypes {
         release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }

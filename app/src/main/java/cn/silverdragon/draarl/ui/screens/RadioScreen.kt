@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -105,6 +106,7 @@ fun RadioScreen(controller: AppController) {
         controller.connectRadio()
     }
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val canSendText = controller.canSendText()
 
     LaunchedEffect(userDragging, listState.isScrollInProgress) {
         if (userDragging) userScrollPending = true
@@ -188,7 +190,7 @@ fun RadioScreen(controller: AppController) {
                 }
             }
         }
-        Surface(modifier = Modifier.fillMaxWidth(), shadowElevation = 8.dp) {
+        Surface(modifier = Modifier.fillMaxWidth().imePadding(), shadowElevation = 8.dp) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -204,19 +206,19 @@ fun RadioScreen(controller: AppController) {
                         enabled = controller.radioStatus.connected,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = {
-                            if (controller.sendText(text)) text = ""
+                            if (canSendText && controller.sendText(text)) text = ""
                         }),
                     )
                     IconButton(
                         onClick = { if (controller.sendText(text)) text = "" },
-                        enabled = controller.radioStatus.connected && text.isNotBlank(),
+                        enabled = canSendText && text.isNotBlank(),
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
                     }
                 }
                 PttButton(
                     transmitting = controller.radioStatus.transmitting,
-                    enabled = controller.radioStatus.connected,
+                    enabled = controller.radioStatus.connected && controller.radioStatus.speaker.isBlank(),
                     onStart = startPtt,
                     onStop = controller::stopPtt,
                 )
@@ -297,13 +299,16 @@ private fun ConnectionPanel(
                         ),
                     ) {
                         Icon(Icons.Default.Router, contentDescription = null)
-                        Text(
-                            controller.selectedAccessPoint?.let { point ->
-                                selectedProbe?.latencyMs?.let { "${point.displayName} · ${it}ms" } ?: point.displayName
-                            } ?: if (controller.selectingAccessPoint) "优选边缘中" else "边缘节点",
-                            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
-                            maxLines = 1,
-                        )
+                        Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                            Text(
+                                controller.selectedAccessPoint?.displayName
+                                    ?: if (controller.selectingAccessPoint) "优选边缘中" else "边缘节点",
+                                maxLines = 1,
+                            )
+                            if (controller.selectedAccessPoint != null || selectedProbe != null) {
+                                LatencyText(selectedProbe?.latencyMs)
+                            }
+                        }
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
                     }
                 }
@@ -387,15 +392,18 @@ private fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit) 
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(point.displayName, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                                Text(
-                                    listOf(
-                                        point.region,
-                                        point.network,
-                                        probe?.latencyMs?.let { "ICMP ${it} ms" } ?: "ICMP 不可达",
-                                    ).filter(String::isNotBlank).joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                val meta = listOf(point.region, point.network).filter(String::isNotBlank).joinToString(" · ")
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (meta.isNotBlank()) {
+                                        Text(
+                                            meta,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                    LatencyText(probe?.latencyMs, prefix = "ICMP ")
+                                }
                             }
                             if (selected) Icon(Icons.Default.Check, contentDescription = "当前节点")
                         }
@@ -649,6 +657,25 @@ private fun connectionText(phase: RadioConnectionPhase): String = when (phase) {
     RadioConnectionPhase.RECONNECTING -> "连接中断，正在重连"
     RadioConnectionPhase.ERROR -> "连接失败"
     else -> "UDP 未连接"
+}
+
+@Composable
+private fun LatencyText(latencyMs: Int?, modifier: Modifier = Modifier, prefix: String = "") {
+    Text(
+        text = latencyMs?.let { "$prefix${it} ms" } ?: "${prefix}不可达",
+        modifier = modifier,
+        style = MaterialTheme.typography.bodySmall,
+        color = latencyColor(latencyMs),
+        maxLines = 1,
+    )
+}
+
+@Composable
+private fun latencyColor(latencyMs: Int?): Color = when {
+    latencyMs == null -> MaterialTheme.colorScheme.onSurfaceVariant
+    latencyMs <= 80 -> Color(0xFF2E7D32)
+    latencyMs <= 180 -> Color(0xFFF57C00)
+    else -> MaterialTheme.colorScheme.error
 }
 
 private fun formatTime(timestamp: Long): String = SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(timestamp))

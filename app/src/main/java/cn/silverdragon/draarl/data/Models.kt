@@ -14,7 +14,15 @@ data class User(
     val phone: String = "",
     val introduction: String = "",
     val dmrId: Int = 0,
+    val mdcId: String = "",
+    val birthday: String = "",
+    val sex: Int = 0, // 0=保密, 1=男, 2=女
+    val alarmMsg: Boolean = false,
     val lastGroupId: Int = 999,
+    val status: Int = 1, // 1=正常, 0=禁用
+    val lastLoginTime: String = "",
+    val lastLoginIp: String = "",
+    val lastLoginIpLocation: String = "",
 ) {
     val displayName: String get() = nickname.ifBlank { callsign.ifBlank { username } }
     val isApproved: Boolean get() = approvalStatus == 1
@@ -33,6 +41,19 @@ data class CaptchaChallenge(
     val id: String,
     val imageBase64: String,
     val expiresInSeconds: Int,
+)
+
+data class EmailCodeSession(
+    val sessionId: String,
+    val expiresInSeconds: Int,
+)
+
+data class RegistrationResult(
+    val id: Int,
+    val username: String,
+    val nickname: String,
+    val approvalStatus: Int,
+    val devicePassword: String,
 )
 
 data class AccessPoint(
@@ -68,6 +89,9 @@ data class Device(
     val entryId: String = "",
     val entryMode: String = "",
     val entrySeenAt: String = "",
+    val ownerId: Int = 0,
+    val ownerName: String = "",
+    val ownerCallsign: String = "",
     val createdAt: String = "",
     val updatedAt: String = "",
 )
@@ -206,6 +230,7 @@ data class RadioMessage(
     val audioCacheKey: String = "",
     val serverRecordId: Int? = null,
     val syncState: RadioMessageSyncState = RadioMessageSyncState.LOCAL,
+    val groupId: Int = 0, // 0 表示未知，用于兼容旧数据
 )
 
 data class DashboardData(

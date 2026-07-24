@@ -1,16 +1,21 @@
 package cn.silverdragon.draarl.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,13 +47,14 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.R
+import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.DashboardScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
 import cn.silverdragon.draarl.ui.screens.GroupsScreen
 import cn.silverdragon.draarl.ui.screens.LoginScreen
 import cn.silverdragon.draarl.ui.screens.ProfileScreen
 import cn.silverdragon.draarl.ui.screens.RadioScreen
-import cn.silverdragon.draarl.ui.screens.RecordsScreen
+import cn.silverdragon.draarl.ui.screens.SettingsScreen
 
 @Composable
 fun DraarlApp(controller: AppController) {
@@ -126,24 +132,56 @@ private fun AuthenticatedApp(controller: AppController) {
             controller.clearNotice()
         }
     }
-    BackHandler(controller.page == AppPage.RECORDS) { controller.goBack() }
+
+    val showBottomBar = controller.page !in setOf(
+        AppPage.SETTINGS,
+        AppPage.ACCOUNT_SECURITY,
+    )
+
+    // 处理系统返回操作
+    BackHandler(enabled = controller.page in setOf(AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY)) {
+        when (controller.page) {
+            AppPage.ACCOUNT_SECURITY -> controller.navigate(AppPage.SETTINGS)
+            AppPage.SETTINGS -> controller.navigate(AppPage.PROFILE)
+            else -> {}
+        }
+    }
+
+    val pagesWithOwnScaffold = setOf(AppPage.PROFILE, AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY)
 
     Scaffold(
         bottomBar = {
-            if (controller.page != AppPage.RECORDS) {
+            if (showBottomBar) {
                 MainBottomBar(controller)
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            when (controller.page) {
-                AppPage.RADIO -> RadioScreen(controller)
-                AppPage.DASHBOARD -> DashboardScreen(controller)
-                AppPage.DEVICES -> DevicesScreen(controller)
-                AppPage.GROUPS -> GroupsScreen(controller)
-                AppPage.PROFILE -> ProfileScreen(controller)
-                AppPage.RECORDS -> RecordsScreen(controller)
+        Box(
+            modifier = Modifier.fillMaxSize().padding(
+                if (controller.page in pagesWithOwnScaffold) {
+                    PaddingValues(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp)
+                } else {
+                    innerPadding
+                }
+            )
+        ) {
+            androidx.compose.animation.AnimatedContent(
+                targetState = controller.page,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                },
+                contentKey = { it },
+            ) { page ->
+                when (page) {
+                    AppPage.RADIO -> RadioScreen(controller)
+                    AppPage.DASHBOARD -> DashboardScreen(controller)
+                    AppPage.DEVICES -> DevicesScreen(controller)
+                    AppPage.GROUPS -> GroupsScreen(controller)
+                    AppPage.PROFILE -> ProfileScreen(controller)
+                    AppPage.SETTINGS -> SettingsScreen(controller)
+                    AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
+                }
             }
         }
     }

@@ -66,6 +66,7 @@ class UdpRadioClient(
     private var incomingVoiceUsername = ""
     private var incomingVoiceCallsign = ""
     private var incomingVoiceSsid = 0
+    private var incomingVoiceGroupId = 0
     private var incomingVoiceBuffer = ByteArrayOutputStream()
     private var outgoingVoiceBuffer = ByteArrayOutputStream()
     private var heartbeatTask: ScheduledFuture<*>? = null
@@ -116,7 +117,7 @@ class UdpRadioClient(
 
     fun sendText(text: String): Boolean {
         val normalized = text.trim()
-        if (!status.connected || normalized.isEmpty()) return false
+        if (!status.connected || status.transmitting || status.speaker.isNotBlank() || normalized.isEmpty()) return false
         val payload = normalized.toByteArray(Charsets.UTF_8)
         if (payload.size > DraarlProtocol.MAX_PACKET_SIZE - DraarlProtocol.HEADER_SIZE) {
             reportNonFatal("消息过长，UTF-8 编码后不能超过 710 字节", generation.get())
@@ -133,6 +134,7 @@ class UdpRadioClient(
                         content = normalized,
                         timestamp = System.currentTimeMillis(),
                         mine = true,
+                        groupId = status.groupId,
                     ),
                 )
             }
@@ -188,6 +190,7 @@ class UdpRadioClient(
                     mine = true,
                     durationMs = duration,
                     audioCacheKey = cacheNetworkRecording(messageId, networkPayload),
+                    groupId = status.groupId,
                 ),
             )
         }
@@ -392,6 +395,7 @@ class UdpRadioClient(
                 content = payload.toString(Charsets.UTF_8),
                 timestamp = System.currentTimeMillis(),
                 mine = false,
+                groupId = status.groupId,
             ),
         )
     }
@@ -420,6 +424,7 @@ class UdpRadioClient(
                 incomingVoiceUsername = username
                 incomingVoiceCallsign = callsign
                 incomingVoiceSsid = ssid
+                incomingVoiceGroupId = status.groupId
                 incomingVoiceBuffer = ByteArrayOutputStream()
             }
             lastSpeakerKey = speakerKey
@@ -594,12 +599,14 @@ class UdpRadioClient(
             mine = false,
             durationMs = (endedAt - incomingVoiceStartedAt).coerceAtLeast(VOICE_PACKET_DURATION_MS),
             audioCacheKey = cacheNetworkRecording(messageId, networkPayload),
+            groupId = incomingVoiceGroupId,
         )
         lastSpeakerKey = ""
         incomingVoiceStartedAt = 0L
         incomingVoiceUsername = ""
         incomingVoiceCallsign = ""
         incomingVoiceSsid = 0
+        incomingVoiceGroupId = 0
         incomingVoiceBuffer = ByteArrayOutputStream()
         return message
     }

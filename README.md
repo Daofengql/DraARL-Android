@@ -34,7 +34,7 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 4. 认证成功后发送 `Type=2` 心跳、`Type=4` 文本和 `Type=5` Opus 语音。
 5. `PUT /api/radio/group` 携带 `dev_model=101` 同步 Android 客户端群组。
 
-默认服务端地址集中定义在 `AppConfig.BASE_URL`，当前为 `http://172.30.50.2:19000`；登录页仍可临时编辑。
+生产服务端地址集中定义在 `AppConfig.BASE_URL`，固定为 `https://ptt.4l2.cn`，客户端不再提供地址输入框。
 
 在线收发以 UDP 实时消息和本地缓存作为最近数据源。服务端通信记录经过 3 分钟沉淀窗口后，才按
 `server_record_id`、发送方、消息类型、内容和时间窗口与本地记录合并，避免服务端记录尚未稳定时覆盖新消息。

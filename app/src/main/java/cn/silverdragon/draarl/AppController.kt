@@ -21,6 +21,7 @@ import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
 import cn.silverdragon.draarl.data.DevicePasswordInfo
+import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.PlatformInfo
@@ -31,6 +32,7 @@ import cn.silverdragon.draarl.data.RadioMessageStore
 import cn.silverdragon.draarl.data.RadioMessageSyncState
 import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.RadioStatus
+import cn.silverdragon.draarl.data.RegistrationResult
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.network.ApiClient
@@ -46,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-enum class AppPage { RADIO, DASHBOARD, DEVICES, GROUPS, PROFILE, RECORDS }
+enum class AppPage { RADIO, DASHBOARD, DEVICES, GROUPS, PROFILE, SETTINGS, ACCOUNT_SECURITY }
 
 class AppController(application: Application) : AndroidViewModel(application), RadioServiceListener {
     private val appContext = application.applicationContext
@@ -63,6 +65,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private var manualRadioDisconnect = false
     private val refreshingRadioToken = AtomicBoolean(false)
     private val syncingRadioData = AtomicBoolean(false)
+    private val syncingGroupCounts = AtomicBoolean(false)
     private val radioConnectionGeneration = AtomicInteger(0)
     private val captchaGeneration = AtomicInteger(0)
     private val preparingRadioConnection = AtomicBoolean(false)
@@ -71,10 +74,18 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val periodicRadioSync = object : Runnable {
         override fun run() {
             if (disposed.get()) return
-            if (authenticated && user?.isApproved == true && page == AppPage.RADIO) {
-                refreshRadioData()
+            if (authenticated && user?.isApproved == true) {
+                refreshGroupOnlineCounts()
+                if (page == AppPage.RADIO) refreshRadioData()
             }
             mainHandler.postDelayed(this, RADIO_SYNC_INTERVAL_MS)
+        }
+    }
+    private val periodicAccessPointProbe = object : Runnable {
+        override fun run() {
+            if (disposed.get()) return
+            if (authenticated) discoverAccessPoints()
+            mainHandler.postDelayed(this, ACCESS_POINT_PROBE_INTERVAL_MS)
         }
     }
     private val api = ApiClient(sessionStore) { session ->
@@ -102,14 +113,23 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var loginError by mutableStateOf("")
         private set
+    var publicAuthBusy by mutableStateOf(false)
+        private set
+    var publicAuthError by mutableStateOf("")
+        private set
+    var registrationRequiresEmailVerification by mutableStateOf(true)
+        private set
+    var registrationResult by mutableStateOf<RegistrationResult?>(null)
+        private set
+    var passwordResetComplete by mutableStateOf(false)
+        private set
     var captchaId by mutableStateOf("")
         private set
     var captchaImageBase64 by mutableStateOf("")
         private set
     var captchaLoading by mutableStateOf(false)
         private set
-    var serverUrl by mutableStateOf(AppConfig.BASE_URL)
-        private set
+    val serverUrl: String = AppConfig.BASE_URL
     var user by mutableStateOf<User?>(null)
         private set
     var page by mutableStateOf(AppPage.RADIO)
@@ -195,32 +215,21 @@ class AppController(application: Application) : AndroidViewModel(application), R
         bindRadioService()
         restoreSession()
         mainHandler.postDelayed(periodicRadioSync, RADIO_SYNC_INTERVAL_MS)
-    }
-
-    fun updateServerUrl(value: String) {
-        serverUrl = value
-        loginError = ""
-        captchaGeneration.incrementAndGet()
-        captchaId = ""
-        captchaImageBase64 = ""
-        captchaLoading = false
+        mainHandler.postDelayed(periodicAccessPointProbe, ACCESS_POINT_PROBE_INTERVAL_MS)
     }
 
     fun loadCaptcha() {
-        if (serverUrl.isBlank()) return
-        val requestedServerUrl = serverUrl
         val requestGeneration = captchaGeneration.incrementAndGet()
         captchaId = ""
         captchaImageBase64 = ""
         captchaLoading = true
         executor.execute {
-            runCatching { api.getCaptcha(requestedServerUrl) }
+            runCatching { api.getCaptcha(AppConfig.BASE_URL) }
                 .onSuccess { challenge ->
                     mainHandler.post {
                         if (
                             disposed.get() ||
-                            requestGeneration != captchaGeneration.get() ||
-                            requestedServerUrl != serverUrl
+                            requestGeneration != captchaGeneration.get()
                         ) return@post
                         captchaId = challenge.id
                         captchaImageBase64 = challenge.imageBase64
@@ -231,13 +240,182 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     mainHandler.post {
                         if (
                             disposed.get() ||
-                            requestGeneration != captchaGeneration.get() ||
-                            requestedServerUrl != serverUrl
+                            requestGeneration != captchaGeneration.get()
                         ) return@post
                         captchaId = ""
                         captchaImageBase64 = ""
                         captchaLoading = false
                         loginError = friendlyError(error)
+                    }
+                }
+        }
+    }
+
+    fun loadRegistrationConfig() {
+        executor.execute {
+            runCatching { api.getRegistrationRequiresEmailVerification(AppConfig.BASE_URL) }
+                .onSuccess { required ->
+                    mainHandler.post {
+                        if (!disposed.get()) registrationRequiresEmailVerification = required
+                    }
+                }
+        }
+    }
+
+    fun clearPublicAuthState() {
+        publicAuthError = ""
+        registrationResult = null
+        passwordResetComplete = false
+    }
+
+    fun sendPublicEmailCode(
+        email: String,
+        purpose: String,
+        captchaCode: String,
+        onSuccess: (EmailCodeSession) -> Unit,
+    ) {
+        if (publicAuthBusy) return
+        val trimmedEmail = email.trim()
+        val submittedCaptchaId = captchaId
+        val normalizedPurpose = purpose.trim()
+        val validationError = when {
+            !trimmedEmail.matches(EMAIL_PATTERN) -> "请输入正确的邮箱地址"
+            normalizedPurpose !in setOf("register", "reset_password") -> "邮箱验证码用途不正确"
+            submittedCaptchaId.isBlank() || captchaCode.isBlank() -> "请输入图片验证码"
+            else -> null
+        }
+        if (validationError != null) {
+            publicAuthError = validationError
+            if (submittedCaptchaId.isBlank()) loadCaptcha()
+            return
+        }
+        publicAuthBusy = true
+        publicAuthError = ""
+        executor.execute {
+            runCatching {
+                api.sendEmailCode(
+                    baseUrl = AppConfig.BASE_URL,
+                    email = trimmedEmail,
+                    purpose = normalizedPurpose,
+                    captchaId = submittedCaptchaId,
+                    captchaCode = captchaCode,
+                )
+            }.onSuccess { session ->
+                mainHandler.post {
+                    publicAuthBusy = false
+                    publicAuthError = ""
+                    onSuccess(session)
+                    loadCaptcha()
+                }
+            }.onFailure { error ->
+                mainHandler.post {
+                    publicAuthBusy = false
+                    publicAuthError = friendlyError(error)
+                    loadCaptcha()
+                }
+            }
+        }
+    }
+
+    fun registerAccount(
+        username: String,
+        callsign: String,
+        nickname: String,
+        email: String,
+        phone: String,
+        password: String,
+        confirmPassword: String,
+        sessionId: String,
+        emailCode: String,
+        onSuccess: (RegistrationResult) -> Unit,
+    ) {
+        if (publicAuthBusy) return
+        val trimmedUsername = username.trim()
+        val normalizedCallsign = callsign.trim().uppercase()
+        val trimmedEmail = email.trim()
+        val trimmedPhone = phone.trim()
+        val validationError = when {
+            !trimmedUsername.matches(USERNAME_PATTERN) -> "用户名必须是 3-20 位字母、数字或下划线"
+            !normalizedCallsign.matches(CALLSIGN_PATTERN) -> "呼号格式不正确，应以字母开头，3-10 个字符"
+            !trimmedEmail.matches(EMAIL_PATTERN) -> "请输入正确的邮箱地址"
+            trimmedPhone.isNotBlank() && !trimmedPhone.matches(PHONE_PATTERN) -> "手机号格式不正确"
+            password.length < 6 -> "密码长度至少 6 位"
+            password != confirmPassword -> "两次输入的密码不一致"
+            registrationRequiresEmailVerification && (sessionId.isBlank() || emailCode.isBlank()) -> "请先获取并填写邮箱验证码"
+            else -> null
+        }
+        if (validationError != null) {
+            publicAuthError = validationError
+            return
+        }
+        publicAuthBusy = true
+        publicAuthError = ""
+        registrationResult = null
+        executor.execute {
+            runCatching {
+                api.register(
+                    baseUrl = AppConfig.BASE_URL,
+                    username = trimmedUsername,
+                    password = password,
+                    callsign = normalizedCallsign,
+                    phone = trimmedPhone,
+                    nickname = nickname.trim().ifBlank { trimmedUsername },
+                    email = trimmedEmail,
+                    sessionId = if (registrationRequiresEmailVerification) sessionId else "",
+                    emailCode = if (registrationRequiresEmailVerification) emailCode else "",
+                )
+            }.onSuccess { result ->
+                mainHandler.post {
+                    publicAuthBusy = false
+                    publicAuthError = ""
+                    registrationResult = result
+                    onSuccess(result)
+                }
+            }.onFailure { error ->
+                mainHandler.post {
+                    publicAuthBusy = false
+                    publicAuthError = friendlyError(error)
+                }
+            }
+        }
+    }
+
+    fun resetPassword(
+        sessionId: String,
+        emailCode: String,
+        newPassword: String,
+        confirmPassword: String,
+        onSuccess: () -> Unit,
+    ) {
+        if (publicAuthBusy) return
+        val validationError = when {
+            sessionId.isBlank() -> "请先获取邮箱验证码"
+            emailCode.isBlank() -> "请输入邮箱验证码"
+            newPassword.length < 6 -> "新密码长度至少 6 位"
+            newPassword != confirmPassword -> "两次输入的密码不一致"
+            else -> null
+        }
+        if (validationError != null) {
+            publicAuthError = validationError
+            return
+        }
+        publicAuthBusy = true
+        publicAuthError = ""
+        passwordResetComplete = false
+        executor.execute {
+            runCatching { api.resetPassword(AppConfig.BASE_URL, sessionId, emailCode, newPassword) }
+                .onSuccess {
+                    mainHandler.post {
+                        publicAuthBusy = false
+                        publicAuthError = ""
+                        passwordResetComplete = true
+                        onSuccess()
+                    }
+                }
+                .onFailure { error ->
+                    mainHandler.post {
+                        publicAuthBusy = false
+                        publicAuthError = friendlyError(error)
                     }
                 }
         }
@@ -254,10 +432,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
         loginBusy = true
         loginError = ""
         executor.execute {
-            runCatching { api.login(serverUrl, username, password, submittedCaptchaId, captchaCode) }
+            runCatching { api.login(AppConfig.BASE_URL, username, password, submittedCaptchaId, captchaCode) }
                 .onSuccess { session ->
                     mainHandler.post {
-                        serverUrl = session.baseUrl
                         user = session.user
                         authenticated = true
                         loginBusy = false
@@ -310,6 +487,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         publicProfiles = emptyMap()
         loadingPublicProfiles.clear()
         playingMessageId = null
+        clearPublicAuthState()
         page = AppPage.RADIO
     }
 
@@ -320,7 +498,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         }
         page = target
         when (target) {
-            AppPage.RECORDS -> refreshRecords()
             AppPage.DEVICES, AppPage.GROUPS, AppPage.DASHBOARD -> refreshAll()
             AppPage.RADIO -> {
                 loadCachedRadioMessages()
@@ -336,6 +513,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun clearNotice() {
         notice = ""
+    }
+
+    fun showNotice(message: String) {
+        notice = message
     }
 
     fun refreshAll() {
@@ -376,6 +557,25 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     loadCachedRadioMessages()
                     refreshRadioData()
                 }
+            }
+        }
+    }
+
+    fun refreshGroupOnlineCounts() {
+        if (api.currentSession() == null || !syncingGroupCounts.compareAndSet(false, true)) return
+        executor.execute {
+            try {
+                val stats = runCatching(api::getGroupStats).getOrDefault(emptyMap())
+                if (stats.isEmpty()) return@execute
+                mainHandler.post {
+                    groups = groups.map { group ->
+                        stats[group.id]?.let { (online, total) ->
+                            group.copy(onlineCount = online, totalCount = total)
+                        } ?: group
+                    }
+                }
+            } finally {
+                syncingGroupCounts.set(false)
             }
         }
     }
@@ -496,10 +696,26 @@ class AppController(application: Application) : AndroidViewModel(application), R
     fun shouldAutoConnectRadio(): Boolean = !manualRadioDisconnect
 
     fun sendText(text: String): Boolean {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return false
+        if (!radioStatus.connected) {
+            notice = "电台尚未连接"
+            return false
+        }
+        if (radioStatus.transmitting) {
+            notice = "正在发射中，稍后再发送文本"
+            return false
+        }
+        if (radioStatus.speaker.isNotBlank()) {
+            notice = "正在接收语音，发言结束后再发送文本"
+            return false
+        }
         val sent = serviceBinder?.sendText(text) == true
-        if (!sent) notice = "电台尚未连接"
+        if (!sent) notice = "文本发送失败，请稍后重试"
         return sent
     }
+
+    fun canSendText(): Boolean = radioStatus.connected && !radioStatus.transmitting && radioStatus.speaker.isBlank()
 
     fun startPtt(): Boolean {
         val started = serviceBinder?.startPtt() == true
@@ -653,15 +869,80 @@ class AppController(application: Application) : AndroidViewModel(application), R
         }
     }
 
-    fun updateProfile(nickname: String, phone: String, address: String, introduction: String) {
+    fun updateProfile(
+        nickname: String,
+        phone: String,
+        address: String,
+        introduction: String,
+        birthday: String = "",
+        sex: Int = 0,
+        dmrid: Int = 0,
+        mdcid: String = "",
+        alarmMsg: Boolean = false,
+    ) {
         contentLoading = true
         executor.execute {
-            runCatching { api.updateProfile(nickname, phone, address, introduction) }
+            runCatching {
+                api.updateProfile(nickname, phone, address, introduction, birthday, sex, dmrid, mdcid, alarmMsg)
+            }
                 .onSuccess { updated ->
                     mainHandler.post {
                         user = updated
                         contentLoading = false
                         notice = "个人资料已保存"
+                    }
+                }
+                .onFailure { error ->
+                    mainHandler.post {
+                        contentLoading = false
+                        notice = friendlyError(error)
+                    }
+                }
+        }
+    }
+
+    fun uploadAvatar(fileBytes: ByteArray, fileName: String, onSuccess: () -> Unit = {}) {
+        contentLoading = true
+        executor.execute {
+            runCatching {
+                val url = api.uploadFile(fileBytes, fileName, "avatar")
+                api.updateProfile(
+                    nickname = user?.nickname ?: "",
+                    phone = user?.phone ?: "",
+                    address = user?.address ?: "",
+                    introduction = user?.introduction ?: "",
+                    birthday = user?.birthday ?: "",
+                    sex = user?.sex ?: 0,
+                    dmrid = user?.dmrId ?: 0,
+                    mdcid = user?.mdcId ?: "",
+                    alarmMsg = user?.alarmMsg ?: false,
+                )
+            }
+                .onSuccess { updated ->
+                    mainHandler.post {
+                        user = updated
+                        contentLoading = false
+                        notice = "头像已更新"
+                        onSuccess()
+                    }
+                }
+                .onFailure { error ->
+                    mainHandler.post {
+                        contentLoading = false
+                        notice = friendlyError(error)
+                    }
+                }
+        }
+    }
+
+    fun changePassword(oldPassword: String, newPassword: String) {
+        contentLoading = true
+        executor.execute {
+            runCatching { api.changePassword(oldPassword, newPassword) }
+                .onSuccess {
+                    mainHandler.post {
+                        contentLoading = false
+                        notice = "密码已修改"
                     }
                 }
                 .onFailure { error ->
@@ -1164,13 +1445,16 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     if (message.mine) currentUser?.callsign.orEmpty() else online?.callsign.orEmpty()
                 },
             )
-            radioMessages += enriched
-            while (radioMessages.size > MAX_MESSAGES) radioMessages.removeAt(0)
+            // 只有当消息属于当前群组时才添加到列表
+            val messageGroupId = if (enriched.groupId > 0) enriched.groupId else selectedGroupId
+            if (messageGroupId == selectedGroupId) {
+                radioMessages += enriched
+                while (radioMessages.size > MAX_MESSAGES) radioMessages.removeAt(0)
+            }
             val accountKey = messageAccountKey()
-            val groupId = selectedGroupId
             if (accountKey != null) {
                 executor.execute {
-                    runCatching { messageStore.save(accountKey, groupId, enriched) }
+                    runCatching { messageStore.save(accountKey, messageGroupId, enriched) }
                 }
             }
             preloadPublicProfiles(listOf(enriched.senderUsername))
@@ -1207,7 +1491,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         } else {
             savedSession
         }
-        serverUrl = stored.baseUrl
         user = stored.user
         executor.execute {
             runCatching(api::restoreAndValidate)
@@ -1356,8 +1639,13 @@ class AppController(application: Application) : AndroidViewModel(application), R
     companion object {
         private const val DEFAULT_UDP_PORT = 60_050
         private const val RADIO_SYNC_INTERVAL_MS = 20_000L
+        private const val ACCESS_POINT_PROBE_INTERVAL_MS = 10_000L
         private const val MAX_MESSAGES = 200
-        private val APPROVED_PAGES = setOf(AppPage.RADIO, AppPage.DEVICES, AppPage.GROUPS, AppPage.RECORDS)
+        private val USERNAME_PATTERN = Regex("^[a-zA-Z0-9_]{3,20}$")
+        private val CALLSIGN_PATTERN = Regex("^[A-Z][A-Z0-9]{2,9}$")
+        private val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+        private val PHONE_PATTERN = Regex("^1[3-9]\\d{9}$")
+        private val APPROVED_PAGES = setOf(AppPage.RADIO, AppPage.DEVICES, AppPage.GROUPS)
 
         fun formatDuration(milliseconds: Long): String {
             val totalSeconds = milliseconds / 1_000

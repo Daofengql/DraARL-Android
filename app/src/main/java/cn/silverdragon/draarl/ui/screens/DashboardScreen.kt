@@ -11,14 +11,11 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -107,26 +104,6 @@ fun DashboardScreen(controller: AppController) {
                     if (controller.radioStatus.connected) Color(0xFF087F5B) else MaterialTheme.colorScheme.outline,
                 ),
             )
-        }
-        if (currentUser.isApproved) {
-            item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { controller.navigate(AppPage.RADIO) },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Default.Radio, contentDescription = null)
-                        Text(" 在线收发")
-                    }
-                    OutlinedButton(
-                        onClick = { controller.navigate(AppPage.RECORDS) },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Icon(Icons.Default.History, contentDescription = null)
-                        Text(" 通信记录")
-                    }
-                }
-            }
         }
         item {
             Surface(

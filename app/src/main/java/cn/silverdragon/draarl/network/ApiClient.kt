@@ -8,9 +8,11 @@ import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
 import cn.silverdragon.draarl.data.DevicePasswordInfo
+import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.PlatformInfo
+import cn.silverdragon.draarl.data.RegistrationResult
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
@@ -99,6 +101,96 @@ class ApiClient(
         return session
     }
 
+    fun getRegistrationRequiresEmailVerification(baseUrl: String): Boolean {
+        val normalizedUrl = normalizeBaseUrl(baseUrl)
+        val data = rawRequest(
+            baseUrl = normalizedUrl,
+            method = "GET",
+            path = "/api/config/public",
+            body = null,
+            accessToken = null,
+        ).requireSuccess().requireObject("data")
+        return data.optJSONObject("registration")
+            ?.optBoolean("require_email_verification", true)
+            ?: true
+    }
+
+    fun sendEmailCode(
+        baseUrl: String,
+        email: String,
+        purpose: String,
+        captchaId: String,
+        captchaCode: String,
+    ): EmailCodeSession {
+        val normalizedUrl = normalizeBaseUrl(baseUrl)
+        val data = rawRequest(
+            baseUrl = normalizedUrl,
+            method = "POST",
+            path = "/api/auth/send-code",
+            body = JSONObject()
+                .put("email", email.trim())
+                .put("purpose", purpose)
+                .put("captcha_id", captchaId)
+                .put("captcha_code", captchaCode.trim()),
+            accessToken = null,
+        ).requireSuccess().requireObject("data")
+        return EmailCodeSession(
+            sessionId = data.requireString("session_id"),
+            expiresInSeconds = data.optInt("expires_in", 600),
+        )
+    }
+
+    fun register(
+        baseUrl: String,
+        username: String,
+        password: String,
+        callsign: String,
+        phone: String,
+        nickname: String,
+        email: String,
+        sessionId: String,
+        emailCode: String,
+    ): RegistrationResult {
+        val normalizedUrl = normalizeBaseUrl(baseUrl)
+        val body = JSONObject()
+            .put("username", username.trim())
+            .put("password", password)
+            .put("callsign", callsign.trim().uppercase())
+            .put("phone", phone.trim())
+            .put("nickname", nickname.trim())
+            .put("email", email.trim())
+        if (sessionId.isNotBlank()) body.put("session_id", sessionId)
+        if (emailCode.isNotBlank()) body.put("email_code", emailCode.trim())
+        val data = rawRequest(
+            baseUrl = normalizedUrl,
+            method = "POST",
+            path = "/api/auth/register",
+            body = body,
+            accessToken = null,
+        ).requireSuccess().requireObject("data")
+        return RegistrationResult(
+            id = data.optInt("id"),
+            username = data.optStringClean("username"),
+            nickname = data.optStringClean("nickname"),
+            approvalStatus = data.optInt("approval_status"),
+            devicePassword = data.optStringClean("device_password"),
+        )
+    }
+
+    fun resetPassword(baseUrl: String, sessionId: String, code: String, newPassword: String) {
+        val normalizedUrl = normalizeBaseUrl(baseUrl)
+        rawRequest(
+            baseUrl = normalizedUrl,
+            method = "POST",
+            path = "/api/auth/reset-password",
+            body = JSONObject()
+                .put("session_id", sessionId)
+                .put("code", code.trim())
+                .put("new_password", newPassword),
+            accessToken = null,
+        ).requireSuccess()
+    }
+
     fun restoreAndValidate(): Session {
         val session = currentSession() ?: throw ApiException(401, "登录状态不存在")
         val user = getMe()
@@ -151,9 +243,20 @@ class ApiClient(
     }
 
     fun getDevices(): List<Device> {
-        val items = request("GET", "/api/devices?page=1&limit=100").requireObject("data")
-            .optJSONArray("items") ?: JSONArray()
-        return items.objects().map(::parseDevice)
+        val result = ArrayList<Device>()
+        var page = 1
+        var total = Int.MAX_VALUE
+        while (result.size < total) {
+            val data = request("GET", "/api/devices?page=$page&limit=100&owner_only=true").requireObject("data")
+            total = data.optInt("total", total)
+            val items = data.optJSONArray("items") ?: JSONArray()
+            val pageItems = items.objects().map(::parseDevice)
+            if (pageItems.isEmpty()) break
+            result += pageItems
+            if (pageItems.size < 100) break
+            page += 1
+        }
+        return result
     }
 
     fun getDefaultDeviceGroup(): Int? = request("GET", "/api/user/device-default-group")
@@ -426,14 +529,77 @@ class ApiClient(
         }
     }
 
-    fun updateProfile(nickname: String, phone: String, address: String, introduction: String): User {
+    fun updateProfile(
+        nickname: String,
+        phone: String,
+        address: String,
+        introduction: String,
+        birthday: String = "",
+        sex: Int = 0,
+        dmrid: Int = 0,
+        mdcid: String = "",
+        alarmMsg: Boolean = false,
+    ): User {
         val body = JSONObject()
             .put("nickname", nickname)
             .put("phone", phone)
             .put("address", address)
             .put("introduction", introduction)
+            .put("birthday", birthday)
+            .put("sex", sex)
+            .put("dmrid", dmrid)
+            .put("mdcid", mdcid)
+            .put("alarm_msg", alarmMsg)
         request("PUT", "/api/me", body)
         return getMe()
+    }
+
+    fun uploadFile(fileBytes: ByteArray, fileName: String, fileType: String): String {
+        val session = currentSession() ?: throw ApiException(401, "请先登录")
+        val baseUrl = session.baseUrl
+        val boundary = "----WebKitFormBoundary${System.currentTimeMillis()}"
+        val lineEnd = "\r\n"
+
+        val body = buildString {
+            append("--$boundary$lineEnd")
+            append("Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"$lineEnd")
+            append("Content-Type: application/octet-stream$lineEnd")
+            append(lineEnd)
+        }.toByteArray() + fileBytes + "$lineEnd--$boundary$lineEnd".toByteArray() +
+            "Content-Disposition: form-data; name=\"file_type\"$lineEnd$lineEnd$fileType$lineEnd--$boundary--$lineEnd".toByteArray()
+
+        val url = URL("${baseUrl.trimEnd('/')}/api/upload/file")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.setRequestProperty("Authorization", "Bearer ${session.accessToken}")
+        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        connection.connectTimeout = 30_000
+        connection.readTimeout = 30_000
+        connection.doOutput = true
+
+        connection.outputStream.use { it.write(body) }
+
+        val responseCode = connection.responseCode
+        val responseText = if (responseCode in 200..299) {
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } else {
+            connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+        }
+
+        if (responseCode != 200) {
+            throw ApiException(responseCode, "上传失败: $responseText")
+        }
+
+        val response = JSONObject(responseText)
+        val data = response.optJSONObject("data") ?: response
+        return data.optStringClean("url").ifBlank { data.optStringClean("file_url") }
+    }
+
+    fun changePassword(oldPassword: String, newPassword: String) {
+        val body = JSONObject()
+            .put("old_password", oldPassword)
+            .put("new_password", newPassword)
+        request("PUT", "/api/me/password", body)
     }
 
     private fun request(
@@ -556,7 +722,15 @@ class ApiClient(
             phone = json.optStringClean("phone"),
             introduction = json.optStringClean("introduction"),
             dmrId = json.optInt("dmrid"),
+            mdcId = json.optStringClean("mdcid"),
+            birthday = json.optStringClean("birthday"),
+            sex = json.optInt("sex"),
+            alarmMsg = json.optBoolean("alarm_msg"),
             lastGroupId = json.optInt("last_group_id", 999).takeIf { it > 0 } ?: 999,
+            status = json.optInt("status", 1),
+            lastLoginTime = json.optStringClean("last_login_time"),
+            lastLoginIp = json.optStringClean("last_login_ip"),
+            lastLoginIpLocation = json.optStringClean("last_login_ip_location"),
         )
     }
 
@@ -581,6 +755,9 @@ class ApiClient(
         entryId = item.optStringClean("entry_node_id"),
         entryMode = item.optStringClean("entry_mode"),
         entrySeenAt = item.optStringClean("entry_seen_at"),
+        ownerId = item.optInt("owner_id"),
+        ownerName = item.optStringClean("owner_name"),
+        ownerCallsign = item.optStringClean("owner_callsign"),
         createdAt = item.optStringClean("create_time"),
         updatedAt = item.optStringClean("update_time"),
     )
