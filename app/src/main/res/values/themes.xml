@@ -7,4 +7,11 @@
         <item name="android:navigationBarColor">@android:color/white</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
+
+    <style name="Theme.DraARL.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/draarl_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/avd_draarl_splash_logo</item>
+        <item name="windowSplashScreenAnimationDuration">650</item>
+        <item name="postSplashScreenTheme">@style/Theme.DraARL</item>
+    </style>
 </resources>

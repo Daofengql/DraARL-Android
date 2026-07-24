@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="draarl_blue">#1565C0</color>
+    <color name="draarl_blue_dark">#0D47A1</color>
+    <color name="draarl_silver">#DCEBFF</color>
+    <color name="draarl_splash_background">#F4F8FF</color>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/draarl_splash_logo">
+    <target
+        android:name="logo_group"
+        android:animation="@animator/draarl_logo_enter" />
+    <target
+        android:name="wave_left"
+        android:animation="@animator/draarl_wave_enter" />
+    <target
+        android:name="wave_center"
+        android:animation="@animator/draarl_wave_enter" />
+    <target
+        android:name="wave_right"
+        android:animation="@animator/draarl_wave_enter" />
+</animated-vector>

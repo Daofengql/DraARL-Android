@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <path
+        android:fillColor="@color/draarl_blue"
+        android:pathData="M54,0A54,54 0,1 1,54 108A54,54 0,1 1,54 0" />
     <group
         android:pivotX="54"
         android:pivotY="54"
@@ -21,19 +24,7 @@
             android:pathData="M69,29L86,30L81,46L75,39L64,51L55,45Z" />
         <path
             android:fillColor="@android:color/transparent"
-            android:pathData="M42,53L42,64"
-            android:strokeColor="@color/draarl_silver"
-            android:strokeLineCap="round"
-            android:strokeWidth="5" />
-        <path
-            android:fillColor="@android:color/transparent"
-            android:pathData="M53,47L53,70"
-            android:strokeColor="@android:color/white"
-            android:strokeLineCap="round"
-            android:strokeWidth="5" />
-        <path
-            android:fillColor="@android:color/transparent"
-            android:pathData="M64,52L64,65"
+            android:pathData="M42,53L42,64M53,47L53,70M64,52L64,65"
             android:strokeColor="@color/draarl_silver"
             android:strokeLineCap="round"
             android:strokeWidth="5" />
