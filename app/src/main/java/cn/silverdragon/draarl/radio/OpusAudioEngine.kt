@@ -10,14 +10,19 @@ import cn.silverdragon.draarl.protocol.DraarlProtocol
 import io.github.jaredmdobson.concentus.OpusApplication
 import io.github.jaredmdobson.concentus.OpusDecoder
 import io.github.jaredmdobson.concentus.OpusEncoder
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-class OpusAudioEngine {
+class OpusAudioEngine(
+    private val audioCache: RadioAudioCache,
+) {
     private val capturing = AtomicBoolean(false)
     private val captureGeneration = AtomicInteger(0)
     private val released = AtomicBoolean(false)
+    private val recordingPlaybackGeneration = AtomicInteger(0)
     private val playbackExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-opus-playback")
     }
@@ -91,27 +96,70 @@ class OpusAudioEngine {
             playbackExecutor.execute {
                 if (released.get()) return@execute
                 runCatching {
-                    val localDecoder = decoder ?: OpusDecoder(SAMPLE_RATE, CHANNELS).also { decoder = it }
+                    val localDecoder = obtainDecoder(SAMPLE_RATE, CHANNELS)
                     val track = audioTrack ?: createAudioTrack().also { audioTrack = it }
                     if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
-                    frames.forEach { frame ->
-                        val pcm = ShortArray(MAX_DECODE_SAMPLES)
-                        val decodedSamples = localDecoder.decode(
-                            frame,
-                            0,
-                            frame.size,
-                            pcm,
-                            0,
-                            MAX_DECODE_SAMPLES,
-                            false,
-                        )
-                        if (decodedSamples > 0) {
-                            track.write(pcm, 0, decodedSamples, AudioTrack.WRITE_BLOCKING)
-                        }
-                    }
+                    frames.forEach { frame -> decodeAndWrite(localDecoder, track, frame) }
                 }.onFailure { error -> if (!released.get()) onError(error.message ?: "语音播放失败") }
             }
         }.onFailure { error -> if (!released.get()) onError(error.message ?: "语音播放失败") }
+    }
+
+    fun playRecording(
+        audioCacheKey: String,
+        audioUrl: String,
+        onFinished: () -> Unit,
+        onError: (String) -> Unit,
+    ): Boolean {
+        if (
+            released.get() || capturing.get() ||
+            (audioCacheKey.isBlank() && audioUrl.isBlank())
+        ) return false
+        val currentGeneration = recordingPlaybackGeneration.incrementAndGet()
+        return runCatching {
+            playbackExecutor.execute {
+                if (!isRecordingPlaybackActive(currentGeneration)) return@execute
+                runCatching {
+                    val bytes = loadRecording(audioCacheKey, audioUrl)
+                    val recording = RawOpusRecording.decode(bytes)
+                    require(recording.sampleRate == SAMPLE_RATE && recording.channels == CHANNELS) {
+                        "不支持的语音采样格式"
+                    }
+                    val frames = recording.splitFrames()
+                    require(frames.isNotEmpty()) { "语音记录没有可播放的数据" }
+                    val localDecoder = obtainDecoder(
+                        sampleRate = recording.sampleRate,
+                        channels = recording.channels,
+                        reset = true,
+                    )
+                    val track = audioTrack ?: createAudioTrack().also { audioTrack = it }
+                    runCatching { track.pause() }
+                    runCatching { track.flush() }
+                    if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
+                    frames.forEach { frame ->
+                        if (!isRecordingPlaybackActive(currentGeneration)) return@forEach
+                        decodeAndWrite(localDecoder, track, frame)
+                    }
+                }.onFailure { error ->
+                    if (isRecordingPlaybackActive(currentGeneration)) {
+                        onError(error.message ?: "语音回放失败")
+                    }
+                }
+                if (recordingPlaybackGeneration.compareAndSet(currentGeneration, currentGeneration + 1)) {
+                    onFinished()
+                }
+            }
+            true
+        }.getOrElse {
+            onError(it.message ?: "无法启动语音回放")
+            false
+        }
+    }
+
+    fun stopRecordingPlayback() {
+        recordingPlaybackGeneration.incrementAndGet()
+        runCatching { audioTrack?.pause() }
+        runCatching { audioTrack?.flush() }
     }
 
     fun setMuted(value: Boolean) {
@@ -124,7 +172,7 @@ class OpusAudioEngine {
         runCatching {
             playbackExecutor.execute {
                 if (released.get()) return@execute
-                decoder = null
+                decoder?.resetState()
                 runCatching { audioTrack?.flush() }
             }
         }
@@ -132,6 +180,7 @@ class OpusAudioEngine {
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
+        stopRecordingPlayback()
         stopCapture()
         runCatching {
             playbackExecutor.execute {
@@ -227,6 +276,55 @@ class OpusAudioEngine {
             .build()
     }
 
+    private fun decodeAndWrite(localDecoder: OpusDecoder, track: AudioTrack, frame: ByteArray) {
+        val pcm = ShortArray(MAX_DECODE_SAMPLES)
+        val decodedSamples = localDecoder.decode(
+            frame,
+            0,
+            frame.size,
+            pcm,
+            0,
+            MAX_DECODE_SAMPLES,
+            false,
+        )
+        if (decodedSamples > 0) track.write(pcm, 0, decodedSamples, AudioTrack.WRITE_BLOCKING)
+    }
+
+    private fun obtainDecoder(sampleRate: Int, channels: Int, reset: Boolean = false): OpusDecoder {
+        val current = decoder?.takeIf {
+            it.sampleRate == sampleRate
+        } ?: OpusDecoder(sampleRate, channels).also { decoder = it }
+        if (reset) current.resetState()
+        return current
+    }
+
+    private fun loadRecording(audioCacheKey: String, audioUrl: String): ByteArray {
+        val cacheKey = audioCacheKey.ifBlank { audioUrl }
+        audioCache.get(cacheKey)?.let { return it }
+        require(audioUrl.isNotBlank()) { "本地语音缓存已失效" }
+        val bytes = download(audioUrl)
+        RawOpusRecording.decode(bytes)
+        audioCache.put(cacheKey, bytes)
+        return bytes
+    }
+
+    private fun download(audioUrl: String): ByteArray {
+        val connection = URL(audioUrl).openConnection() as HttpURLConnection
+        return try {
+            connection.connectTimeout = DOWNLOAD_TIMEOUT_MS
+            connection.readTimeout = DOWNLOAD_TIMEOUT_MS
+            connection.setRequestProperty("Accept", "application/octet-stream")
+            val status = connection.responseCode
+            require(status in 200..299) { "语音记录下载失败 ($status)" }
+            connection.inputStream.use { it.readBytes() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun isRecordingPlaybackActive(expectedGeneration: Int): Boolean =
+        !released.get() && recordingPlaybackGeneration.get() == expectedGeneration
+
     private fun releaseRecorder(recorder: AudioRecord) {
         runCatching { recorder.release() }
         synchronized(this) {
@@ -242,5 +340,6 @@ class OpusAudioEngine {
         private const val FRAMES_PER_PACKET = 2
         private const val BIT_RATE = 16_000
         private const val MAX_ENCODED_FRAME = 400
+        private const val DOWNLOAD_TIMEOUT_MS = 15_000
     }
 }

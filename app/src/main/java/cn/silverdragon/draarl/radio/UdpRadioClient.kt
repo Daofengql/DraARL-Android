@@ -1,11 +1,14 @@
 package cn.silverdragon.draarl.radio
 
+import android.content.Context
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.RadioStatus
+import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.protocol.DraarlProtocol
+import java.io.ByteArrayOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
@@ -26,12 +29,15 @@ data class RadioConnectionConfig(
 interface UdpRadioListener {
     fun onStatus(status: RadioStatus)
     fun onMessage(message: RadioMessage)
+    fun onPlaybackState(messageId: String?)
 }
 
 class UdpRadioClient(
+    context: Context,
     private val listener: UdpRadioListener,
 ) {
-    private val audioEngine = OpusAudioEngine()
+    private val audioCache = RadioAudioCache(context.applicationContext.filesDir.resolve("radio_audio"))
+    private val audioEngine = OpusAudioEngine(audioCache)
     private val connectionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-udp-connect")
     }
@@ -43,24 +49,48 @@ class UdpRadioClient(
     private val sendLock = Any()
     private val statusLock = Any()
     private val taskLock = Any()
+    private val voiceSessionLock = Any()
+    private val outgoingVoiceLock = Any()
     @Volatile private var socket: DatagramSocket? = null
     @Volatile private var desiredConfig: RadioConnectionConfig? = null
     @Volatile private var manualDisconnect = true
     @Volatile private var lastServerPacketAt = 0L
+    @Volatile private var lastPacketSentAt = 0L
+    @Volatile private var preferredLocalPort = 0
     @Volatile private var lastVoicePacketAt = 0L
     @Volatile private var lastSpeakerKey = ""
     @Volatile private var pttStartedAt = 0L
+    @Volatile private var playingMessageId: String? = null
     @Volatile private var status = RadioStatus()
+    private var incomingVoiceStartedAt = 0L
+    private var incomingVoiceUsername = ""
+    private var incomingVoiceCallsign = ""
+    private var incomingVoiceSsid = 0
+    private var incomingVoiceBuffer = ByteArrayOutputStream()
+    private var outgoingVoiceBuffer = ByteArrayOutputStream()
     private var heartbeatTask: ScheduledFuture<*>? = null
     private var watchdogTask: ScheduledFuture<*>? = null
 
+    @Synchronized
     fun connect(config: RadioConnectionConfig) {
+        if (
+            !manualDisconnect &&
+            desiredConfig == config &&
+            status.phase in setOf(
+                RadioConnectionPhase.CONNECTING,
+                RadioConnectionPhase.AUTHENTICATING,
+                RadioConnectionPhase.CONNECTED,
+                RadioConnectionPhase.RECONNECTING,
+            )
+        ) return
         desiredConfig = config
         manualDisconnect = false
         reconnectPending.set(false)
         val currentGeneration = generation.incrementAndGet()
         stopTasks()
         audioEngine.stopCapture()
+        stopPlayback()
+        finishIncomingVoice()?.let(listener::onMessage)
         closeSocket()
         connectionExecutor.execute { establish(config, reconnecting = false, currentGeneration) }
     }
@@ -76,6 +106,8 @@ class UdpRadioClient(
         generation.incrementAndGet()
         stopTasks()
         audioEngine.stopCapture()
+        stopPlayback()
+        finishIncomingVoice()?.let(listener::onMessage)
         closeSocket()
         synchronized(statusLock) {
             updateStatus(RadioStatus(phase = RadioConnectionPhase.DISCONNECTED))
@@ -108,12 +140,16 @@ class UdpRadioClient(
     }
 
     fun startPtt(): Boolean {
-        if (!status.connected || status.transmitting) return false
+        if (!status.connected || status.transmitting || status.speaker.isNotBlank()) return false
+        stopPlayback()
+        synchronized(outgoingVoiceLock) { outgoingVoiceBuffer = ByteArrayOutputStream() }
         val currentGeneration = generation.get()
         audioEngine.resetDecoder()
         val started = audioEngine.startCapture(
             onPacket = { opus ->
-                if (status.transmitting) send(DraarlProtocol.voice(opus), currentGeneration)
+                if (status.transmitting && send(DraarlProtocol.voice(opus), currentGeneration)) {
+                    synchronized(outgoingVoiceLock) { appendVoiceData(outgoingVoiceBuffer, opus) }
+                }
             },
             onError = { message -> reportNonFatal(message, currentGeneration) },
         )
@@ -137,18 +173,53 @@ class UdpRadioClient(
         if (!statusUpdated) return
         val duration = (System.currentTimeMillis() - pttStartedAt).coerceAtLeast(0L)
         if (duration > 100L) {
+            val networkPayload = synchronized(outgoingVoiceLock) {
+                outgoingVoiceBuffer.toByteArray().also { outgoingVoiceBuffer = ByteArrayOutputStream() }
+            }
+            val messageId = UUID.randomUUID().toString()
             listener.onMessage(
                 RadioMessage(
-                    id = UUID.randomUUID().toString(),
+                    id = messageId,
                     type = RadioMessageType.VOICE,
                     senderCallsign = status.callsign,
                     senderSsid = status.ssid,
-                    content = "语音 ${formatDuration(duration)}",
+                    content = "语音",
                     timestamp = pttStartedAt,
                     mine = true,
                     durationMs = duration,
+                    audioCacheKey = cacheNetworkRecording(messageId, networkPayload),
                 ),
             )
+        }
+    }
+
+    fun togglePlayback(message: RadioMessage): Boolean {
+        if (message.type != RadioMessageType.VOICE) return false
+        if (playingMessageId == message.id) {
+            stopPlayback()
+            return true
+        }
+        stopPlayback()
+        playingMessageId = message.id
+        listener.onPlaybackState(message.id)
+        val started = audioEngine.playRecording(
+            audioCacheKey = message.audioCacheKey,
+            audioUrl = message.audioUrl,
+            onFinished = { completePlayback(message.id) },
+            onError = { error ->
+                reportNonFatal(error, generation.get())
+                completePlayback(message.id)
+            },
+        )
+        if (!started) completePlayback(message.id)
+        return started
+    }
+
+    fun stopPlayback() {
+        audioEngine.stopRecordingPlayback()
+        if (playingMessageId != null) {
+            playingMessageId = null
+            listener.onPlaybackState(null)
         }
     }
 
@@ -186,7 +257,7 @@ class UdpRadioClient(
         }) return
         try {
             val remote = InetSocketAddress(config.accessPoint.host, config.accessPoint.port)
-            val newSocket = DatagramSocket().apply {
+            val newSocket = createSocket().apply {
                 soTimeout = AUTH_SOCKET_TIMEOUT_MS
                 connect(remote)
             }
@@ -214,7 +285,7 @@ class UdpRadioClient(
             if (authStatus != 0) {
                 val detail = authResponse.data.copyOfRange(1, authResponse.data.size).toString(Charsets.UTF_8)
                 val message = DraarlProtocol.authError(authStatus, detail)
-                if (authStatus == 6 && reconnecting) throw IllegalStateException(message)
+                if (authStatus == 6) throw RetryableRadioException(message)
                 throw RadioAuthException(message)
             }
             newSocket.soTimeout = RECEIVE_SOCKET_TIMEOUT_MS
@@ -245,6 +316,9 @@ class UdpRadioClient(
                     it.copy(phase = RadioConnectionPhase.ERROR, error = error.message.orEmpty())
                 }
             }
+        } catch (error: RetryableRadioException) {
+            closeSocket()
+            scheduleReconnect("${error.message.orEmpty()}，将在安全间隔后自动重试", currentGeneration)
         } catch (error: Exception) {
             closeSocket()
             scheduleReconnect(error.message ?: "UDP 连接失败", currentGeneration)
@@ -281,8 +355,14 @@ class UdpRadioClient(
                 if (!isActive(currentGeneration)) return
                 lastServerPacketAt = System.currentTimeMillis()
                 when (packet.type) {
-                    DraarlProtocol.TYPE_TEXT -> handleText(packet.callsign, packet.ssid, packet.data)
+                    DraarlProtocol.TYPE_TEXT -> handleText(
+                        packet.username,
+                        packet.callsign,
+                        packet.ssid,
+                        packet.data,
+                    )
                     DraarlProtocol.TYPE_OPUS_16K -> handleVoice(
+                        packet.username,
                         packet.callsign,
                         packet.ssid,
                         packet.data,
@@ -300,14 +380,15 @@ class UdpRadioClient(
         }
     }
 
-    private fun handleText(callsign: String, ssid: Int, payload: ByteArray) {
+    private fun handleText(username: String, callsign: String, ssid: Int, payload: ByteArray) {
         if (payload.isEmpty()) return
         listener.onMessage(
             RadioMessage(
                 id = UUID.randomUUID().toString(),
                 type = RadioMessageType.TEXT,
-                senderCallsign = callsign.ifBlank { "SSID-$ssid" },
+                senderCallsign = callsign.ifBlank { username },
                 senderSsid = ssid,
+                senderUsername = username,
                 content = payload.toString(Charsets.UTF_8),
                 timestamp = System.currentTimeMillis(),
                 mine = false,
@@ -315,27 +396,41 @@ class UdpRadioClient(
         )
     }
 
-    private fun handleVoice(callsign: String, ssid: Int, payload: ByteArray, currentGeneration: Int) {
+    private fun handleVoice(
+        username: String,
+        callsign: String,
+        ssid: Int,
+        payload: ByteArray,
+        currentGeneration: Int,
+    ) {
         if (payload.isEmpty() || status.transmitting) return
-        val speaker = callsign.ifBlank { "SSID-$ssid" }
-        val speakerKey = "$speaker-$ssid"
+        val identity = callsign.ifBlank { username }
+        val speaker = formatRadioIdentity(identity, ssid)
+        val speakerKey = "$identity\u0000$ssid"
         val now = System.currentTimeMillis()
-        if (speakerKey != lastSpeakerKey || now - lastVoicePacketAt > VOICE_END_TIMEOUT_MS) {
-            audioEngine.resetDecoder()
-            listener.onMessage(
-                RadioMessage(
-                    id = UUID.randomUUID().toString(),
-                    type = RadioMessageType.VOICE,
-                    senderCallsign = speaker,
-                    senderSsid = ssid,
-                    content = "语音通话",
-                    timestamp = now,
-                    mine = false,
-                ),
-            )
+        var completedMessage: RadioMessage? = null
+        var startingSession = false
+        synchronized(voiceSessionLock) {
+            if (lastSpeakerKey.isNotBlank() && (speakerKey != lastSpeakerKey || now - lastVoicePacketAt > VOICE_END_TIMEOUT_MS)) {
+                completedMessage = finishIncomingVoiceLocked()
+            }
+            if (lastSpeakerKey.isBlank()) {
+                startingSession = true
+                incomingVoiceStartedAt = now
+                incomingVoiceUsername = username
+                incomingVoiceCallsign = callsign
+                incomingVoiceSsid = ssid
+                incomingVoiceBuffer = ByteArrayOutputStream()
+            }
+            lastSpeakerKey = speakerKey
+            lastVoicePacketAt = now
+            appendVoiceData(incomingVoiceBuffer, payload)
         }
-        lastSpeakerKey = speakerKey
-        lastVoicePacketAt = now
+        completedMessage?.let(listener::onMessage)
+        if (startingSession) {
+            stopPlayback()
+            audioEngine.resetDecoder()
+        }
         updateStatusIfActive(currentGeneration) { it.copy(speaker = speaker) }
         audioEngine.play(payload) { message -> reportNonFatal(message, currentGeneration) }
     }
@@ -356,17 +451,17 @@ class UdpRadioClient(
             watchdogTask = scheduler.scheduleWithFixedDelay(
                 {
                     val now = System.currentTimeMillis()
-                    if (status.speaker.isNotBlank() && now - lastVoicePacketAt > VOICE_END_TIMEOUT_MS) {
-                        lastSpeakerKey = ""
+                    if (lastSpeakerKey.isNotBlank() && now - lastVoicePacketAt > VOICE_END_TIMEOUT_MS) {
+                        finishIncomingVoice()?.let(listener::onMessage)
                         updateStatusIfActive(currentGeneration) { it.copy(speaker = "") }
                     }
                     if (status.connected && now - lastServerPacketAt > SERVER_SILENCE_TIMEOUT_MS) {
                         scheduleReconnect("服务器心跳超时", currentGeneration)
                     }
                 },
-                1,
-                1,
-                TimeUnit.SECONDS,
+                WATCHDOG_INTERVAL_MS,
+                WATCHDOG_INTERVAL_MS,
+                TimeUnit.MILLISECONDS,
             )
         }
     }
@@ -376,6 +471,7 @@ class UdpRadioClient(
         val reconnectGeneration = generation.incrementAndGet()
         stopTasks()
         audioEngine.stopCapture()
+        finishIncomingVoice()?.let(listener::onMessage)
         closeSocket()
         if (!updateStatusIfActive(reconnectGeneration) {
             it.copy(phase = RadioConnectionPhase.RECONNECTING, error = reason, transmitting = false)
@@ -383,6 +479,10 @@ class UdpRadioClient(
             reconnectPending.set(false)
             return
         }
+        val retryDelay = RadioReconnectPolicy.retryDelayMillis(
+            lastPacketSentAt = lastPacketSentAt,
+            now = System.currentTimeMillis(),
+        )
         scheduler.schedule(
             {
                 if (!reconnectPending.compareAndSet(true, false) || !isActive(reconnectGeneration)) {
@@ -393,7 +493,7 @@ class UdpRadioClient(
                     connectionExecutor.execute { establish(config, reconnecting = true, reconnectGeneration) }
                 }
             },
-            RECONNECT_DELAY_MS,
+            retryDelay,
             TimeUnit.MILLISECONDS,
         )
     }
@@ -413,6 +513,23 @@ class UdpRadioClient(
 
     private fun sendRaw(activeSocket: DatagramSocket, bytes: ByteArray) {
         activeSocket.send(DatagramPacket(bytes, bytes.size))
+        lastPacketSentAt = System.currentTimeMillis()
+    }
+
+    private fun createSocket(): DatagramSocket {
+        val reusablePort = preferredLocalPort
+        if (reusablePort > 0) {
+            val reusableSocket = DatagramSocket(null)
+            try {
+                return reusableSocket.apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(reusablePort))
+                }
+            } catch (_: Exception) {
+                runCatching { reusableSocket.close() }
+            }
+        }
+        return DatagramSocket()
     }
 
     private fun stopTasks() {
@@ -431,6 +548,7 @@ class UdpRadioClient(
             runCatching { expected.close() }
             return
         }
+        activeSocket?.localPort?.takeIf { it > 0 }?.let { preferredLocalPort = it }
         socket = null
         runCatching { activeSocket?.close() }
     }
@@ -456,7 +574,61 @@ class UdpRadioClient(
         updateStatusIfActive(expectedGeneration) { it.copy(error = message) }
     }
 
+    private fun finishIncomingVoice(): RadioMessage? = synchronized(voiceSessionLock) {
+        finishIncomingVoiceLocked()
+    }
+
+    private fun finishIncomingVoiceLocked(): RadioMessage? {
+        if (lastSpeakerKey.isBlank() || incomingVoiceStartedAt <= 0L) return null
+        val networkPayload = incomingVoiceBuffer.toByteArray()
+        val endedAt = lastVoicePacketAt + VOICE_PACKET_DURATION_MS
+        val messageId = UUID.randomUUID().toString()
+        val message = RadioMessage(
+            id = messageId,
+            type = RadioMessageType.VOICE,
+            senderCallsign = incomingVoiceCallsign.ifBlank { incomingVoiceUsername },
+            senderSsid = incomingVoiceSsid,
+            senderUsername = incomingVoiceUsername,
+            content = "语音",
+            timestamp = incomingVoiceStartedAt,
+            mine = false,
+            durationMs = (endedAt - incomingVoiceStartedAt).coerceAtLeast(VOICE_PACKET_DURATION_MS),
+            audioCacheKey = cacheNetworkRecording(messageId, networkPayload),
+        )
+        lastSpeakerKey = ""
+        incomingVoiceStartedAt = 0L
+        incomingVoiceUsername = ""
+        incomingVoiceCallsign = ""
+        incomingVoiceSsid = 0
+        incomingVoiceBuffer = ByteArrayOutputStream()
+        return message
+    }
+
+    private fun appendVoiceData(buffer: ByteArrayOutputStream, payload: ByteArray) {
+        val remaining = MAX_CACHED_VOICE_BYTES - buffer.size()
+        if (payload.size <= remaining) buffer.write(payload)
+    }
+
+    private fun cacheNetworkRecording(messageId: String, payload: ByteArray): String {
+        if (payload.isEmpty()) return ""
+        val cacheKey = "message:$messageId"
+        return runCatching {
+            audioCache.put(cacheKey, RawOpusRecording.fromNetworkPayload(payload))
+            cacheKey
+        }.onFailure {
+            reportNonFatal(it.message ?: "语音缓存失败", generation.get())
+        }.getOrDefault("")
+    }
+
+    private fun completePlayback(messageId: String) {
+        if (playingMessageId == messageId) {
+            playingMessageId = null
+            listener.onPlaybackState(null)
+        }
+    }
+
     private class RadioAuthException(message: String) : Exception(message)
+    private class RetryableRadioException(message: String) : Exception(message)
 
     private fun formatDuration(milliseconds: Long): String {
         val seconds = (milliseconds / 1_000.0).coerceAtLeast(0.1)
@@ -470,6 +642,8 @@ class UdpRadioClient(
         private const val HEARTBEAT_INTERVAL_MS = 2_000L
         private const val SERVER_SILENCE_TIMEOUT_MS = 8_000L
         private const val VOICE_END_TIMEOUT_MS = 700L
-        private const val RECONNECT_DELAY_MS = 3_000L
+        private const val VOICE_PACKET_DURATION_MS = 120L
+        private const val WATCHDOG_INTERVAL_MS = 250L
+        private const val MAX_CACHED_VOICE_BYTES = 2 * 1024 * 1024
     }
 }

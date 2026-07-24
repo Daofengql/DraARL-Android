@@ -22,6 +22,7 @@ import cn.silverdragon.draarl.data.RadioStatus
 interface RadioServiceListener {
     fun onRadioStatus(status: RadioStatus)
     fun onRadioMessage(message: RadioMessage)
+    fun onPlaybackState(messageId: String?)
 }
 
 class RadioConnectionService : Service(), UdpRadioListener {
@@ -33,7 +34,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        radioClient = UdpRadioClient(this)
+        radioClient = UdpRadioClient(applicationContext, this)
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -71,6 +72,10 @@ class RadioConnectionService : Service(), UdpRadioListener {
 
     override fun onMessage(message: RadioMessage) {
         listener?.onRadioMessage(message)
+    }
+
+    override fun onPlaybackState(messageId: String?) {
+        listener?.onPlaybackState(messageId)
     }
 
     private fun connect(config: RadioConnectionConfig) {
@@ -201,6 +206,8 @@ class RadioConnectionService : Service(), UdpRadioListener {
         fun sendText(text: String): Boolean = radioClient.sendText(text)
         fun startPtt(): Boolean = this@RadioConnectionService.startPtt()
         fun stopPtt() = radioClient.stopPtt()
+        fun togglePlayback(message: RadioMessage): Boolean = radioClient.togglePlayback(message)
+        fun stopPlayback() = radioClient.stopPlayback()
         fun setMuted(muted: Boolean) = radioClient.setMuted(muted)
         fun setGroup(groupId: Int) = radioClient.setGroup(groupId)
         fun updateAccessToken(token: String) = radioClient.updateAccessToken(token)

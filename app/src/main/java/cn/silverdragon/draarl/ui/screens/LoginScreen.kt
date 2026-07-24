@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cn.silverdragon.draarl.AppConfig
 import cn.silverdragon.draarl.AppController
 import kotlinx.coroutines.delay
 
@@ -112,7 +113,7 @@ fun LoginScreen(controller: AppController) {
                     onValueChange = controller::updateServerUrl,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("服务器地址") },
-                    placeholder = { Text("https://radio.example.com") },
+                    placeholder = { Text(AppConfig.BASE_URL) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                 )

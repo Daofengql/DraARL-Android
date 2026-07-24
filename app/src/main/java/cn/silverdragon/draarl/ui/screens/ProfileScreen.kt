@@ -3,8 +3,11 @@ package cn.silverdragon.draarl.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
@@ -24,12 +27,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.ui.components.SectionTitle
 import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.ui.components.UserAvatar
 
 @Composable
 fun ProfileScreen(controller: AppController) {
@@ -44,16 +49,20 @@ fun ProfileScreen(controller: AppController) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(user.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(
-                    listOf(user.callsign, "@${user.username}").filter(String::isNotBlank).joinToString(" · "),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                StatusPill(
-                    if (user.isApproved) "已审核" else if (user.approvalStatus == 2) "未通过" else "待审核",
-                    if (user.isApproved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                UserAvatar(user.avatarUrl, Modifier.size(64.dp))
+                Spacer(Modifier.width(14.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(user.displayName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        listOf(user.callsign, "@${user.username}").filter(String::isNotBlank).joinToString(" · "),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    StatusPill(
+                        if (user.isApproved) "已审核" else if (user.approvalStatus == 2) "未通过" else "待审核",
+                        if (user.isApproved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
+                    )
+                }
             }
         }
         item {

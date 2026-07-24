@@ -5,12 +5,16 @@ import cn.silverdragon.draarl.data.CaptchaChallenge
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.CommunicationStats
 import cn.silverdragon.draarl.data.Device
+import cn.silverdragon.draarl.data.DeviceBindPreview
+import cn.silverdragon.draarl.data.DeviceBindResult
+import cn.silverdragon.draarl.data.DevicePasswordInfo
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.PlatformInfo
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
+import cn.silverdragon.draarl.data.ReplaceableDevice
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -113,6 +117,11 @@ class ApiClient(
         return user
     }
 
+    fun getPublicUserByName(username: String): User {
+        val encoded = java.net.URLEncoder.encode(username, Charsets.UTF_8.name())
+        return parseUser(request("GET", "/api/users/name/$encoded/public").requireObject("data"))
+    }
+
     fun getPlatformInfo(): PlatformInfo {
         val data = request("GET", "/api/platform/info", requiresAuth = false).requireObject("data")
         return PlatformInfo(
@@ -144,24 +153,126 @@ class ApiClient(
     fun getDevices(): List<Device> {
         val items = request("GET", "/api/devices?page=1&limit=100").requireObject("data")
             .optJSONArray("items") ?: JSONArray()
-        return items.objects().map { item ->
-            Device(
-                id = item.optInt("id"),
-                name = item.optStringClean("name"),
-                callsign = item.optStringClean("callsign"),
-                ssid = item.optInt("ssid"),
-                model = item.optInt("dev_model"),
-                groupId = item.optInt("group_id"),
-                online = item.optBoolean("is_online"),
-                enabled = item.optInt("status", 1) == 1,
-                disableSend = item.optBoolean("disable_send"),
-                disableReceive = item.optBoolean("disable_recv"),
-                qth = item.optStringClean("qth"),
-                note = item.optStringClean("note"),
-                onlineTime = item.optStringClean("online_time"),
-                entryName = item.optStringClean("entry_node_name"),
-            )
+        return items.objects().map(::parseDevice)
+    }
+
+    fun getDefaultDeviceGroup(): Int? = request("GET", "/api/user/device-default-group")
+        .requireObject("data")
+        .optNullableInt("group_id")
+
+    fun setDefaultDeviceGroup(groupId: Int?): Int? {
+        val body = JSONObject().put("group_id", groupId ?: JSONObject.NULL)
+        return request("PUT", "/api/user/device-default-group", body)
+            .requireObject("data")
+            .optNullableInt("group_id")
+    }
+
+    fun updateDevice(
+        deviceId: Int,
+        name: String? = null,
+        disableSend: Boolean? = null,
+        disableReceive: Boolean? = null,
+    ): Device {
+        val body = JSONObject().apply {
+            name?.let { put("name", it) }
+            disableSend?.let { put("disable_send", it) }
+            disableReceive?.let { put("disable_recv", it) }
         }
+        return parseDevice(request("PUT", "/api/devices/$deviceId", body).requireObject("data"))
+    }
+
+    fun deleteDevice(deviceId: Int) {
+        request("DELETE", "/api/devices/$deviceId")
+    }
+
+    fun switchDeviceGroup(deviceId: Int, groupId: Int, password: String = "") {
+        request(
+            "POST",
+            "/api/device/changegroup",
+            JSONObject()
+                .put("device_id", deviceId)
+                .put("group_id", groupId)
+                .put("password", password),
+        )
+    }
+
+    fun getDeviceConfig(deviceId: Int): Map<String, String> =
+        jsonStringMap(request("GET", "/api/devices/$deviceId/config").requireObject("data"))
+
+    fun updateDeviceConfig(deviceId: Int, config: Map<String, String>): Map<String, String> {
+        val body = JSONObject().apply { config.forEach(::put) }
+        return jsonStringMap(request("PUT", "/api/devices/$deviceId/config", body).requireObject("data"))
+    }
+
+    fun syncDeviceConfig(deviceId: Int): String = request("POST", "/api/devices/$deviceId/config/sync")
+        .optJSONObject("data")
+        ?.optStringClean("message")
+        .orEmpty()
+        .ifBlank { "同步请求已发送" }
+
+    fun getDevicePassword(): DevicePasswordInfo {
+        val data = request("GET", "/api/user/device-password").requireObject("data")
+        return DevicePasswordInfo(
+            password = data.optStringClean("device_password"),
+            hasPassword = data.optBoolean("has_password"),
+            isNew = data.optBoolean("is_new"),
+            createdAt = data.optStringClean("created_at"),
+        )
+    }
+
+    fun regenerateDevicePassword(): DevicePasswordInfo {
+        val data = request("POST", "/api/user/device-password/regenerate").requireObject("data")
+        return DevicePasswordInfo(
+            password = data.optStringClean("device_password"),
+            hasPassword = true,
+            isNew = true,
+            createdAt = data.optStringClean("created_at"),
+        )
+    }
+
+    fun bindDevice(dynamicCode: String): DeviceBindPreview {
+        val data = request(
+            "POST",
+            "/api/device/bind",
+            JSONObject().put("dynamic_code", dynamicCode),
+        ).requireObject("data")
+        val availableSsids = data.optJSONArray("available_ssids") ?: JSONArray()
+        val replacements = data.optJSONArray("replaceable_devices") ?: JSONArray()
+        return DeviceBindPreview(
+            deviceMac = data.optStringClean("device_mac"),
+            callsign = data.optStringClean("call_sign"),
+            message = data.optStringClean("message"),
+            availableSsids = buildList {
+                for (index in 0 until availableSsids.length()) add(availableSsids.optInt(index))
+            },
+            recommendedSsid = data.optInt("recommended_ssid"),
+            replaceableDevices = replacements.objects().map { item ->
+                ReplaceableDevice(
+                    deviceId = item.optInt("device_id"),
+                    name = item.optStringClean("name"),
+                    callsign = item.optStringClean("callsign"),
+                    ssid = item.optInt("ssid"),
+                    lastOnlineIp = item.optStringClean("last_online_ip"),
+                    onlineTime = item.optStringClean("online_time"),
+                )
+            },
+        )
+    }
+
+    fun submitDeviceConfig(deviceMac: String, ssid: Int?, replaceDeviceId: Int?): DeviceBindResult {
+        val body = JSONObject().put("device_mac", deviceMac).apply {
+            ssid?.let { put("ssid", it) }
+            replaceDeviceId?.let { put("replace_device_id", it) }
+        }
+        val data = request("POST", "/api/device/submit-config", body).requireObject("data")
+        val auth = data.optJSONObject("udp_auth_info") ?: JSONObject()
+        return DeviceBindResult(
+            message = data.optStringClean("message"),
+            ssid = data.optNullableInt("ssid"),
+            username = auth.optStringClean("username"),
+            devicePassword = auth.optStringClean("device_password"),
+            dmrId = data.optInt("dmr_id"),
+        )
     }
 
     fun getGroups(): List<Group> {
@@ -219,6 +330,66 @@ class ApiClient(
 
     fun leaveGroup(groupId: Int) {
         request("POST", "/api/groups/$groupId/leave", JSONObject())
+    }
+
+    fun searchGroups(keyword: String): List<Group> {
+        val data = request(
+            "POST",
+            "/api/groups/search",
+            JSONObject().put("keyword", keyword).put("page", 1).put("page_size", 50),
+        ).requireObject("data")
+        return (data.optJSONArray("items") ?: JSONArray()).objects().map(::parseGroup)
+    }
+
+    fun createGroup(name: String, type: Int, password: String, note: String): Group {
+        val body = JSONObject().put("name", name).put("type", type).put("note", note)
+        if (password.isNotBlank()) body.put("password", password)
+        return parseGroup(request("POST", "/api/groups", body).requireObject("data"))
+    }
+
+    fun updateGroup(
+        groupId: Int,
+        name: String? = null,
+        type: Int? = null,
+        password: String? = null,
+        note: String? = null,
+        status: Int? = null,
+    ): Group {
+        val body = JSONObject().apply {
+            name?.let { put("name", it) }
+            type?.let { put("type", it) }
+            password?.takeIf(String::isNotBlank)?.let { put("password", it) }
+            note?.let { put("note", it) }
+            status?.let { put("status", it) }
+        }
+        return parseGroup(request("PUT", "/api/groups/$groupId", body).requireObject("data"))
+    }
+
+    fun deleteGroup(groupId: Int) {
+        request("DELETE", "/api/groups/$groupId")
+    }
+
+    fun getGroupDevices(groupId: Int): List<Device> {
+        val data = request("GET", "/api/groups/$groupId/devices").requireObject("data")
+        return (data.optJSONArray("items") ?: JSONArray()).objects().map(::parseDevice)
+    }
+
+    fun updateGroupDeviceCommControl(
+        groupId: Int,
+        deviceId: Int,
+        disableSend: Boolean,
+        disableReceive: Boolean,
+    ): Pair<Boolean, Boolean> {
+        val data = request(
+            "PUT",
+            "/api/groups/$groupId/devices/$deviceId/comm-control",
+            JSONObject().put("disable_send", disableSend).put("disable_recv", disableReceive),
+        ).requireObject("data")
+        return data.optBoolean("disable_send") to data.optBoolean("disable_recv")
+    }
+
+    fun kickGroupDevice(groupId: Int, deviceId: Int) {
+        request("DELETE", "/api/groups/$groupId/devices/$deviceId")
     }
 
     fun getCommunicationStats(): CommunicationStats {
@@ -389,18 +560,46 @@ class ApiClient(
         )
     }
 
+    private fun parseDevice(item: JSONObject) = Device(
+        id = item.optInt("id"),
+        name = item.optStringClean("name"),
+        callsign = item.optStringClean("callsign").ifBlank { item.optStringClean("owner_callsign") },
+        ssid = item.optInt("ssid"),
+        model = item.optInt("dev_model", item.optInt("model")),
+        groupId = item.optInt("group_id"),
+        online = item.optBoolean("is_online", item.optBoolean("online")),
+        enabled = item.optInt("status", 1) == 1,
+        disableSend = item.optBoolean("disable_send"),
+        disableReceive = item.optBoolean("disable_recv"),
+        qth = item.optStringClean("qth"),
+        note = item.optStringClean("note"),
+        onlineTime = item.optStringClean("online_time"),
+        entryName = item.optStringClean("entry_node_name"),
+        priority = item.optInt("priority"),
+        lastOnlineIp = item.optStringClean("last_online_ip"),
+        lastOnlineIpLocation = item.optStringClean("last_online_ip_location"),
+        entryId = item.optStringClean("entry_node_id"),
+        entryMode = item.optStringClean("entry_mode"),
+        entrySeenAt = item.optStringClean("entry_seen_at"),
+        createdAt = item.optStringClean("create_time"),
+        updatedAt = item.optStringClean("update_time"),
+    )
+
     private fun parseGroup(json: JSONObject) = Group(
         id = json.optInt("id"),
         name = json.optStringClean("name"),
         type = json.optInt("type"),
         status = json.optInt("status", 1),
         note = json.optStringClean("note"),
+        ownerId = json.optInt("ower_id"),
         ownerCallsign = json.optStringClean("ower_callsign"),
         joined = json.optBoolean("is_joined"),
         owner = json.optBoolean("is_owner"),
         requiresPassword = json.optBoolean("require_password"),
         onlineCount = json.optInt("online_count"),
         totalCount = json.optInt("total_count"),
+        createdAt = json.optStringClean("create_time"),
+        updatedAt = json.optStringClean("update_time"),
     )
 
     companion object {
@@ -444,6 +643,14 @@ private fun JSONObject.optStringClean(key: String): String {
 private fun JSONObject.optNullableInt(key: String): Int? {
     if (!has(key) || isNull(key)) return null
     return optInt(key)
+}
+
+private fun jsonStringMap(json: JSONObject): Map<String, String> = buildMap {
+    val keys = json.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        if (!json.isNull(key)) put(key, json.optString(key))
+    }
 }
 
 private fun JSONArray.objects(): List<JSONObject> = buildList {

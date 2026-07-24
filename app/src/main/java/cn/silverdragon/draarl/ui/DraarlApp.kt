@@ -5,24 +5,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -54,7 +49,6 @@ private fun LoadingScreen() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AuthenticatedApp(controller: AppController) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -67,48 +61,10 @@ private fun AuthenticatedApp(controller: AppController) {
     }
     BackHandler(controller.page == AppPage.RECORDS) { controller.goBack() }
 
-    val approved = controller.user?.isApproved == true
-    val tabs = buildList {
-        add(NavigationItem(AppPage.DASHBOARD, "概览", { Icon(Icons.Default.Dashboard, null) }))
-        if (approved) {
-            add(NavigationItem(AppPage.RADIO, "电台", { Icon(Icons.Default.Radio, null) }))
-            add(NavigationItem(AppPage.DEVICES, "设备", { Icon(Icons.Default.Devices, null) }))
-            add(NavigationItem(AppPage.GROUPS, "群组", { Icon(Icons.Default.Groups, null) }))
-        }
-        add(NavigationItem(AppPage.PROFILE, "我的", { Icon(Icons.Default.Person, null) }))
-    }
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(pageTitle(controller.page)) },
-                navigationIcon = {
-                    if (controller.page == AppPage.RECORDS) {
-                        IconButton(onClick = controller::goBack) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                        }
-                    }
-                },
-                actions = {
-                    if (controller.page != AppPage.PROFILE && controller.page != AppPage.RADIO) {
-                        IconButton(onClick = controller::refreshAll) {
-                            Icon(Icons.Default.Refresh, contentDescription = "刷新")
-                        }
-                    }
-                },
-            )
-        },
         bottomBar = {
             if (controller.page != AppPage.RECORDS) {
-                NavigationBar {
-                    tabs.forEach { item ->
-                        NavigationBarItem(
-                            selected = controller.page == item.page,
-                            onClick = { controller.navigate(item.page) },
-                            icon = item.icon,
-                            label = { Text(item.label) },
-                        )
-                    }
-                }
+                MainBottomBar(controller)
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -126,17 +82,29 @@ private fun AuthenticatedApp(controller: AppController) {
     }
 }
 
+@Composable
+private fun MainBottomBar(controller: AppController) {
+    val items = listOf(
+        NavigationItem(AppPage.DASHBOARD, "概览", Icons.Default.Dashboard),
+        NavigationItem(AppPage.DEVICES, "设备", Icons.Default.Devices),
+        NavigationItem(AppPage.RADIO, "PTT", Icons.Default.Mic),
+        NavigationItem(AppPage.GROUPS, "群组", Icons.Default.Groups),
+        NavigationItem(AppPage.PROFILE, "我的", Icons.Default.Person),
+    )
+    NavigationBar {
+        items.forEach { item ->
+            NavigationBarItem(
+                selected = controller.page == item.page,
+                onClick = { controller.navigate(item.page) },
+                icon = { Icon(item.icon, contentDescription = item.label) },
+                label = { Text(item.label) },
+            )
+        }
+    }
+}
+
 private data class NavigationItem(
     val page: AppPage,
     val label: String,
-    val icon: @Composable () -> Unit,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
 )
-
-private fun pageTitle(page: AppPage): String = when (page) {
-    AppPage.RADIO -> "在线收发"
-    AppPage.DASHBOARD -> "仪表盘"
-    AppPage.DEVICES -> "设备管理"
-    AppPage.GROUPS -> "群组管理"
-    AppPage.PROFILE -> "个人中心"
-    AppPage.RECORDS -> "通信记录"
-}

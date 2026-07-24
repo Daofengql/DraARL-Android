@@ -5,8 +5,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,39 +17,46 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Router
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.VolumeOff
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,7 +65,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +75,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.AccessPoint
@@ -76,7 +85,8 @@ import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.RadioStatus
-import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.data.formatRadioIdentity
+import cn.silverdragon.draarl.ui.components.UserAvatar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -86,6 +96,9 @@ fun RadioScreen(controller: AppController) {
     val context = LocalContext.current
     val messages = controller.radioMessages
     val listState = rememberLazyListState()
+    val userDragging by listState.interactionSource.collectIsDraggedAsState()
+    var followLatest by remember(controller.selectedGroupId) { mutableStateOf(true) }
+    var userScrollPending by remember(controller.selectedGroupId) { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var showDevices by remember { mutableStateOf(false) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -93,8 +106,17 @@ fun RadioScreen(controller: AppController) {
     }
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    LaunchedEffect(userDragging, listState.isScrollInProgress) {
+        if (userDragging) userScrollPending = true
+        if (userScrollPending && !listState.isScrollInProgress) {
+            val layout = listState.layoutInfo
+            val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+            followLatest = layout.totalItemsCount == 0 || lastVisible >= layout.totalItemsCount - 2
+            userScrollPending = false
+        }
+    }
+    LaunchedEffect(messages.lastOrNull()?.id, messages.size, controller.selectedGroupId) {
+        if (followLatest && messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
     LaunchedEffect(controller.selectedGroupId, controller.radioStatus.connected) {
         if (controller.radioStatus.connected) controller.refreshRadioData()
@@ -118,69 +140,87 @@ fun RadioScreen(controller: AppController) {
             false
         }
     }
+    val selectedPointId = controller.selectedAccessPoint?.id.orEmpty()
+    LaunchedEffect(selectedPointId, controller.radioStatus.phase) {
+        if (
+            selectedPointId.isNotBlank() &&
+            controller.radioStatus.phase == RadioConnectionPhase.DISCONNECTED &&
+            controller.shouldAutoConnectRadio()
+        ) {
+            connect()
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         ConnectionPanel(
             controller = controller,
             status = controller.radioStatus,
-            onConnect = connect,
             onToggleDevices = { showDevices = !showDevices },
         )
         if (showDevices) {
             OnlineDeviceStrip(controller.onlineDevices)
         }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (messages.isEmpty()) {
-                item {
-                    Text(
-                        text = if (controller.radioStatus.connected) "当前群组暂无消息" else "电台未连接",
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (messages.isEmpty()) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(
+                        Icons.Default.History,
+                        contentDescription = null,
+                        modifier = Modifier.size(44.dp),
+                        tint = MaterialTheme.colorScheme.outline,
+                    )
+                    Text("暂无通联记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+                    MessageItem(
+                        controller = controller,
+                        message = message,
+                        showTimeDivider = index == 0 || message.timestamp - messages[index - 1].timestamp >= TIME_DIVIDER_MS,
                     )
                 }
-            } else {
-                items(messages, key = RadioMessage::id) { message -> MessageItem(message) }
             }
         }
-        Column(
-            modifier = Modifier.fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("发送文本消息") },
-                    singleLine = true,
-                    enabled = controller.radioStatus.connected,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        if (controller.sendText(text)) text = ""
-                    }),
-                )
-                IconButton(
-                    onClick = { if (controller.sendText(text)) text = "" },
-                    enabled = controller.radioStatus.connected && text.isNotBlank(),
-                ) {
-                    Icon(Icons.Default.Send, contentDescription = "发送")
+        Surface(modifier = Modifier.fillMaxWidth(), shadowElevation = 8.dp) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("发送文本消息") },
+                        singleLine = true,
+                        enabled = controller.radioStatus.connected,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = {
+                            if (controller.sendText(text)) text = ""
+                        }),
+                    )
+                    IconButton(
+                        onClick = { if (controller.sendText(text)) text = "" },
+                        enabled = controller.radioStatus.connected && text.isNotBlank(),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
+                    }
                 }
+                PttButton(
+                    transmitting = controller.radioStatus.transmitting,
+                    enabled = controller.radioStatus.connected,
+                    onStart = startPtt,
+                    onStop = controller::stopPtt,
+                )
             }
-            PttButton(
-                transmitting = controller.radioStatus.transmitting,
-                enabled = controller.radioStatus.connected,
-                onStart = startPtt,
-                onStop = controller::stopPtt,
-            )
         }
     }
 }
@@ -189,82 +229,85 @@ fun RadioScreen(controller: AppController) {
 private fun ConnectionPanel(
     controller: AppController,
     status: RadioStatus,
-    onConnect: () -> Unit,
     onToggleDevices: () -> Unit,
 ) {
     var accessMenu by remember { mutableStateOf(false) }
     var groupMenu by remember { mutableStateOf(false) }
     val selectedGroup = controller.groups.firstOrNull { it.id == controller.selectedGroupId }
-    Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    if (status.connected) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                    contentDescription = null,
-                    tint = connectionColor(status.phase),
-                )
-                Spacer(Modifier.width(8.dp))
+    val selectedProbe = controller.accessPointProbes.firstOrNull {
+        it.accessPoint.id == controller.selectedAccessPoint?.id
+    }
+    val callsign = controller.user?.callsign?.ifBlank { controller.user?.displayName }.orEmpty().ifBlank { "DraARL" }
+    if (accessMenu) {
+        AccessPointDialog(controller = controller, onDismiss = { accessMenu = false })
+    }
+    if (groupMenu) {
+        GroupDialog(controller = controller, onDismiss = { groupMenu = false })
+    }
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                UserAvatar(controller.user?.avatarUrl.orEmpty(), Modifier.size(44.dp))
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(connectionText(status.phase), fontWeight = FontWeight.SemiBold)
-                    Text(
-                        listOf(status.callsign, status.endpoint).filter(String::isNotBlank).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
+                    Text("$callsign-101", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (status.connected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = connectionColor(status.phase),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            connectionText(status.phase),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = connectionColor(status.phase),
+                            maxLines = 1,
+                        )
+                        TextButton(onClick = onToggleDevices) {
+                            Text("${controller.onlineDevices.size} 在线")
+                        }
+                    }
                 }
                 IconButton(onClick = controller::toggleMuted) {
                     Icon(
-                        if (controller.muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        if (controller.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = if (controller.muted) "取消静音" else "静音",
                     )
                 }
-                if (status.connected || status.phase == RadioConnectionPhase.RECONNECTING) {
-                    OutlinedButton(onClick = controller::disconnectRadio) { Text("断开") }
-                } else {
-                    Button(
-                        onClick = onConnect,
-                        enabled = status.phase !in setOf(RadioConnectionPhase.CONNECTING, RadioConnectionPhase.AUTHENTICATING),
-                    ) { Text("连接") }
-                }
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = "连接由系统自动锁定和重试",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.weight(1f)) {
+                Box(Modifier.weight(1f).padding(start = 12.dp)) {
                     OutlinedButton(
                         onClick = { accessMenu = true },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = controller.accessPoints.isNotEmpty(),
+                        enabled = controller.accessPoints.isNotEmpty() && status.phase !in setOf(
+                            RadioConnectionPhase.CONNECTING,
+                            RadioConnectionPhase.AUTHENTICATING,
+                            RadioConnectionPhase.RECONNECTING,
+                        ),
                     ) {
                         Icon(Icons.Default.Router, contentDescription = null)
                         Text(
-                            controller.selectedAccessPoint?.displayName ?: if (controller.selectingAccessPoint) "优选入口中" else "UDP 入口",
+                            controller.selectedAccessPoint?.let { point ->
+                                selectedProbe?.latencyMs?.let { "${point.displayName} · ${it}ms" } ?: point.displayName
+                            } ?: if (controller.selectingAccessPoint) "优选边缘中" else "边缘节点",
                             modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
                             maxLines = 1,
                         )
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
                     }
-                    DropdownMenu(expanded = accessMenu, onDismissRequest = { accessMenu = false }) {
-                        controller.accessPoints.forEach { point ->
-                            val probe = controller.accessPointProbes.firstOrNull { it.accessPoint.id == point.id }
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(point.displayName)
-                                        Text(
-                                            listOf(point.region, probe?.latencyMs?.let { "${it} ms" } ?: "按优先级").filter(String::isNotBlank).joinToString(" · "),
-                                            style = MaterialTheme.typography.bodySmall,
-                                        )
-                                    }
-                                },
-                                onClick = {
-                                    controller.selectAccessPoint(point)
-                                    accessMenu = false
-                                },
-                            )
-                        }
-                    }
                 }
-                Box(Modifier.weight(1f)) {
+                Box(Modifier.weight(1f).padding(end = 12.dp)) {
                     OutlinedButton(
                         onClick = { groupMenu = true },
                         modifier = Modifier.fillMaxWidth(),
@@ -278,44 +321,144 @@ private fun ConnectionPanel(
                         )
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
                     }
-                    DropdownMenu(expanded = groupMenu, onDismissRequest = { groupMenu = false }) {
-                        controller.groups.filter { !it.isPrivate || it.joined || it.owner }.forEach { group ->
-                            DropdownMenuItem(
-                                text = { Text("${group.name} · ${group.onlineCount} 在线") },
-                                onClick = {
-                                    controller.switchGroup(group)
-                                    groupMenu = false
-                                },
-                            )
-                        }
+                }
+            }
+            if (status.speaker.isNotBlank()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text("${status.speaker} 正在发言", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusPill(
-                    text = when {
-                        status.transmitting -> "正在发射"
-                        status.speaker.isNotBlank() -> "接收 ${status.speaker}"
-                        status.connected -> "守听中"
-                        else -> "离线"
-                    },
-                    color = when {
-                        status.transmitting -> MaterialTheme.colorScheme.error
-                        status.speaker.isNotBlank() -> Color(0xFF9A6700)
-                        status.connected -> Color(0xFF087F5B)
-                        else -> MaterialTheme.colorScheme.outline
-                    },
+            if (status.error.isNotBlank()) {
+                Text(
+                    status.error,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
                 )
-                Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = onToggleDevices) {
-                    Text("${controller.onlineDevices.size} 台在线")
+            }
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                Text(
+                    "选择边缘节点",
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(controller.accessPoints, key = AccessPoint::id) { point ->
+                        val selected = point.id == controller.selectedAccessPoint?.id
+                        val probe = controller.accessPointProbes.firstOrNull { it.accessPoint.id == point.id }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .clickable {
+                                    if (!selected) controller.selectAccessPoint(point)
+                                    onDismiss()
+                                }
+                                .padding(horizontal = 18.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(point.displayName, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                                Text(
+                                    listOf(
+                                        point.region,
+                                        point.network,
+                                        probe?.latencyMs?.let { "ICMP ${it} ms" } ?: "ICMP 不可达",
+                                    ).filter(String::isNotBlank).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (selected) Icon(Icons.Default.Check, contentDescription = "当前节点")
+                        }
+                    }
                 }
-                IconButton(onClick = controller::refreshRadioData) {
-                    Icon(Icons.Default.Refresh, contentDescription = "刷新群组状态")
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(horizontal = 8.dp)) {
+                    Text("关闭")
                 }
             }
-            if (status.error.isNotBlank()) {
-                Text(status.error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
+    val availableGroups = controller.groups.filter { !it.isPrivate || it.joined || it.owner }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                Text(
+                    "选择群组",
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(availableGroups, key = Group::id) { group ->
+                        val selected = group.id == controller.selectedGroupId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .clickable {
+                                    if (!selected) controller.switchGroup(group)
+                                    onDismiss()
+                                }
+                                .padding(horizontal = 18.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(group.name, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                                Text(
+                                    listOf(
+                                        "${group.onlineCount} 在线",
+                                        if (group.isPrivate) "私有群组" else "公开群组",
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (selected) Icon(Icons.Default.Check, contentDescription = "当前群组")
+                        }
+                    }
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(horizontal = 8.dp)) {
+                    Text("关闭")
+                }
             }
         }
     }
@@ -340,35 +483,98 @@ private fun OnlineDeviceStrip(devices: List<OnlineDevice>) {
 }
 
 @Composable
-private fun MessageItem(message: RadioMessage) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.mine) Arrangement.End else Arrangement.Start,
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(0.82f),
-            shape = RoundedCornerShape(8.dp),
-            color = if (message.mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-        ) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (message.mine) "我 · ${message.senderCallsign}" else "${message.senderCallsign}-${message.senderSsid}",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(formatTime(message.timestamp), style = MaterialTheme.typography.labelSmall)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (message.type == RadioMessageType.VOICE) {
-                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(5.dp))
-                    }
-                    Text(message.content, style = MaterialTheme.typography.bodyMedium)
-                }
+private fun MessageItem(controller: AppController, message: RadioMessage, showTimeDivider: Boolean) {
+    val profile = if (message.mine) controller.user else controller.publicProfile(message.senderUsername)
+    val callsign = message.senderCallsign.ifBlank { profile?.callsign.orEmpty() }.ifBlank { message.senderUsername }
+    val nickname = message.senderNickname.ifBlank { profile?.nickname.orEmpty() }.ifBlank { message.senderUsername }
+    if (showTimeDivider) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) {
+            Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Text(
+                    formatTimeDivider(message.timestamp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        if (!message.mine) {
+            UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = if (message.mine) Alignment.End else Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (nickname.isNotBlank()) {
+                    Text(nickname, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    formatRadioIdentity(callsign, message.senderSsid),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Surface(
+                modifier = Modifier.widthIn(max = 300.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = if (message.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (message.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
+                if (message.type == RadioMessageType.VOICE) {
+                    VoiceMessageContent(controller, message)
+                } else {
+                    Text(message.content, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                }
+            }
+            Text(
+                formatTime(message.timestamp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (message.mine) {
+            Spacer(Modifier.width(8.dp))
+            UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
+        }
+    }
+}
+
+@Composable
+private fun VoiceMessageContent(controller: AppController, message: RadioMessage) {
+    val playable = message.audioCacheKey.isNotBlank() || message.audioUrl.isNotBlank()
+    val playing = controller.playingMessageId == message.id
+    val contentColor = LocalContentColor.current
+    Row(
+        modifier = Modifier.widthIn(min = 170.dp).padding(horizontal = 6.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = { controller.toggleVoicePlayback(message) }, enabled = playable) {
+            Icon(
+                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (playing) "暂停语音" else "播放语音",
+            )
+        }
+        Row(
+            modifier = Modifier.width(82.dp).height(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VOICE_BAR_HEIGHTS.forEach { height ->
+                Box(
+                    Modifier.width(3.dp).height(height.dp).background(
+                        color = contentColor,
+                        shape = RoundedCornerShape(2.dp),
+                    ),
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(AppController.formatDuration(message.durationMs), style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -386,8 +592,8 @@ private fun PttButton(
     }
     Surface(
         modifier = Modifier
-            .size(96.dp)
-            .clip(CircleShape)
+            .fillMaxWidth()
+            .height(72.dp)
             .semantics {
                 role = Role.Button
                 contentDescription = "按住发射"
@@ -407,15 +613,19 @@ private fun PttButton(
                     },
                 )
             },
-        shape = CircleShape,
+        shape = RoundedCornerShape(8.dp),
         color = color,
         contentColor = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
         shadowElevation = if (enabled) 3.dp else 0.dp,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.height(3.dp))
-            Text(if (transmitting) "发射中" else "按住发射", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (transmitting) "正在发射" else "按住说话",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }
@@ -442,3 +652,9 @@ private fun connectionText(phase: RadioConnectionPhase): String = when (phase) {
 }
 
 private fun formatTime(timestamp: Long): String = SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(timestamp))
+
+private fun formatTimeDivider(timestamp: Long): String =
+    SimpleDateFormat("yyyy-MM-dd  HH:mm", Locale.CHINA).format(Date(timestamp))
+
+private const val TIME_DIVIDER_MS = 10 * 60 * 1_000L
+private val VOICE_BAR_HEIGHTS = listOf(7, 14, 20, 11, 18, 24, 13, 20, 9, 16, 22, 12)

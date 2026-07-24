@@ -62,6 +62,14 @@ data class Device(
     val note: String = "",
     val onlineTime: String = "",
     val entryName: String = "",
+    val priority: Int = 0,
+    val lastOnlineIp: String = "",
+    val lastOnlineIpLocation: String = "",
+    val entryId: String = "",
+    val entryMode: String = "",
+    val entrySeenAt: String = "",
+    val createdAt: String = "",
+    val updatedAt: String = "",
 )
 
 data class Group(
@@ -70,15 +78,51 @@ data class Group(
     val type: Int,
     val status: Int,
     val note: String = "",
+    val ownerId: Int = 0,
     val ownerCallsign: String = "",
     val joined: Boolean = false,
     val owner: Boolean = false,
     val requiresPassword: Boolean = false,
     val onlineCount: Int = 0,
     val totalCount: Int = 0,
+    val createdAt: String = "",
+    val updatedAt: String = "",
 ) {
     val isPrivate: Boolean get() = type == 2
 }
+
+data class DevicePasswordInfo(
+    val password: String,
+    val hasPassword: Boolean,
+    val isNew: Boolean,
+    val createdAt: String,
+)
+
+data class ReplaceableDevice(
+    val deviceId: Int,
+    val name: String,
+    val callsign: String,
+    val ssid: Int,
+    val lastOnlineIp: String = "",
+    val onlineTime: String = "",
+)
+
+data class DeviceBindPreview(
+    val deviceMac: String,
+    val callsign: String,
+    val message: String,
+    val availableSsids: List<Int>,
+    val recommendedSsid: Int,
+    val replaceableDevices: List<ReplaceableDevice>,
+)
+
+data class DeviceBindResult(
+    val message: String,
+    val ssid: Int?,
+    val username: String,
+    val devicePassword: String,
+    val dmrId: Int,
+)
 
 data class OnlineDevice(
     val id: Int,
@@ -145,15 +189,23 @@ data class RadioStatus(
 
 enum class RadioMessageType { TEXT, VOICE, SYSTEM }
 
+enum class RadioMessageSyncState { LOCAL, CONFIRMED }
+
 data class RadioMessage(
     val id: String,
     val type: RadioMessageType,
     val senderCallsign: String,
     val senderSsid: Int,
+    val senderUsername: String = "",
+    val senderNickname: String = "",
     val content: String,
     val timestamp: Long,
     val mine: Boolean,
     val durationMs: Long = 0,
+    val audioUrl: String = "",
+    val audioCacheKey: String = "",
+    val serverRecordId: Int? = null,
+    val syncState: RadioMessageSyncState = RadioMessageSyncState.LOCAL,
 )
 
 data class DashboardData(
