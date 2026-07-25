@@ -15,8 +15,8 @@ android {
         applicationId = "cn.silverdragon.draarl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0-beta4"
+        versionCode = 3
+        versionName = "1.0-beta6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

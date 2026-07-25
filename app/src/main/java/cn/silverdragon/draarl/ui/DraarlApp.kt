@@ -2,6 +2,7 @@ package cn.silverdragon.draarl.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -16,8 +17,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
@@ -150,6 +155,9 @@ private fun AuthenticatedApp(controller: AppController) {
     val pagesWithOwnScaffold = setOf(AppPage.PROFILE, AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY)
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
         bottomBar = {
             if (showBottomBar) {
                 MainBottomBar(controller)
@@ -169,7 +177,22 @@ private fun AuthenticatedApp(controller: AppController) {
             androidx.compose.animation.AnimatedContent(
                 targetState = controller.page,
                 transitionSpec = {
-                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    val direction = if (pagePosition(targetState) >= pagePosition(initialState)) {
+                        AnimatedContentTransitionScope.SlideDirection.Left
+                    } else {
+                        AnimatedContentTransitionScope.SlideDirection.Right
+                    }
+                    (
+                        slideIntoContainer(
+                            towards = direction,
+                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                        ) + fadeIn(animationSpec = tween(160))
+                    ) togetherWith (
+                        slideOutOfContainer(
+                            towards = direction,
+                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                        ) + fadeOut(animationSpec = tween(160))
+                    )
                 },
                 contentKey = { it },
             ) { page ->
@@ -196,7 +219,9 @@ private fun MainBottomBar(controller: AppController) {
         NavigationItem(AppPage.GROUPS, "群组", Icons.Default.Groups),
         NavigationItem(AppPage.PROFILE, "我的", Icons.Default.Person),
     )
-    NavigationBar {
+    NavigationBar(
+        windowInsets = WindowInsets(0, 0, 0, 0),
+    ) {
         items.forEach { item ->
             NavigationBarItem(
                 selected = controller.page == item.page,
@@ -213,3 +238,13 @@ private data class NavigationItem(
     val label: String,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
 )
+
+private fun pagePosition(page: AppPage): Int = when (page) {
+    AppPage.DASHBOARD -> 0
+    AppPage.DEVICES -> 1
+    AppPage.RADIO -> 2
+    AppPage.GROUPS -> 3
+    AppPage.PROFILE -> 4
+    AppPage.SETTINGS -> 5
+    AppPage.ACCOUNT_SECURITY -> 6
+}

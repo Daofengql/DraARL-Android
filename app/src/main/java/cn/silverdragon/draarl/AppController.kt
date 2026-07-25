@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,7 +25,6 @@ import cn.silverdragon.draarl.data.DevicePasswordInfo
 import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
-import cn.silverdragon.draarl.data.PlatformInfo
 import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageReconciler
@@ -71,6 +71,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val preparingRadioConnection = AtomicBoolean(false)
     private val disposed = AtomicBoolean(false)
     private val loadingPublicProfiles = ConcurrentHashMap.newKeySet<String>()
+    private val loadingCachedRadioMessages = ConcurrentHashMap.newKeySet<String>()
+    private var displayedRadioMessageGroupId: Int? = null
     private val periodicRadioSync = object : Runnable {
         override fun run() {
             if (disposed.get()) return
@@ -178,7 +180,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var selectingAccessPoint by mutableStateOf(false)
         private set
-    var selectedGroupId by mutableStateOf(999)
+    var selectedGroupId by mutableIntStateOf(999)
         private set
 
     var radioStatus by mutableStateOf(RadioStatus())
@@ -484,6 +486,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
         records = emptyList()
         onlineDevices = emptyList()
         radioMessages.clear()
+        displayedRadioMessageGroupId = null
+        loadingCachedRadioMessages.clear()
         publicProfiles = emptyMap()
         loadingPublicProfiles.clear()
         playingMessageId = null
@@ -527,7 +531,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
             val loadedGroups = runCatching(api::getGroups).getOrDefault(groups)
             val loadedDefaultDeviceGroup = runCatching(api::getDefaultDeviceGroup)
             val stats = runCatching(api::getCommunicationStats).getOrNull()
-            val platform = runCatching(api::getPlatformInfo).getOrDefault(dashboard.platform)
+            val communicationTrend = runCatching(api::getCommunicationTrend)
+                .getOrDefault(dashboard.communicationTrend)
             val refreshedUser = runCatching(api::getMe).getOrNull()
             mainHandler.post {
                 val previousGroupId = selectedGroupId
@@ -550,7 +555,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     groups = loadedGroups.size,
                     communications = stats?.totalCount ?: dashboard.communications,
                     communicationDurationMs = stats?.totalDurationMs ?: dashboard.communicationDurationMs,
-                    platform = platform,
+                    communicationTrend = communicationTrend,
                 )
                 contentLoading = false
                 if (selectedGroupId != previousGroupId && page == AppPage.RADIO) {
@@ -754,6 +759,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         user?.let { sessionStore.setSelectedGroupId(it.id, group.id) }
         serviceBinder?.setGroup(group.id)
         radioMessages.clear()
+        displayedRadioMessageGroupId = null
         loadCachedRadioMessages(group.id)
         contentLoading = true
         val accountKey = messageAccountKey()
@@ -1448,6 +1454,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             // 只有当消息属于当前群组时才添加到列表
             val messageGroupId = if (enriched.groupId > 0) enriched.groupId else selectedGroupId
             if (messageGroupId == selectedGroupId) {
+                displayedRadioMessageGroupId = selectedGroupId
                 radioMessages += enriched
                 while (radioMessages.size > MAX_MESSAGES) radioMessages.removeAt(0)
             }
@@ -1548,10 +1555,15 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     private fun loadCachedRadioMessages(groupId: Int = selectedGroupId) {
         val accountKey = messageAccountKey() ?: return
+        if (displayedRadioMessageGroupId == groupId) return
+        val loadKey = "$accountKey#$groupId"
+        if (!loadingCachedRadioMessages.add(loadKey)) return
         executor.execute {
             val cachedMessages = runCatching { messageStore.load(accountKey, groupId) }.getOrDefault(emptyList())
             mainHandler.post {
+                loadingCachedRadioMessages.remove(loadKey)
                 if (groupId == selectedGroupId && accountKey == messageAccountKey()) {
+                    displayedRadioMessageGroupId = groupId
                     replaceRadioMessages(cachedMessages, preserveUnsynced = true)
                 }
             }
@@ -1559,6 +1571,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     private fun replaceRadioMessages(messages: List<RadioMessage>, preserveUnsynced: Boolean) {
+        displayedRadioMessageGroupId = selectedGroupId
+        if (radioMessages.size == messages.size && radioMessages.indices.all { radioMessages[it] == messages[it] }) {
+            return
+        }
         val merged = if (preserveUnsynced) {
             val cachedIds = messages.mapTo(HashSet()) { it.id }
             val pending = radioMessages.filter { local ->
@@ -1574,6 +1590,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             messages
         }
         val normalized = RadioMessageReconciler.deduplicate(merged).takeLast(MAX_MESSAGES)
+        if (radioMessages.size == normalized.size && radioMessages.indices.all { radioMessages[it] == normalized[it] }) {
+            return
+        }
         radioMessages.clear()
         radioMessages.addAll(normalized)
     }

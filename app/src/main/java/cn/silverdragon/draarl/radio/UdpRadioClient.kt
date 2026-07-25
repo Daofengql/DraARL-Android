@@ -71,6 +71,7 @@ class UdpRadioClient(
     private var outgoingVoiceBuffer = ByteArrayOutputStream()
     private var heartbeatTask: ScheduledFuture<*>? = null
     private var watchdogTask: ScheduledFuture<*>? = null
+    private var reconnectTask: ScheduledFuture<*>? = null
 
     @Synchronized
     fun connect(config: RadioConnectionConfig) {
@@ -86,6 +87,7 @@ class UdpRadioClient(
         ) return
         desiredConfig = config
         manualDisconnect = false
+        cancelReconnectTask()
         reconnectPending.set(false)
         val currentGeneration = generation.incrementAndGet()
         stopTasks()
@@ -103,6 +105,7 @@ class UdpRadioClient(
     fun disconnect() {
         manualDisconnect = true
         desiredConfig = null
+        cancelReconnectTask()
         reconnectPending.set(false)
         generation.incrementAndGet()
         stopTasks()
@@ -488,19 +491,36 @@ class UdpRadioClient(
             lastPacketSentAt = lastPacketSentAt,
             now = System.currentTimeMillis(),
         )
-        scheduler.schedule(
-            {
-                if (!reconnectPending.compareAndSet(true, false) || !isActive(reconnectGeneration)) {
-                    return@schedule
-                }
-                val config = desiredConfig
-                if (!manualDisconnect && config != null) {
-                    connectionExecutor.execute { establish(config, reconnecting = true, reconnectGeneration) }
-                }
-            },
-            retryDelay,
-            TimeUnit.MILLISECONDS,
-        )
+        val scheduled = runCatching {
+            scheduler.schedule(
+                {
+                    if (!isActive(reconnectGeneration)) {
+                        return@schedule
+                    }
+                    if (!reconnectPending.compareAndSet(true, false)) return@schedule
+                    synchronized(taskLock) { reconnectTask = null }
+                    val config = desiredConfig
+                    if (!manualDisconnect && config != null) {
+                        connectionExecutor.execute { establish(config, reconnecting = true, reconnectGeneration) }
+                    }
+                },
+                retryDelay,
+                TimeUnit.MILLISECONDS,
+            )
+        }.getOrElse { error ->
+            reconnectPending.set(false)
+            updateStatusIfActive(reconnectGeneration) {
+                it.copy(phase = RadioConnectionPhase.ERROR, error = error.message ?: "无法安排自动重连")
+            }
+            return
+        }
+        synchronized(taskLock) {
+            if (isActive(reconnectGeneration) && reconnectPending.get()) {
+                reconnectTask = scheduled
+            } else {
+                scheduled.cancel(false)
+            }
+        }
     }
 
     private fun send(bytes: ByteArray, expectedGeneration: Int = generation.get()): Boolean {
@@ -539,10 +559,17 @@ class UdpRadioClient(
 
     private fun stopTasks() {
         synchronized(taskLock) {
-            heartbeatTask?.cancel(true)
-            watchdogTask?.cancel(true)
+            heartbeatTask?.cancel(false)
+            watchdogTask?.cancel(false)
             heartbeatTask = null
             watchdogTask = null
+        }
+    }
+
+    private fun cancelReconnectTask() {
+        synchronized(taskLock) {
+            reconnectTask?.cancel(false)
+            reconnectTask = null
         }
     }
 
@@ -571,7 +598,8 @@ class UdpRadioClient(
         transform: (RadioStatus) -> RadioStatus,
     ): Boolean = synchronized(statusLock) {
         if (!isActive(expectedGeneration)) return@synchronized false
-        updateStatus(transform(status))
+        val updated = transform(status)
+        if (updated != status) updateStatus(updated)
         true
     }
 

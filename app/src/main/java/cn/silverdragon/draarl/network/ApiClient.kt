@@ -4,6 +4,7 @@ import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.CaptchaChallenge
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.CommunicationStats
+import cn.silverdragon.draarl.data.DailyCommunicationStats
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
@@ -502,6 +503,17 @@ class ApiClient(
             totalSize = data.optLong("total_size"),
             totalDurationMs = data.optLong("total_duration"),
         )
+    }
+
+    fun getCommunicationTrend(): List<DailyCommunicationStats> {
+        val data = request("GET", "/api/comm-records/user-trend").optJSONArray("data") ?: JSONArray()
+        return data.objects().map { item ->
+            DailyCommunicationStats(
+                date = item.optStringClean("date"),
+                count = item.optInt("count"),
+                durationMs = item.optLong("duration"),
+            )
+        }
     }
 
     fun getCommunicationRecords(page: Int = 1, groupId: Int? = null): List<CommunicationRecord> {

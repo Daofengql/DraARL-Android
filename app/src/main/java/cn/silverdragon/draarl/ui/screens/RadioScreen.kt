@@ -96,10 +96,13 @@ import java.util.Locale
 fun RadioScreen(controller: AppController) {
     val context = LocalContext.current
     val messages = controller.radioMessages
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0),
+    )
     val userDragging by listState.interactionSource.collectIsDraggedAsState()
     var followLatest by remember(controller.selectedGroupId) { mutableStateOf(true) }
     var userScrollPending by remember(controller.selectedGroupId) { mutableStateOf(false) }
+    var initialListPositioned by remember(controller.selectedGroupId) { mutableStateOf(messages.isNotEmpty()) }
     var text by remember { mutableStateOf("") }
     var showDevices by remember { mutableStateOf(false) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -118,7 +121,13 @@ fun RadioScreen(controller: AppController) {
         }
     }
     LaunchedEffect(messages.lastOrNull()?.id, messages.size, controller.selectedGroupId) {
-        if (followLatest && messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isEmpty()) return@LaunchedEffect
+        if (!initialListPositioned) {
+            listState.scrollToItem(messages.lastIndex)
+            initialListPositioned = true
+        } else if (followLatest) {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
     }
     LaunchedEffect(controller.selectedGroupId, controller.radioStatus.connected) {
         if (controller.radioStatus.connected) controller.refreshRadioData()
@@ -495,11 +504,13 @@ private fun MessageItem(controller: AppController, message: RadioMessage, showTi
     val profile = if (message.mine) controller.user else controller.publicProfile(message.senderUsername)
     val callsign = message.senderCallsign.ifBlank { profile?.callsign.orEmpty() }.ifBlank { message.senderUsername }
     val nickname = message.senderNickname.ifBlank { profile?.nickname.orEmpty() }.ifBlank { message.senderUsername }
+    val time = remember(message.timestamp) { formatTime(message.timestamp) }
+    val timeDivider = remember(message.timestamp) { formatTimeDivider(message.timestamp) }
     if (showTimeDivider) {
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) {
             Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                 Text(
-                    formatTimeDivider(message.timestamp),
+                    timeDivider,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -540,7 +551,7 @@ private fun MessageItem(controller: AppController, message: RadioMessage, showTi
                 }
             }
             Text(
-                formatTime(message.timestamp),
+                time,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

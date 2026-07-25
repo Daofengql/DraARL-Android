@@ -239,7 +239,13 @@ data class DashboardData(
     val groups: Int = 0,
     val communications: Int = 0,
     val communicationDurationMs: Long = 0,
-    val platform: PlatformInfo = PlatformInfo(),
+    val communicationTrend: List<DailyCommunicationStats> = emptyList(),
+)
+
+data class DailyCommunicationStats(
+    val date: String,
+    val count: Int,
+    val durationMs: Long,
 )
 
 fun deviceModelName(model: Int): String = when (model) {
