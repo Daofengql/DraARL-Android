@@ -1,5 +1,12 @@
 package cn.silverdragon.draarl.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -29,12 +36,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.tools.LogbookEntry
@@ -48,6 +62,30 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
     var selectionMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var confirmBatchDelete by remember { mutableStateOf(false) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    fun closeSearch() {
+        searchExpanded = false
+        focusManager.clearFocus()
+        keyboardController?.hide()
+    }
+
+    fun submitSearch() {
+        tools.loadLogbooks(reset = true, callsign = filter)
+        focusManager.clearFocus()
+        keyboardController?.hide()
+    }
+
+    LaunchedEffect(searchExpanded) {
+        if (searchExpanded) {
+            searchFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         ToolHeader("通联日志", onBack) {
             if (selectionMode) {
@@ -64,13 +102,55 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                     Icon(Icons.Default.Delete, contentDescription = "删除所选日志")
                 }
             } else {
-                IconButton(onClick = { selectionMode = true }) {
+                IconButton(onClick = { if (searchExpanded) closeSearch() else searchExpanded = true }) {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = if (searchExpanded) "收起搜索" else "搜索通联日志",
+                        tint = if (searchExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                IconButton(onClick = {
+                    closeSearch()
+                    selectionMode = true
+                }) {
                     Icon(Icons.Default.Checklist, contentDescription = "批量选择")
                 }
                 IconButton(onClick = { tools.editDraft(null, controller.user) }) {
                     Icon(Icons.Default.Add, contentDescription = "新增通联日志")
                 }
             }
+        }
+        AnimatedVisibility(
+            visible = searchExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            OutlinedTextField(
+                value = filter,
+                onValueChange = { filter = it.uppercase() },
+                label = { Text("搜索对方呼号") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .focusRequester(searchFocusRequester),
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (filter.isNotBlank()) {
+                        IconButton(
+                            onClick = {
+                                filter = ""
+                                tools.loadLogbooks(reset = true, callsign = "")
+                            },
+                            enabled = !tools.logbookBusy,
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "清除搜索")
+                        }
+                    }
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
+            )
         }
         if (tools.error.isNotBlank()) ToolError(tools.error, tools::clearError)
         if (tools.draft != null) {
@@ -86,21 +166,6 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                     Text("有一份未完成的通联日志", modifier = Modifier.weight(1f))
                     TextButton(onClick = tools::resumeDraft) { Text("继续填写") }
                 }
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedTextField(
-                value = filter,
-                onValueChange = { filter = it.uppercase() },
-                label = { Text("对方呼号") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            IconButton(onClick = { tools.loadLogbooks(reset = true, callsign = filter) }, enabled = !tools.logbookBusy) {
-                Icon(Icons.Default.Search, contentDescription = "查询")
             }
         }
         LazyColumn(

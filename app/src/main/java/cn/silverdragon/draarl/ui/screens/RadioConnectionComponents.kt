@@ -11,18 +11,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -86,17 +82,6 @@ internal fun ConnectionPanel(
                         TextButton(onClick = onToggleDevices) { Text("${controller.onlineDevices.size} 在线") }
                     }
                 }
-                IconButton(onClick = controller::toggleMuted) {
-                    Icon(
-                        if (controller.muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = if (controller.muted) "取消静音" else "静音",
-                    )
-                }
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = "连接由系统自动锁定和重试",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.weight(1f).padding(start = 12.dp)) {

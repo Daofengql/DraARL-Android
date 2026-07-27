@@ -32,4 +32,14 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        controller.onAppForegroundChanged(true)
+    }
+
+    override fun onStop() {
+        controller.onAppForegroundChanged(false)
+        super.onStop()
+    }
 }

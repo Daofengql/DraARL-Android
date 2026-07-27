@@ -67,6 +67,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
     private val relayGeneration = AtomicInteger(0)
     private val logbookGeneration = AtomicInteger(0)
     private val presetGeneration = AtomicInteger(0)
+    private var presetOrderDirty = false
 
     init {
         cache.loadRelays()?.let {
@@ -254,6 +255,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
                     mainHandler.post {
                         if (closed.get() || generation != presetGeneration.get()) return@post
                         presets = loaded
+                        presetOrderDirty = false
                         presetBusy = false
                     }
                 }
@@ -269,19 +271,23 @@ class ToolsController(context: Context, private val api: ApiClient) {
 
     fun deletePreset(id: Int) = runPresetMutation({ api.deleteRadioPreset(id) }) { loadPresets() }
 
-    fun movePreset(index: Int, offset: Int) {
+    fun previewPresetMove(fromIndex: Int, toIndex: Int) {
         if (presetBusy) return
-        val target = index + offset
-        if (index !in presets.indices || target !in presets.indices) return
-        val reordered = presets.toMutableList().apply {
-            add(target, removeAt(index))
-        }.mapIndexed { position, preset -> preset.copy(sortOrder = position + 1) }
+        if (fromIndex !in presets.indices || toIndex !in presets.indices || fromIndex == toIndex) return
+        presets = presets.toMutableList().apply {
+            add(toIndex, removeAt(fromIndex))
+        }
+        presetOrderDirty = true
+    }
+
+    fun commitPresetOrder() {
+        if (presetBusy || !presetOrderDirty) return
+        val reordered = presets.mapIndexed { position, preset -> preset.copy(sortOrder = position + 1) }
+        presets = reordered
+        presetOrderDirty = false
         runPresetMutation(
             block = { api.reorderRadioPresets(reordered.map { it.id to it.sortOrder }) },
-            onSuccess = {
-                presets = reordered
-                loadPresets()
-            },
+            onSuccess = { loadPresets() },
         )
     }
 
@@ -299,6 +305,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
         relayError = ""
         logbookError = ""
         presetError = ""
+        presetOrderDirty = false
         logbooks = emptyList()
         presets = emptyList()
         draft = null

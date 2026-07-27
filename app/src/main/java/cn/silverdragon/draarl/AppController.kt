@@ -8,6 +8,7 @@ import android.content.ServiceConnection
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -112,6 +113,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 pendingConnection = null
                 serviceBinder?.disconnect()
                 authenticated = false
+                syncPttOverlay()
                 publicProfiles = emptyMap()
                 loadingPublicProfiles.clear()
             }
@@ -137,7 +139,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
             executor = executor,
             mainHandler = mainHandler,
             currentGroups = { groups },
-            updateGroups = { groups = it },
+            updateGroups = {
+                groups = it
+                syncPttOverlay()
+            },
             refreshAll = ::refreshAll,
             showNotice = { notice = it },
             friendlyError = ::friendlyError,
@@ -207,6 +212,11 @@ class AppController(application: Application) : AndroidViewModel(application), R
     val radioMessages = mutableStateListOf<RadioMessage>()
     var muted by mutableStateOf(sessionStore.isMuted())
         private set
+    var pttOverlayEnabled by mutableStateOf(
+        sessionStore.isPttOverlayEnabled() && Settings.canDrawOverlays(appContext),
+    )
+        private set
+    private var appInForeground = true
     var playingMessageId by mutableStateOf<String?>(null)
         private set
     var publicProfiles by mutableStateOf<Map<String, User>>(emptyMap())
@@ -218,6 +228,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             serviceBound = serviceBinder != null
             serviceBinder?.setListener(this@AppController)
             serviceBinder?.setMuted(muted)
+            syncPttOverlay()
             pendingConnection?.let {
                 serviceBinder?.connect(it)
                 preparingRadioConnection.set(false)
@@ -263,6 +274,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         )
                         page = authenticatedStartPage(session.user.isApproved)
                         manualRadioDisconnect = false
+                        syncPttOverlay()
                         if (session.user.isApproved) loadCachedRadioMessages()
                     }
                     mainHandler.post {
@@ -290,6 +302,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         preparingRadioConnection.set(false)
         pendingConnection = null
         manualRadioDisconnect = true
+        serviceBinder?.configurePttOverlay(enabled = false, visible = false, groupName = "")
         serviceBinder?.disconnect()
         executor.execute { api.logout() }
         authenticated = false
@@ -375,6 +388,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                                 ?: snapshot.groups.firstOrNull()?.id
                                 ?: 999
                         }
+                        syncPttOverlay()
                         dashboard = DashboardData(
                             devices = snapshot.devices.size,
                             onlineDevices = snapshot.devices.count(Device::online),
@@ -597,6 +611,33 @@ class AppController(application: Application) : AndroidViewModel(application), R
         serviceBinder?.setMuted(muted)
     }
 
+    fun canDrawPttOverlay(): Boolean = Settings.canDrawOverlays(appContext)
+
+    fun setPttOverlayEnabled(enabled: Boolean): Boolean {
+        if (enabled && user?.isApproved != true) {
+            notice = "账号审核通过后才能开启悬浮 PTT"
+            return false
+        }
+        if (enabled && !canDrawPttOverlay()) return false
+        pttOverlayEnabled = enabled
+        sessionStore.setPttOverlayEnabled(enabled)
+        syncPttOverlay()
+        return true
+    }
+
+    fun reconcilePttOverlayPermission() {
+        if (pttOverlayEnabled && !canDrawPttOverlay()) {
+            pttOverlayEnabled = false
+            sessionStore.setPttOverlayEnabled(false)
+        }
+        syncPttOverlay()
+    }
+
+    fun onAppForegroundChanged(inForeground: Boolean) {
+        appInForeground = inForeground
+        syncPttOverlay()
+    }
+
     fun switchGroup(group: Group) {
         if (group.id == selectedGroupId) return
         val userId = user?.id ?: return
@@ -607,6 +648,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         selectedGroupId = group.id
         user?.let { sessionStore.setSelectedGroupId(it.id, group.id) }
         serviceBinder?.setGroup(group.id)
+        syncPttOverlay()
         radioMessages.clear()
         displayedRadioMessageGroupId = null
         loadCachedRadioMessages(group.id)
@@ -648,6 +690,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         selectedGroupId = previousGroupId
                         user?.let { sessionStore.setSelectedGroupId(it.id, previousGroupId) }
                         serviceBinder?.setGroup(previousGroupId)
+                        syncPttOverlay()
                         radioMessages.clear()
                         loadCachedRadioMessages(previousGroupId)
                         contentLoading = false
@@ -841,6 +884,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         )
                         page = authenticatedStartPage(session.user.isApproved)
                         manualRadioDisconnect = false
+                        syncPttOverlay()
                         if (session.user.isApproved) loadCachedRadioMessages()
                     }
                     mainHandler.post {
@@ -854,6 +898,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         initializing = false
                         authenticated = false
                         user = null
+                        syncPttOverlay()
                         loginError = "登录状态已过期，请重新登录"
                     }
                 }
@@ -866,6 +911,18 @@ class AppController(application: Application) : AndroidViewModel(application), R
             Intent(appContext, RadioConnectionService::class.java),
             serviceConnection,
             Context.BIND_AUTO_CREATE,
+        )
+    }
+
+    private fun syncPttOverlay() {
+        val enabled = pttOverlayEnabled &&
+            authenticated &&
+            user?.isApproved == true &&
+            canDrawPttOverlay()
+        serviceBinder?.configurePttOverlay(
+            enabled = enabled,
+            visible = enabled && !appInForeground,
+            groupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "群组 $selectedGroupId",
         )
     }
 

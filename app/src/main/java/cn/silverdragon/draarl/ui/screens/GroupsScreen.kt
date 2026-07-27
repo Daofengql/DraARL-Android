@@ -1,5 +1,9 @@
 package cn.silverdragon.draarl.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,12 +23,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -49,6 +57,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,8 +66,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,13 +90,31 @@ fun GroupsScreen(controller: AppController) {
     var filter by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     var detailGroupId by remember { mutableStateOf<Int?>(null) }
-    var showSearch by remember { mutableStateOf(false) }
+    var localSearchActive by rememberSaveable { mutableStateOf(false) }
+    var showJoinSearch by remember { mutableStateOf(false) }
     var showEditor by remember { mutableStateOf(false) }
     var editingGroup by remember { mutableStateOf<Group?>(null) }
     var joinTarget by remember { mutableStateOf<Group?>(null) }
     var leaveTarget by remember { mutableStateOf<Group?>(null) }
     var deleteTarget by remember { mutableStateOf<Group?>(null) }
     var managedGroup by remember { mutableStateOf<Group?>(null) }
+    val searchFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    fun closeLocalSearch() {
+        filter = ""
+        localSearchActive = false
+        focusManager.clearFocus()
+        keyboardController?.hide()
+    }
+
+    LaunchedEffect(localSearchActive) {
+        if (localSearchActive) {
+            searchFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     val query = filter.trim()
     val visible = controller.groups.filter { group ->
@@ -92,30 +124,64 @@ fun GroupsScreen(controller: AppController) {
     val privateGroups = visible.filter { it.isPrivate && it.joined }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            OutlinedTextField(
-                value = filter,
-                onValueChange = { filter = it },
-                placeholder = { Text("搜索我的群组") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = {
-                controller.groupManagement.clearSearch()
-                showSearch = true
-            }) {
-                Icon(Icons.Default.Groups, contentDescription = "搜索并加入群组")
-            }
-            IconButton(onClick = {
-                editingGroup = null
-                showEditor = true
-            }) {
-                Icon(Icons.Default.Add, contentDescription = "新建群组")
+        AnimatedContent(
+            targetState = localSearchActive,
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "groupSearch",
+        ) { searching ->
+            if (searching) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = ::closeLocalSearch) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "退出搜索")
+                    }
+                    OutlinedTextField(
+                        value = filter,
+                        onValueChange = { filter = it },
+                        placeholder = { Text("搜索群组名称或 ID") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (filter.isNotBlank()) {
+                                IconButton(onClick = { filter = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "清除搜索")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
+                            },
+                        ),
+                        modifier = Modifier.weight(1f).focusRequester(searchFocusRequester),
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    IconButton(onClick = { localSearchActive = true }) {
+                        Icon(Icons.Default.Search, contentDescription = "搜索群组")
+                    }
+                    IconButton(onClick = {
+                        controller.groupManagement.clearSearch()
+                        showJoinSearch = true
+                    }) {
+                        Icon(Icons.Default.GroupAdd, contentDescription = "搜索并加入群组")
+                    }
+                    IconButton(onClick = {
+                        editingGroup = null
+                        showEditor = true
+                    }) {
+                        Icon(Icons.Default.Add, contentDescription = "新建群组")
+                    }
+                }
             }
         }
 
@@ -163,11 +229,11 @@ fun GroupsScreen(controller: AppController) {
         )
     }
 
-    if (showSearch) {
+    if (showJoinSearch) {
         GroupSearchDialog(
             controller = controller,
             onClose = {
-                showSearch = false
+                showJoinSearch = false
                 controller.groupManagement.clearSearch()
             },
             onJoin = { joinTarget = it },
@@ -194,7 +260,7 @@ fun GroupsScreen(controller: AppController) {
             onJoin = { password ->
                 controller.joinGroup(group, password)
                 joinTarget = null
-                showSearch = false
+                showJoinSearch = false
                 controller.groupManagement.clearSearch()
             },
         )

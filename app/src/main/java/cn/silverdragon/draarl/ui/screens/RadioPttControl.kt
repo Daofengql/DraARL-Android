@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun PttButton(
+    modifier: Modifier = Modifier,
     transmitting: Boolean,
     enabled: Boolean,
     onStart: () -> Boolean,
@@ -39,9 +40,9 @@ internal fun PttButton(
         else -> MaterialTheme.colorScheme.primary
     }
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(72.dp)
+            .height(56.dp)
             .semantics {
                 role = Role.Button
                 contentDescription = "按住发射"

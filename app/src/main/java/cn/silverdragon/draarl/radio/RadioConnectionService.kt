@@ -28,13 +28,20 @@ interface RadioServiceListener {
 class RadioConnectionService : Service(), UdpRadioListener {
     private val binder = LocalBinder()
     private lateinit var radioClient: UdpRadioClient
+    private lateinit var pttOverlay: PttOverlayWindow
     @Volatile private var listener: RadioServiceListener? = null
     @Volatile private var foreground = false
+    @Volatile private var overlayFeatureEnabled = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         radioClient = UdpRadioClient(applicationContext, this)
+        pttOverlay = PttOverlayWindow(
+            context = applicationContext,
+            onStartPtt = ::startPtt,
+            onStopPtt = radioClient::stopPtt,
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -50,21 +57,27 @@ class RadioConnectionService : Service(), UdpRadioListener {
 
     override fun onDestroy() {
         listener = null
+        pttOverlay.hide()
         radioClient.release()
         super.onDestroy()
     }
 
     override fun onStatus(status: RadioStatus) {
         listener?.onRadioStatus(status)
+        pttOverlay.updateStatus(status)
         when (status.phase) {
             RadioConnectionPhase.CONNECTING,
             RadioConnectionPhase.AUTHENTICATING,
             RadioConnectionPhase.CONNECTED,
             RadioConnectionPhase.RECONNECTING -> ensureForeground(status)
             RadioConnectionPhase.DISCONNECTED -> {
-                if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
-                foreground = false
-                stopSelf()
+                if (overlayFeatureEnabled) {
+                    ensureForeground(status)
+                } else {
+                    if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
+                    foreground = false
+                    stopSelf()
+                }
             }
             else -> updateNotification(status)
         }
@@ -96,10 +109,10 @@ class RadioConnectionService : Service(), UdpRadioListener {
     private fun ensureForeground(status: RadioStatus) {
         val notification = buildNotification(status)
         if (!foreground) {
-            startRadioForeground(notification, microphone = status.transmitting)
+            startRadioForeground(notification, microphone = status.transmitting || overlayFeatureEnabled)
             foreground = true
         } else {
-            startRadioForeground(notification, microphone = status.transmitting)
+            startRadioForeground(notification, microphone = status.transmitting || overlayFeatureEnabled)
         }
     }
 
@@ -125,6 +138,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
             status.speaker.isNotBlank() -> "正在接收 ${status.speaker}"
             status.connected -> "DraARL 电台在线"
             status.phase == RadioConnectionPhase.RECONNECTING -> "DraARL 正在重连"
+            overlayFeatureEnabled -> "悬浮 PTT 已开启"
             else -> "DraARL 正在连接"
         }
         val detail = listOf(status.callsign, status.endpoint).filter(String::isNotBlank).joinToString(" · ")
@@ -186,10 +200,32 @@ class RadioConnectionService : Service(), UdpRadioListener {
 
     private fun startPtt(): Boolean {
         val current = radioClient.snapshot()
-        startRadioForeground(buildNotification(current.copy(transmitting = true)), microphone = true)
-        return radioClient.startPtt().also { started ->
-            if (!started) startRadioForeground(buildNotification(current), microphone = false)
+        return runCatching {
+            startRadioForeground(buildNotification(current.copy(transmitting = true)), microphone = true)
+            radioClient.startPtt().also { started ->
+                if (!started) {
+                    startRadioForeground(buildNotification(current), microphone = overlayFeatureEnabled)
+                }
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun configurePttOverlay(enabled: Boolean, visible: Boolean, groupName: String): Boolean {
+        overlayFeatureEnabled = enabled
+        pttOverlay.updateGroupName(groupName)
+        val visibleResult = if (enabled && visible) pttOverlay.show(groupName) else {
+            pttOverlay.hide()
+            true
         }
+        val status = radioClient.snapshot()
+        if (enabled || status.connected) {
+            ensureForeground(status)
+        } else {
+            if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
+            foreground = false
+            stopSelf()
+        }
+        return visibleResult
     }
 
     private val notificationManager: NotificationManager
@@ -210,6 +246,8 @@ class RadioConnectionService : Service(), UdpRadioListener {
         fun stopPlayback() = radioClient.stopPlayback()
         fun setMuted(muted: Boolean) = radioClient.setMuted(muted)
         fun setGroup(groupId: Int) = radioClient.setGroup(groupId)
+        fun configurePttOverlay(enabled: Boolean, visible: Boolean, groupName: String): Boolean =
+            this@RadioConnectionService.configurePttOverlay(enabled, visible, groupName)
         fun updateAccessToken(token: String) = radioClient.updateAccessToken(token)
         fun snapshot(): RadioStatus = radioClient.snapshot()
     }

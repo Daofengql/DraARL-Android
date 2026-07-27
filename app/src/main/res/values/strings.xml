@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">DraARL 麟链</string>
+    <string name="ptt_overlay_default_group">当前群组</string>
+    <string name="ptt_overlay_button">PTT</string>
+    <string name="ptt_overlay_transmitting">TX</string>
+    <string name="ptt_overlay_content_description">按住发射，拖动可移动悬浮窗</string>
 </resources>

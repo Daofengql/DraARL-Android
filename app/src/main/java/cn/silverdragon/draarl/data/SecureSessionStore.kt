@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.core.content.edit
 import org.json.JSONObject
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -25,7 +26,7 @@ class SecureSessionStore(context: Context) {
             val plaintext = cipher.doFinal(Base64.decode(wrapper.getString("data"), Base64.NO_WRAP))
             sessionFromJson(JSONObject(plaintext.toString(Charsets.UTF_8)))
         }.getOrElse {
-            preferences.edit().remove(KEY_SESSION).apply()
+            preferences.edit { remove(KEY_SESSION) }
             null
         }
     }
@@ -38,14 +39,14 @@ class SecureSessionStore(context: Context) {
         val wrapper = JSONObject()
             .put("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .put("data", Base64.encodeToString(cipher.doFinal(plaintext), Base64.NO_WRAP))
-        preferences.edit()
-            .putString(KEY_SESSION, wrapper.toString())
-            .putString(KEY_LAST_SERVER, session.baseUrl)
-            .apply()
+        preferences.edit {
+            putString(KEY_SESSION, wrapper.toString())
+            putString(KEY_LAST_SERVER, session.baseUrl)
+        }
     }
 
     fun clearSession() {
-        preferences.edit().remove(KEY_SESSION).apply()
+        preferences.edit { remove(KEY_SESSION) }
     }
 
     fun lastServerUrl(): String = preferences.getString(KEY_LAST_SERVER, "") ?: ""
@@ -53,7 +54,7 @@ class SecureSessionStore(context: Context) {
     fun selectedAccessPointId(): String = preferences.getString(KEY_ACCESS_POINT, "") ?: ""
 
     fun setSelectedAccessPointId(id: String) {
-        preferences.edit().putString(KEY_ACCESS_POINT, id).apply()
+        preferences.edit { putString(KEY_ACCESS_POINT, id) }
     }
 
     fun selectedGroupId(userId: Int, fallback: Int = 999): Int =
@@ -61,14 +62,20 @@ class SecureSessionStore(context: Context) {
 
     fun setSelectedGroupId(userId: Int, groupId: Int) {
         if (userId > 0 && groupId > 0) {
-            preferences.edit().putInt("${KEY_GROUP_PREFIX}$userId", groupId).apply()
+            preferences.edit { putInt("${KEY_GROUP_PREFIX}$userId", groupId) }
         }
     }
 
     fun isMuted(): Boolean = preferences.getBoolean(KEY_MUTED, false)
 
     fun setMuted(muted: Boolean) {
-        preferences.edit().putBoolean(KEY_MUTED, muted).apply()
+        preferences.edit { putBoolean(KEY_MUTED, muted) }
+    }
+
+    fun isPttOverlayEnabled(): Boolean = preferences.getBoolean(KEY_PTT_OVERLAY, false)
+
+    fun setPttOverlayEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(KEY_PTT_OVERLAY, enabled) }
     }
 
     private fun getOrCreateKey(): SecretKey {
@@ -147,6 +154,7 @@ class SecureSessionStore(context: Context) {
         private const val KEY_ACCESS_POINT = "access_point"
         private const val KEY_GROUP_PREFIX = "android_group_"
         private const val KEY_MUTED = "muted"
+        private const val KEY_PTT_OVERLAY = "ptt_overlay"
         private const val KEY_ALIAS = "draarl_session_key"
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

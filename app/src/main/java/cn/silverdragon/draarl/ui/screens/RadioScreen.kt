@@ -22,7 +22,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,7 +42,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -57,12 +65,26 @@ fun RadioScreen(controller: AppController) {
     var userScrollPending by rememberSaveable(controller.selectedGroupId) { mutableStateOf(false) }
     var initialListPositioned by rememberSaveable(controller.selectedGroupId) { mutableStateOf(messages.isNotEmpty()) }
     var text by rememberSaveable { mutableStateOf("") }
+    var textMode by rememberSaveable { mutableStateOf(false) }
     var showDevices by rememberSaveable { mutableStateOf(false) }
+    val textFocusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         controller.connectRadio()
     }
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val canSendText = controller.canSendText()
+
+    LaunchedEffect(textMode) {
+        if (textMode) {
+            textFocusRequester.requestFocus()
+            keyboardController?.show()
+        } else {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
 
     LaunchedEffect(userDragging, listState.isScrollInProgress) {
         if (userDragging) userScrollPending = true
@@ -152,16 +174,22 @@ fun RadioScreen(controller: AppController) {
             }
         }
         Surface(modifier = Modifier.fillMaxWidth().imePadding(), shadowElevation = 8.dp) {
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { textMode = !textMode }) {
+                    Icon(
+                        if (textMode) Icons.Default.Mic else Icons.Default.Keyboard,
+                        contentDescription = if (textMode) "切换到语音" else "切换到文本",
+                    )
+                }
+                if (textMode) {
                     OutlinedTextField(
                         value = text,
                         onValueChange = { text = it },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).focusRequester(textFocusRequester),
                         placeholder = { Text("发送文本消息") },
                         singleLine = true,
                         enabled = controller.radioStatus.connected,
@@ -170,19 +198,39 @@ fun RadioScreen(controller: AppController) {
                             if (canSendText && controller.sendText(text)) text = ""
                         }),
                     )
+                } else {
+                    PttButton(
+                        modifier = Modifier.weight(1f),
+                        transmitting = controller.radioStatus.transmitting,
+                        enabled = controller.radioStatus.connected && controller.radioStatus.speaker.isBlank(),
+                        onStart = startPtt,
+                        onStop = controller::stopPtt,
+                    )
+                }
+                if (textMode) {
                     IconButton(
                         onClick = { if (controller.sendText(text)) text = "" },
                         enabled = canSendText && text.isNotBlank(),
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
                     }
+                } else {
+                    IconButton(onClick = controller::toggleMuted) {
+                        Icon(
+                            if (controller.muted) {
+                                Icons.AutoMirrored.Filled.VolumeOff
+                            } else {
+                                Icons.AutoMirrored.Filled.VolumeUp
+                            },
+                            contentDescription = if (controller.muted) "开启接收音频" else "关闭接收音频",
+                            tint = if (controller.muted) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
-                PttButton(
-                    transmitting = controller.radioStatus.transmitting,
-                    enabled = controller.radioStatus.connected && controller.radioStatus.speaker.isBlank(),
-                    onStart = startPtt,
-                    onStop = controller::stopPtt,
-                )
             }
         }
     }
