@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.ui.components.CommunicationTrendChart
 import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.ui.theme.appColors
 
 @Composable
 fun DashboardScreen(controller: AppController) {
@@ -51,9 +52,9 @@ fun DashboardScreen(controller: AppController) {
                         else -> "等待账号审核"
                     },
                     color = when (currentUser.approvalStatus) {
-                        1 -> Color(0xFF087F5B)
+                        1 -> MaterialTheme.appColors.statusConnected
                         2 -> MaterialTheme.colorScheme.error
-                        else -> Color(0xFF9A6700)
+                        else -> MaterialTheme.appColors.statusWarning
                     },
                     modifier = Modifier.align(Alignment.Start),
                 )
@@ -81,19 +82,19 @@ fun DashboardScreen(controller: AppController) {
                     "设备在线 / 总数",
                     "${stats.onlineDevices} / ${stats.devices}",
                     Icons.Default.Devices,
-                    Color(0xFF087F5B),
+                    MaterialTheme.appColors.statDevices,
                 ),
-                right = StatValue("可用群组", stats.groups.toString(), Icons.Default.Groups, Color(0xFF4C5D95)),
+                right = StatValue("可用群组", stats.groups.toString(), Icons.Default.Groups, MaterialTheme.appColors.statGroups),
             )
         }
         item {
             StatRow(
-                left = StatValue("通信记录", stats.communications.toString(), Icons.Default.Forum, Color(0xFF9A6700)),
+                left = StatValue("通信记录", stats.communications.toString(), Icons.Default.Forum, MaterialTheme.appColors.statComms),
                 right = StatValue(
                     "累计通信",
                     AppController.formatDuration(stats.communicationDurationMs),
                     Icons.Default.AccessTime,
-                    Color(0xFF765B00),
+                    MaterialTheme.appColors.statDuration,
                 ),
             )
         }

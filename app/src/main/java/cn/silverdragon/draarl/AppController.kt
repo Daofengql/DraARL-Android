@@ -43,8 +43,9 @@ import cn.silverdragon.draarl.radio.RadioConnectionConfig
 import cn.silverdragon.draarl.radio.RadioConnectionService
 import cn.silverdragon.draarl.radio.RadioServiceListener
 import java.net.URI
-import java.util.concurrent.Executors
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -526,44 +527,55 @@ class AppController(application: Application) : AndroidViewModel(application), R
     fun refreshAll() {
         if (api.currentSession() == null) return
         mainHandler.post { contentLoading = true }
-        executor.execute {
-            val loadedDevices = runCatching(api::getDevices).getOrDefault(devices)
-            val loadedGroups = runCatching(api::getGroups).getOrDefault(groups)
-            val loadedDefaultDeviceGroup = runCatching(api::getDefaultDeviceGroup)
-            val stats = runCatching(api::getCommunicationStats).getOrNull()
-            val communicationTrend = runCatching(api::getCommunicationTrend)
-                .getOrDefault(dashboard.communicationTrend)
-            val refreshedUser = runCatching(api::getMe).getOrNull()
-            mainHandler.post {
-                val previousGroupId = selectedGroupId
-                devices = loadedDevices
-                groups = loadedGroups
-                if (loadedDefaultDeviceGroup.isSuccess) {
-                    defaultDeviceGroupId = loadedDefaultDeviceGroup.getOrNull()
+        // Capture fallback values on the calling (main) thread before submitting
+        val fallbackDevices = devices
+        val fallbackGroups  = groups
+        val fallbackTrend   = dashboard.communicationTrend
+        // Submit all six requests concurrently; collect when every future resolves
+        val fDevices   = CompletableFuture.supplyAsync({ runCatching(api::getDevices).getOrDefault(fallbackDevices) }, executor)
+        val fGroups    = CompletableFuture.supplyAsync({ runCatching(api::getGroups).getOrDefault(fallbackGroups) }, executor)
+        val fDefGroup  = CompletableFuture.supplyAsync({ runCatching(api::getDefaultDeviceGroup) }, executor)
+        val fStats     = CompletableFuture.supplyAsync({ runCatching(api::getCommunicationStats).getOrNull() }, executor)
+        val fTrend     = CompletableFuture.supplyAsync({ runCatching(api::getCommunicationTrend).getOrDefault(fallbackTrend) }, executor)
+        val fMe        = CompletableFuture.supplyAsync({ runCatching(api::getMe).getOrNull() }, executor)
+        CompletableFuture.allOf(fDevices, fGroups, fDefGroup, fStats, fTrend, fMe)
+            .thenRunAsync({
+                val loadedDevices            = fDevices.join()
+                val loadedGroups             = fGroups.join()
+                val loadedDefaultDeviceGroup = fDefGroup.join()
+                val stats                    = fStats.join()
+                val communicationTrend       = fTrend.join()
+                val refreshedUser            = fMe.join()
+                mainHandler.post {
+                    val previousGroupId = selectedGroupId
+                    devices = loadedDevices
+                    groups  = loadedGroups
+                    if (loadedDefaultDeviceGroup.isSuccess) {
+                        defaultDeviceGroupId = loadedDefaultDeviceGroup.getOrNull()
+                    }
+                    refreshedUser?.let {
+                        user = it
+                        selectedGroupId = selectedGroupId.takeIf { id -> loadedGroups.any { group -> group.id == id } }
+                            ?: it.lastGroupId.takeIf { id -> loadedGroups.any { group -> group.id == id } }
+                            ?: loadedGroups.firstOrNull { group -> group.id == 999 }?.id
+                            ?: loadedGroups.firstOrNull()?.id
+                            ?: 999
+                    }
+                    dashboard = DashboardData(
+                        devices = loadedDevices.size,
+                        onlineDevices = loadedDevices.count(Device::online),
+                        groups = loadedGroups.size,
+                        communications = stats?.totalCount ?: dashboard.communications,
+                        communicationDurationMs = stats?.totalDurationMs ?: dashboard.communicationDurationMs,
+                        communicationTrend = communicationTrend,
+                    )
+                    contentLoading = false
+                    if (selectedGroupId != previousGroupId && page == AppPage.RADIO) {
+                        loadCachedRadioMessages()
+                        refreshRadioData()
+                    }
                 }
-                refreshedUser?.let {
-                    user = it
-                    selectedGroupId = selectedGroupId.takeIf { id -> loadedGroups.any { group -> group.id == id } }
-                        ?: it.lastGroupId.takeIf { id -> loadedGroups.any { group -> group.id == id } }
-                        ?: loadedGroups.firstOrNull { group -> group.id == 999 }?.id
-                        ?: loadedGroups.firstOrNull()?.id
-                        ?: 999
-                }
-                dashboard = DashboardData(
-                    devices = loadedDevices.size,
-                    onlineDevices = loadedDevices.count(Device::online),
-                    groups = loadedGroups.size,
-                    communications = stats?.totalCount ?: dashboard.communications,
-                    communicationDurationMs = stats?.totalDurationMs ?: dashboard.communicationDurationMs,
-                    communicationTrend = communicationTrend,
-                )
-                contentLoading = false
-                if (selectedGroupId != previousGroupId && page == AppPage.RADIO) {
-                    loadCachedRadioMessages()
-                    refreshRadioData()
-                }
-            }
-        }
+            }, executor)
     }
 
     fun refreshGroupOnlineCounts() {
@@ -1634,15 +1646,17 @@ class AppController(application: Application) : AndroidViewModel(application), R
             }
             .toList()
         if (pending.isEmpty()) return
-        executor.execute {
-            pending.forEach { username ->
-                val key = username.lowercase()
-                val profile = runCatching { api.getPublicUserByName(username) }.getOrNull()
-                loadingPublicProfiles.remove(key)
-                if (profile != null) {
-                    mainHandler.post { publicProfiles = publicProfiles + (key to profile) }
+        // Submit all profile fetches concurrently; update the map as each one resolves
+        pending.forEach { username ->
+            val key = username.lowercase()
+            CompletableFuture
+                .supplyAsync({ runCatching { api.getPublicUserByName(username) }.getOrNull() }, executor)
+                .thenAccept { profile ->
+                    loadingPublicProfiles.remove(key)
+                    if (profile != null) {
+                        mainHandler.post { publicProfiles = publicProfiles + (key to profile) }
+                    }
                 }
-            }
         }
     }
 

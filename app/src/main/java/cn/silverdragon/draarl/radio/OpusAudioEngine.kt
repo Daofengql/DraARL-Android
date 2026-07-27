@@ -26,6 +26,10 @@ class OpusAudioEngine(
     private val playbackExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-opus-playback")
     }
+    // Separate executor so historical-audio downloads never block live frame decoding
+    private val downloadExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "draarl-audio-download")
+    }
     @Volatile private var captureThread: Thread? = null
     @Volatile private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
@@ -117,36 +121,49 @@ class OpusAudioEngine(
         ) return false
         val currentGeneration = recordingPlaybackGeneration.incrementAndGet()
         return runCatching {
-            playbackExecutor.execute {
+            // Phase 1: download / cache-lookup on the download thread so live frames
+            // can keep arriving on playbackExecutor without any blocking I/O.
+            downloadExecutor.execute {
                 if (!isRecordingPlaybackActive(currentGeneration)) return@execute
-                runCatching {
-                    val bytes = loadRecording(audioCacheKey, audioUrl)
-                    val recording = RawOpusRecording.decode(bytes)
-                    require(recording.sampleRate == SAMPLE_RATE && recording.channels == CHANNELS) {
-                        "不支持的语音采样格式"
-                    }
-                    val frames = recording.splitFrames()
-                    require(frames.isNotEmpty()) { "语音记录没有可播放的数据" }
-                    val localDecoder = obtainDecoder(
-                        sampleRate = recording.sampleRate,
-                        channels = recording.channels,
-                        reset = true,
-                    )
-                    val track = audioTrack ?: createAudioTrack().also { audioTrack = it }
-                    runCatching { track.pause() }
-                    runCatching { track.flush() }
-                    if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
-                    frames.forEach { frame ->
-                        if (!isRecordingPlaybackActive(currentGeneration)) return@forEach
-                        decodeAndWrite(localDecoder, track, frame)
-                    }
-                }.onFailure { error ->
+                val loadResult = runCatching { loadRecording(audioCacheKey, audioUrl) }
+                if (loadResult.isFailure) {
                     if (isRecordingPlaybackActive(currentGeneration)) {
-                        onError(error.message ?: "语音回放失败")
+                        onError(loadResult.exceptionOrNull()?.message ?: "语音回放失败")
                     }
+                    return@execute
                 }
-                if (recordingPlaybackGeneration.compareAndSet(currentGeneration, currentGeneration + 1)) {
-                    onFinished()
+                val bytes = loadResult.getOrThrow()
+                // Phase 2: decode and play on the dedicated playback thread
+                playbackExecutor.execute {
+                    if (!isRecordingPlaybackActive(currentGeneration)) return@execute
+                    runCatching {
+                        val recording = RawOpusRecording.decode(bytes)
+                        require(recording.sampleRate == SAMPLE_RATE && recording.channels == CHANNELS) {
+                            "不支持的语音采样格式"
+                        }
+                        val frames = recording.splitFrames()
+                        require(frames.isNotEmpty()) { "语音记录没有可播放的数据" }
+                        val localDecoder = obtainDecoder(
+                            sampleRate = recording.sampleRate,
+                            channels = recording.channels,
+                            reset = true,
+                        )
+                        val track = audioTrack ?: createAudioTrack().also { audioTrack = it }
+                        runCatching { track.pause() }
+                        runCatching { track.flush() }
+                        if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
+                        frames.forEach { frame ->
+                            if (!isRecordingPlaybackActive(currentGeneration)) return@forEach
+                            decodeAndWrite(localDecoder, track, frame)
+                        }
+                    }.onFailure { error ->
+                        if (isRecordingPlaybackActive(currentGeneration)) {
+                            onError(error.message ?: "语音回放失败")
+                        }
+                    }
+                    if (recordingPlaybackGeneration.compareAndSet(currentGeneration, currentGeneration + 1)) {
+                        onFinished()
+                    }
                 }
             }
             true
@@ -190,6 +207,7 @@ class OpusAudioEngine(
                 decoder = null
             }
         }
+        downloadExecutor.shutdown()
         playbackExecutor.shutdown()
     }
 

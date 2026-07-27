@@ -88,6 +88,7 @@ import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.ui.components.UserAvatar
+import cn.silverdragon.draarl.ui.theme.appColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -651,11 +652,11 @@ private fun PttButton(
 
 @Composable
 private fun connectionColor(phase: RadioConnectionPhase): Color = when (phase) {
-    RadioConnectionPhase.CONNECTED -> Color(0xFF087F5B)
+    RadioConnectionPhase.CONNECTED -> MaterialTheme.appColors.statusConnected
     RadioConnectionPhase.CONNECTING,
     RadioConnectionPhase.AUTHENTICATING,
     RadioConnectionPhase.RECONNECTING,
-    RadioConnectionPhase.DISCOVERING -> Color(0xFF9A6700)
+    RadioConnectionPhase.DISCOVERING -> MaterialTheme.appColors.statusWarning
     RadioConnectionPhase.ERROR -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.outline
 }
@@ -684,15 +685,19 @@ private fun LatencyText(latencyMs: Int?, modifier: Modifier = Modifier, prefix: 
 @Composable
 private fun latencyColor(latencyMs: Int?): Color = when {
     latencyMs == null -> MaterialTheme.colorScheme.onSurfaceVariant
-    latencyMs <= 80 -> Color(0xFF2E7D32)
-    latencyMs <= 180 -> Color(0xFFF57C00)
+    latencyMs <= 80 -> MaterialTheme.appColors.latencyGood
+    latencyMs <= 180 -> MaterialTheme.appColors.latencyWarn
     else -> MaterialTheme.colorScheme.error
 }
 
-private fun formatTime(timestamp: Long): String = SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(timestamp))
+// Reuse formatters across recompositions — safe since Compose runs on the main thread
+private val TIME_FORMATTER = SimpleDateFormat("HH:mm", Locale.CHINA)
+private val TIME_DIVIDER_FORMATTER = SimpleDateFormat("yyyy-MM-dd  HH:mm", Locale.CHINA)
+
+private fun formatTime(timestamp: Long): String = TIME_FORMATTER.format(Date(timestamp))
 
 private fun formatTimeDivider(timestamp: Long): String =
-    SimpleDateFormat("yyyy-MM-dd  HH:mm", Locale.CHINA).format(Date(timestamp))
+    TIME_DIVIDER_FORMATTER.format(Date(timestamp))
 
 private const val TIME_DIVIDER_MS = 10 * 60 * 1_000L
 private val VOICE_BAR_HEIGHTS = listOf(7, 14, 20, 11, 18, 24, 13, 20, 9, 16, 22, 12)
