@@ -18,11 +18,14 @@ class AppNavigationTest {
     fun `unapproved users start on profile`() {
         assertEquals(AppPage.PROFILE, authenticatedStartPage(isApproved = false))
         assertEquals(AppPage.RADIO, authenticatedStartPage(isApproved = true))
+        assertTrue(AppPage.RADIO_PRESETS in APPROVAL_REQUIRED_PAGES)
     }
 
     @Test
     fun `page positions follow visible navigation order`() {
         assertEquals(MAIN_NAVIGATION_PAGES.indices.toList(), MAIN_NAVIGATION_PAGES.map(::pagePosition))
+        assertTrue(pagePosition(AppPage.EDIT_PROFILE) > pagePosition(AppPage.PROFILE))
+        assertTrue(pagePosition(AppPage.RADIO_PRESETS) > pagePosition(AppPage.PROFILE))
         assertTrue(pagePosition(AppPage.SETTINGS) > pagePosition(AppPage.PROFILE))
     }
 }

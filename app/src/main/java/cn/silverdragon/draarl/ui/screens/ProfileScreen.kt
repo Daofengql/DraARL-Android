@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -24,7 +23,6 @@ import cn.silverdragon.draarl.AppPage
 @Composable
 fun ProfileScreen(controller: AppController) {
     val user = controller.user ?: return
-    var showEditDialog by rememberSaveable { mutableStateOf(false) }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     val listState = rememberLazyListState()
     val avatarLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -41,17 +39,18 @@ fun ProfileScreen(controller: AppController) {
             ProfileHeader(
                 user = user,
                 onAvatarClick = { avatarLauncher.launch("image/*") },
-                onEditClick = { showEditDialog = true },
+                onEditClick = { controller.navigate(AppPage.EDIT_PROFILE) },
                 onSettingsClick = { controller.navigate(AppPage.SETTINGS) },
             )
         }
+        item {
+            ProfileInfoSection(
+                user = user,
+                onPresetsClick = { controller.navigate(AppPage.RADIO_PRESETS) },
+            )
+        }
         item { ProfileOverview(controller.dashboard) }
-        item { ProfileInfoSection(user) }
         item { Spacer(Modifier.height(8.dp)) }
-    }
-
-    if (showEditDialog) {
-        EditProfileDialog(controller = controller, onDismiss = { showEditDialog = false })
     }
     selectedImageUri?.let { uri ->
         AvatarCropDialog(

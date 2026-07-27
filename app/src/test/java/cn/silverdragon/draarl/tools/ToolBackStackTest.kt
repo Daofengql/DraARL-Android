@@ -11,9 +11,9 @@ class ToolBackStackTest {
         val stack = ToolBackStack()
 
         stack.open(ToolDestination.LOGBOOK)
-        stack.open(ToolDestination.PRESETS)
+        stack.open(ToolDestination.LOGBOOK_EDITOR)
 
-        assertEquals(ToolDestination.PRESETS, stack.current)
+        assertEquals(ToolDestination.LOGBOOK_EDITOR, stack.current)
         assertEquals(ToolDestination.LOGBOOK, stack.back())
         assertEquals(ToolDestination.HOME, stack.back())
         assertFalse(stack.canGoBack)
@@ -34,7 +34,7 @@ class ToolBackStackTest {
     fun `opening home resets nested tool state`() {
         val stack = ToolBackStack()
         stack.open(ToolDestination.LOGBOOK)
-        stack.open(ToolDestination.PRESETS)
+        stack.open(ToolDestination.LOGBOOK_EDITOR)
 
         stack.open(ToolDestination.HOME)
 

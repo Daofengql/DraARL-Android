@@ -41,9 +41,10 @@ class ToolsController(context: Context, private val api: ApiClient) {
         get() = when (destination) {
             ToolDestination.HOME, ToolDestination.BLE -> homeError
             ToolDestination.RELAYS -> relayError
-            ToolDestination.LOGBOOK -> logbookError
-            ToolDestination.PRESETS -> presetError
+            ToolDestination.LOGBOOK, ToolDestination.LOGBOOK_EDITOR -> logbookError
         }
+    val presetErrorMessage: String
+        get() = presetError
     var relayLocation by mutableStateOf("")
         private set
     var relays by mutableStateOf<List<RelayStation>>(emptyList())
@@ -62,8 +63,6 @@ class ToolsController(context: Context, private val api: ApiClient) {
         private set
     var draft by mutableStateOf<LogbookDraft?>(null)
         private set
-    var logbookEditorOpen by mutableStateOf(false)
-        private set
     private var activeUserId = 0
     private val relayGeneration = AtomicInteger(0)
     private val logbookGeneration = AtomicInteger(0)
@@ -78,7 +77,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
     }
 
     fun open(target: ToolDestination, user: User?): Boolean {
-        if (target in setOf(ToolDestination.LOGBOOK, ToolDestination.PRESETS) && user?.isApproved != true) {
+        if (target == ToolDestination.LOGBOOK && user?.isApproved != true) {
             homeError = "账号审核通过后才能使用该功能"
             return false
         }
@@ -89,10 +88,8 @@ class ToolsController(context: Context, private val api: ApiClient) {
             ToolDestination.LOGBOOK -> {
                 activeUserId = user?.id ?: 0
                 draft = cache.loadDraft(activeUserId)
-                logbookEditorOpen = draft != null
                 if (logbooks.isEmpty()) loadLogbooks(reset = true)
             }
-            ToolDestination.PRESETS -> if (presets.isEmpty()) loadPresets()
             else -> Unit
         }
         return true
@@ -182,11 +179,14 @@ class ToolsController(context: Context, private val api: ApiClient) {
             )
         } ?: LogbookDraft(myCallsign = user?.callsign.orEmpty(), localTime = LogbookTime.nowLocal())
         draft?.let { cache.saveDraft(activeUserId, it) }
-        logbookEditorOpen = true
+        navigation.open(ToolDestination.LOGBOOK_EDITOR)
+        destination = navigation.current
     }
 
-    fun closeDraftEditor() {
-        logbookEditorOpen = false
+    fun resumeDraft() {
+        if (draft == null) return
+        navigation.open(ToolDestination.LOGBOOK_EDITOR)
+        destination = navigation.current
     }
 
     fun updateDraft(value: LogbookDraft) {
@@ -224,7 +224,6 @@ class ToolsController(context: Context, private val api: ApiClient) {
                         if (closed.get() || generation != logbookGeneration.get()) return@post
                         cache.clearDraft(draftUserId)
                         draft = null
-                        logbookEditorOpen = false
                         logbookBusy = false
                         onSuccess()
                         loadLogbooks(reset = true)
@@ -302,7 +301,6 @@ class ToolsController(context: Context, private val api: ApiClient) {
         presetError = ""
         logbooks = emptyList()
         presets = emptyList()
-        logbookEditorOpen = false
         draft = null
         activeUserId = 0
     }
@@ -373,12 +371,15 @@ class ToolsController(context: Context, private val api: ApiClient) {
         }
     }
 
+    fun clearPresetError() {
+        presetError = ""
+    }
+
     private fun setError(target: ToolDestination, message: String) {
         when (target) {
             ToolDestination.HOME, ToolDestination.BLE -> homeError = message
             ToolDestination.RELAYS -> relayError = message
-            ToolDestination.LOGBOOK -> logbookError = message
-            ToolDestination.PRESETS -> presetError = message
+            ToolDestination.LOGBOOK, ToolDestination.LOGBOOK_EDITOR -> logbookError = message
         }
     }
 

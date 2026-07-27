@@ -8,12 +8,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.User
 
 @Composable
-internal fun ProfileInfoSection(user: User) {
+internal fun ProfileInfoSection(user: User, onPresetsClick: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -44,6 +47,32 @@ internal fun ProfileInfoSection(user: User) {
         ProfileInfoItem(Icons.Default.LocationOn, "地址", user.address.ifBlank { "未设置" })
         HorizontalDivider()
         ProfileInfoItem(Icons.Default.Person, "简介", user.introduction.ifBlank { "未设置" })
+        HorizontalDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onPresetsClick).padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Tune,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("电台预设", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "管理通联日志常用电台、天线和功率",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

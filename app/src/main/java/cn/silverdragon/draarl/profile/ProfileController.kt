@@ -35,6 +35,7 @@ class ProfileController(
         dmrid: Int = 0,
         mdcid: String = "",
         alarmMsg: Boolean = false,
+        onSuccess: () -> Unit = {},
     ) = launch(
         operation = {
             api.updateProfile(nickname, phone, address, introduction, birthday, sex, dmrid, mdcid, alarmMsg)
@@ -42,6 +43,7 @@ class ProfileController(
         onSuccess = {
             updateUser(it)
             showNotice("个人资料已保存")
+            onSuccess()
         },
     )
 

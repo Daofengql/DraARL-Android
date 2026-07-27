@@ -57,10 +57,12 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.pagePosition
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
+import cn.silverdragon.draarl.ui.screens.EditProfileScreen
 import cn.silverdragon.draarl.ui.screens.GroupsScreen
 import cn.silverdragon.draarl.ui.screens.LoginScreen
 import cn.silverdragon.draarl.ui.screens.ProfileScreen
 import cn.silverdragon.draarl.ui.screens.RadioScreen
+import cn.silverdragon.draarl.ui.screens.RadioPresetsScreen
 import cn.silverdragon.draarl.ui.screens.SettingsScreen
 import cn.silverdragon.draarl.ui.screens.ToolsScreen
 
@@ -143,20 +145,34 @@ private fun AuthenticatedApp(controller: AppController) {
     }
 
     val showBottomBar = controller.page !in setOf(
+        AppPage.EDIT_PROFILE,
+        AppPage.RADIO_PRESETS,
         AppPage.SETTINGS,
         AppPage.ACCOUNT_SECURITY,
     )
 
     // 处理系统返回操作
-    BackHandler(enabled = controller.page in setOf(AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY)) {
+    BackHandler(
+        enabled = controller.page in setOf(
+            AppPage.EDIT_PROFILE,
+            AppPage.RADIO_PRESETS,
+            AppPage.SETTINGS,
+            AppPage.ACCOUNT_SECURITY,
+        ),
+    ) {
         when (controller.page) {
             AppPage.ACCOUNT_SECURITY -> controller.navigate(AppPage.SETTINGS)
-            AppPage.SETTINGS -> controller.navigate(AppPage.PROFILE)
+            AppPage.EDIT_PROFILE, AppPage.RADIO_PRESETS, AppPage.SETTINGS -> controller.navigate(AppPage.PROFILE)
             else -> {}
         }
     }
 
-    val pagesWithOwnScaffold = setOf(AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY)
+    val pagesWithOwnScaffold = setOf(
+        AppPage.EDIT_PROFILE,
+        AppPage.RADIO_PRESETS,
+        AppPage.SETTINGS,
+        AppPage.ACCOUNT_SECURITY,
+    )
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(
@@ -207,6 +223,11 @@ private fun AuthenticatedApp(controller: AppController) {
                         AppPage.GROUPS -> GroupsScreen(controller)
                         AppPage.TOOLS -> ToolsScreen(controller)
                         AppPage.PROFILE -> ProfileScreen(controller)
+                        AppPage.EDIT_PROFILE -> EditProfileScreen(controller)
+                        AppPage.RADIO_PRESETS -> RadioPresetsScreen(
+                            tools = controller.tools,
+                            onBack = { controller.navigate(AppPage.PROFILE) },
+                        )
                         AppPage.SETTINGS -> SettingsScreen(controller)
                         AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
                     }
@@ -245,5 +266,9 @@ private fun navigationItem(page: AppPage): NavigationItem = when (page) {
     AppPage.RADIO -> NavigationItem(page, "PTT", Icons.Default.Mic)
     AppPage.TOOLS -> NavigationItem(page, "工具", Icons.Default.Build)
     AppPage.PROFILE -> NavigationItem(page, "我的", Icons.Default.Person)
-    AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY -> error("Secondary pages are not bottom navigation items")
+    AppPage.EDIT_PROFILE,
+    AppPage.RADIO_PRESETS,
+    AppPage.SETTINGS,
+    AppPage.ACCOUNT_SECURITY,
+    -> error("Secondary pages are not bottom navigation items")
 }

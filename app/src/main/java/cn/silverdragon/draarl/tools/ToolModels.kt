@@ -78,4 +78,4 @@ data class LogbookDraft(
     val notes: String = "",
 )
 
-enum class ToolDestination { HOME, BLE, RELAYS, LOGBOOK, PRESETS }
+enum class ToolDestination { HOME, BLE, RELAYS, LOGBOOK, LOGBOOK_EDITOR }

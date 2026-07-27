@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -23,9 +24,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,49 +40,70 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.tools.RadioPreset
 import cn.silverdragon.draarl.tools.ToolsController
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
     var editing by remember { mutableStateOf<RadioPreset?>(null) }
     var creating by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<RadioPreset?>(null) }
-    Column(Modifier.fillMaxSize()) {
-        ToolHeader("电台预设", onBack) {
-            IconButton(onClick = { creating = true }) { Icon(Icons.Default.Add, contentDescription = "新增预设") }
-        }
-        if (tools.error.isNotBlank()) ToolError(tools.error, tools::clearError)
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (!tools.presetBusy && tools.presets.isEmpty()) item { Text("暂无电台预设") }
-            items(tools.presets.size, key = { tools.presets[it].id }) { index ->
-                val preset = tools.presets[index]
-                Card(shape = MaterialTheme.shapes.small) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp)) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(preset.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(listOf(preset.radio, preset.antenna).filter(String::isNotBlank).joinToString(" · "))
-                            Text(
-                                listOfNotNull(preset.power?.let { "${it}W" }, preset.qth.takeIf(String::isNotBlank)).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+    LaunchedEffect(Unit) {
+        tools.loadPresets()
+    }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("电台预设") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { creating = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "新增预设")
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(Modifier.fillMaxSize().padding(innerPadding)) {
+            if (tools.presetErrorMessage.isNotBlank()) {
+                ToolError(tools.presetErrorMessage, tools::clearPresetError)
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                if (!tools.presetBusy && tools.presets.isEmpty()) item { Text("暂无电台预设") }
+                items(tools.presets.size, key = { tools.presets[it].id }) { index ->
+                    val preset = tools.presets[index]
+                    Card(shape = MaterialTheme.shapes.small) {
+                        Row(Modifier.fillMaxWidth().padding(14.dp)) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(preset.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(listOf(preset.radio, preset.antenna).filter(String::isNotBlank).joinToString(" · "))
+                                Text(
+                                    listOfNotNull(preset.power?.let { "${it}W" }, preset.qth.takeIf(String::isNotBlank)).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(
+                                onClick = { tools.movePreset(index, -1) },
+                                enabled = !tools.presetBusy && index > 0,
+                            ) { Icon(Icons.Default.ArrowUpward, contentDescription = "上移") }
+                            IconButton(
+                                onClick = { tools.movePreset(index, 1) },
+                                enabled = !tools.presetBusy && index < tools.presets.lastIndex,
+                            ) { Icon(Icons.Default.ArrowDownward, contentDescription = "下移") }
+                            IconButton(onClick = { editing = preset }) { Icon(Icons.Default.Edit, contentDescription = "编辑") }
+                            IconButton(onClick = { deleting = preset }) { Icon(Icons.Default.Delete, contentDescription = "删除") }
                         }
-                        IconButton(
-                            onClick = { tools.movePreset(index, -1) },
-                            enabled = !tools.presetBusy && index > 0,
-                        ) { Icon(Icons.Default.ArrowUpward, contentDescription = "上移") }
-                        IconButton(
-                            onClick = { tools.movePreset(index, 1) },
-                            enabled = !tools.presetBusy && index < tools.presets.lastIndex,
-                        ) { Icon(Icons.Default.ArrowDownward, contentDescription = "下移") }
-                        IconButton(onClick = { editing = preset }) { Icon(Icons.Default.Edit, contentDescription = "编辑") }
-                        IconButton(onClick = { deleting = preset }) { Icon(Icons.Default.Delete, contentDescription = "删除") }
                     }
                 }
+                if (tools.presetBusy) item { CircularProgressIndicator(Modifier.size(28.dp)) }
             }
-            if (tools.presetBusy) item { CircularProgressIndicator(Modifier.size(28.dp)) }
         }
     }
     if (creating || editing != null) {
