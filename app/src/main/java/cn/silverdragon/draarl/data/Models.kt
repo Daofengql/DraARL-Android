@@ -6,6 +6,7 @@ data class User(
     val nickname: String = "",
     val callsign: String = "",
     val email: String = "",
+    val emailVerified: Boolean = false,
     val role: String = "user",
     val approvalStatus: Int = 0,
     val reviewNote: String = "",

@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Mic
@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,15 +52,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
+import cn.silverdragon.draarl.MAIN_NAVIGATION_PAGES
 import cn.silverdragon.draarl.R
+import cn.silverdragon.draarl.pagePosition
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
-import cn.silverdragon.draarl.ui.screens.DashboardScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
 import cn.silverdragon.draarl.ui.screens.GroupsScreen
 import cn.silverdragon.draarl.ui.screens.LoginScreen
 import cn.silverdragon.draarl.ui.screens.ProfileScreen
 import cn.silverdragon.draarl.ui.screens.RadioScreen
 import cn.silverdragon.draarl.ui.screens.SettingsScreen
+import cn.silverdragon.draarl.ui.screens.ToolsScreen
 
 @Composable
 fun DraarlApp(controller: AppController) {
@@ -130,6 +133,7 @@ private fun LoadingScreen() {
 @Composable
 private fun AuthenticatedApp(controller: AppController) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val pageStateHolder = rememberSaveableStateHolder()
     val notice = controller.notice
     LaunchedEffect(notice) {
         if (notice.isNotBlank()) {
@@ -152,7 +156,7 @@ private fun AuthenticatedApp(controller: AppController) {
         }
     }
 
-    val pagesWithOwnScaffold = setOf(AppPage.PROFILE, AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY)
+    val pagesWithOwnScaffold = setOf(AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY)
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(
@@ -160,7 +164,7 @@ private fun AuthenticatedApp(controller: AppController) {
         ),
         bottomBar = {
             if (showBottomBar) {
-                MainBottomBar(controller)
+                MainBottomBar(selectedPage = controller.page, onNavigate = controller::navigate)
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -196,14 +200,16 @@ private fun AuthenticatedApp(controller: AppController) {
                 },
                 contentKey = { it },
             ) { page ->
-                when (page) {
-                    AppPage.RADIO -> RadioScreen(controller)
-                    AppPage.DASHBOARD -> DashboardScreen(controller)
-                    AppPage.DEVICES -> DevicesScreen(controller)
-                    AppPage.GROUPS -> GroupsScreen(controller)
-                    AppPage.PROFILE -> ProfileScreen(controller)
-                    AppPage.SETTINGS -> SettingsScreen(controller)
-                    AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
+                pageStateHolder.SaveableStateProvider(page.name) {
+                    when (page) {
+                        AppPage.RADIO -> RadioScreen(controller)
+                        AppPage.DEVICES -> DevicesScreen(controller)
+                        AppPage.GROUPS -> GroupsScreen(controller)
+                        AppPage.TOOLS -> ToolsScreen(controller)
+                        AppPage.PROFILE -> ProfileScreen(controller)
+                        AppPage.SETTINGS -> SettingsScreen(controller)
+                        AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
+                    }
                 }
             }
         }
@@ -211,21 +217,15 @@ private fun AuthenticatedApp(controller: AppController) {
 }
 
 @Composable
-private fun MainBottomBar(controller: AppController) {
-    val items = listOf(
-        NavigationItem(AppPage.DASHBOARD, "概览", Icons.Default.Dashboard),
-        NavigationItem(AppPage.DEVICES, "设备", Icons.Default.Devices),
-        NavigationItem(AppPage.RADIO, "PTT", Icons.Default.Mic),
-        NavigationItem(AppPage.GROUPS, "群组", Icons.Default.Groups),
-        NavigationItem(AppPage.PROFILE, "我的", Icons.Default.Person),
-    )
+internal fun MainBottomBar(selectedPage: AppPage, onNavigate: (AppPage) -> Unit) {
+    val items = MAIN_NAVIGATION_PAGES.map(::navigationItem)
     NavigationBar(
         windowInsets = WindowInsets(0, 0, 0, 0),
     ) {
         items.forEach { item ->
             NavigationBarItem(
-                selected = controller.page == item.page,
-                onClick = { controller.navigate(item.page) },
+                selected = selectedPage == item.page,
+                onClick = { onNavigate(item.page) },
                 icon = { Icon(item.icon, contentDescription = item.label) },
                 label = { Text(item.label) },
             )
@@ -239,12 +239,11 @@ private data class NavigationItem(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
 )
 
-private fun pagePosition(page: AppPage): Int = when (page) {
-    AppPage.DASHBOARD -> 0
-    AppPage.DEVICES -> 1
-    AppPage.RADIO -> 2
-    AppPage.GROUPS -> 3
-    AppPage.PROFILE -> 4
-    AppPage.SETTINGS -> 5
-    AppPage.ACCOUNT_SECURITY -> 6
+private fun navigationItem(page: AppPage): NavigationItem = when (page) {
+    AppPage.DEVICES -> NavigationItem(page, "设备", Icons.Default.Devices)
+    AppPage.GROUPS -> NavigationItem(page, "群组", Icons.Default.Groups)
+    AppPage.RADIO -> NavigationItem(page, "PTT", Icons.Default.Mic)
+    AppPage.TOOLS -> NavigationItem(page, "工具", Icons.Default.Build)
+    AppPage.PROFILE -> NavigationItem(page, "我的", Icons.Default.Person)
+    AppPage.SETTINGS, AppPage.ACCOUNT_SECURITY -> error("Secondary pages are not bottom navigation items")
 }

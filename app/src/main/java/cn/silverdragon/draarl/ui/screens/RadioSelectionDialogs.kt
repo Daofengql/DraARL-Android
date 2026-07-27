@@ -1,0 +1,164 @@
+package cn.silverdragon.draarl.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import cn.silverdragon.draarl.AppController
+import cn.silverdragon.draarl.data.AccessPoint
+import cn.silverdragon.draarl.data.Group
+import cn.silverdragon.draarl.ui.theme.appColors
+
+@Composable
+internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), tonalElevation = 6.dp) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                DialogTitle("选择边缘节点")
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(controller.accessPoints, key = AccessPoint::id) { point ->
+                        val selected = point.id == controller.selectedAccessPoint?.id
+                        val probe = controller.accessPointProbes.firstOrNull { it.accessPoint.id == point.id }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .clickable {
+                                    if (!selected) controller.selectAccessPoint(point)
+                                    onDismiss()
+                                }
+                                .padding(horizontal = 18.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(point.displayName, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                                val meta = listOf(point.region, point.network).filter(String::isNotBlank).joinToString(" · ")
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (meta.isNotBlank()) {
+                                        Text(
+                                            meta,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                    LatencyText(probe?.latencyMs, prefix = "ICMP ")
+                                }
+                            }
+                            if (selected) Icon(Icons.Default.Check, contentDescription = "当前节点")
+                        }
+                    }
+                }
+                CloseDialogButton(onDismiss)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
+    val availableGroups = controller.groups.filter { !it.isPrivate || it.joined || it.owner }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), tonalElevation = 6.dp) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                DialogTitle("选择群组")
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(availableGroups, key = Group::id) { group ->
+                        val selected = group.id == controller.selectedGroupId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .clickable {
+                                    if (!selected) controller.switchGroup(group)
+                                    onDismiss()
+                                }
+                                .padding(horizontal = 18.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(group.name, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                                Text(
+                                    listOf(
+                                        "${group.onlineCount} 在线",
+                                        if (group.isPrivate) "私有群组" else "公开群组",
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (selected) Icon(Icons.Default.Check, contentDescription = "当前群组")
+                        }
+                    }
+                }
+                CloseDialogButton(onDismiss)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LatencyText(latencyMs: Int?, modifier: Modifier = Modifier, prefix: String = "") {
+    Text(
+        text = latencyMs?.let { "$prefix${it} ms" } ?: "${prefix}不可达",
+        modifier = modifier,
+        style = MaterialTheme.typography.bodySmall,
+        color = when {
+            latencyMs == null -> MaterialTheme.colorScheme.onSurfaceVariant
+            latencyMs <= 80 -> MaterialTheme.appColors.latencyGood
+            latencyMs <= 180 -> MaterialTheme.appColors.latencyWarn
+            else -> MaterialTheme.colorScheme.error
+        },
+        maxLines = 1,
+    )
+}
+
+@Composable
+private fun DialogTitle(title: String) {
+    Text(
+        title,
+        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+@Composable
+private fun ColumnScope.CloseDialogButton(onDismiss: () -> Unit) {
+    TextButton(
+        onClick = onDismiss,
+        modifier = Modifier.align(Alignment.End).padding(horizontal = 8.dp),
+    ) {
+        Text("关闭")
+    }
+}

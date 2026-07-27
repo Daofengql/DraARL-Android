@@ -18,6 +18,12 @@ import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.data.ReplaceableDevice
+import cn.silverdragon.draarl.tools.LogbookEntry
+import cn.silverdragon.draarl.tools.LogbookPage
+import cn.silverdragon.draarl.tools.RadioPreset
+import cn.silverdragon.draarl.tools.RelayStation
+import cn.silverdragon.draarl.tools.ToolApiJson
+import cn.silverdragon.draarl.profile.emailChangeRequestJson
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -96,7 +102,7 @@ class ApiClient(
             refreshToken = data.optStringClean("refresh_token"),
             accessExpiresAt = now + data.optLong("expires_in", 10_800L) * 1_000L,
             refreshExpiresAt = now + data.optLong("refresh_expires_in", 1_209_600L) * 1_000L,
-            user = parseUser(data.requireObject("user")),
+            user = parseUser(data.requireObject("user"), normalizedUrl),
         )
         updateSession(session)
         return session
@@ -204,10 +210,16 @@ class ApiClient(
         updateSession(null)
     }
 
-    fun getMe(): User {
+    fun getMe(updateSession: Boolean = true): User {
         val user = parseUser(request("GET", "/api/me").requireObject("data"))
-        currentSession()?.copy(user = user)?.let(::updateSession)
+        if (updateSession) currentSession()?.copy(user = user)?.let(::updateSession)
         return user
+    }
+
+    fun acceptCurrentUser(user: User) {
+        val current = currentSession() ?: return
+        if (current.user.id != user.id) return
+        updateSession(current.copy(user = user))
     }
 
     fun getPublicUserByName(username: String): User {
@@ -536,9 +548,107 @@ class ApiClient(
                 durationMs = item.optLong("duration_ms"),
                 messageType = item.optInt("msg_type"),
                 text = item.optStringClean("text_content"),
-                audioUrl = item.optStringClean("audio_url"),
+                audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
             )
         }
+    }
+
+    fun searchPublicRelays(location: String): List<RelayStation> {
+        val encoded = java.net.URLEncoder.encode(location.trim(), Charsets.UTF_8.name())
+        val items = request(
+            "GET",
+            "/api/public/relays?location=$encoded",
+            requiresAuth = false,
+        ).requireObject("data").optJSONArray("items") ?: JSONArray()
+        return List(items.length()) { index ->
+            ToolApiJson.relay(items.getJSONObject(index))
+        }
+    }
+
+    fun getLogbooks(page: Int = 1, pageSize: Int = 20, callsign: String = ""): LogbookPage {
+        val query = buildString {
+            append("?page=$page&page_size=$pageSize")
+            if (callsign.isNotBlank()) {
+                append("&callsign=")
+                append(java.net.URLEncoder.encode(callsign.trim(), Charsets.UTF_8.name()))
+            }
+        }
+        val data = request("GET", "/api/logbooks$query").requireObject("data")
+        val items = data.optJSONArray("items") ?: JSONArray()
+        return LogbookPage(
+            items = List(items.length()) { ToolApiJson.logbook(items.getJSONObject(it)) },
+            total = data.optInt("total"),
+            page = data.optInt("page", page),
+            pageSize = data.optInt("page_size", pageSize),
+        )
+    }
+
+    fun saveLogbook(entry: LogbookEntry): LogbookEntry {
+        val body = JSONObject()
+            .put("my_callsign", entry.myCallsign.trim().uppercase())
+            .put("time_utc", entry.timeUtc)
+            .put("tx_frequency", entry.txFrequency)
+            .put("rx_frequency", entry.rxFrequency)
+            .put("cq_zone", entry.cqZone)
+            .put("itu_zone", entry.ituZone)
+            .put("mode", entry.mode.trim().uppercase())
+            .put("callsign", entry.callsign.trim().uppercase())
+            .put("their_rst", entry.theirRst)
+            .put("their_power", entry.theirPower ?: JSONObject.NULL)
+            .put("their_qth", entry.theirQth)
+            .put("their_radio", entry.theirRadio)
+            .put("their_antenna", entry.theirAntenna)
+            .put("my_rst", entry.myRst)
+            .put("my_power", entry.myPower ?: JSONObject.NULL)
+            .put("my_qth", entry.myQth)
+            .put("my_radio", entry.myRadio)
+            .put("my_antenna", entry.myAntenna)
+            .put("notes", entry.notes)
+        val path = if (entry.id > 0) "/api/logbooks/${entry.id}" else "/api/logbooks"
+        val method = if (entry.id > 0) "PUT" else "POST"
+        return ToolApiJson.logbook(request(method, path, body).requireObject("data"))
+    }
+
+    fun deleteLogbook(id: Int) {
+        request("DELETE", "/api/logbooks/$id")
+    }
+
+    fun deleteLogbooks(ids: Collection<Int>) {
+        if (ids.isEmpty()) return
+        request(
+            "DELETE",
+            "/api/logbooks/batch",
+            JSONObject().put("ids", JSONArray().apply { ids.distinct().forEach(::put) }),
+        )
+    }
+
+    fun getRadioPresets(): List<RadioPreset> {
+        val data = request("GET", "/api/user/radio-presets").optJSONArray("data") ?: JSONArray()
+        return List(data.length()) { ToolApiJson.preset(data.getJSONObject(it)) }
+    }
+
+    fun saveRadioPreset(preset: RadioPreset): RadioPreset {
+        val body = JSONObject()
+            .put("name", preset.name.trim())
+            .put("radio", preset.radio.trim())
+            .put("antenna", preset.antenna.trim())
+            .put("power", preset.power ?: JSONObject.NULL)
+            .put("qth", preset.qth.trim())
+            .put("sort_order", preset.sortOrder)
+        val path = if (preset.id > 0) "/api/user/radio-presets/${preset.id}" else "/api/user/radio-presets"
+        return ToolApiJson.preset(request(if (preset.id > 0) "PUT" else "POST", path, body).requireObject("data"))
+    }
+
+    fun deleteRadioPreset(id: Int) {
+        request("DELETE", "/api/user/radio-presets/$id")
+    }
+
+    fun reorderRadioPresets(orders: List<Pair<Int, Int>>) {
+        val items = JSONArray()
+        orders.forEach { (id, order) ->
+            items.put(JSONObject().put("id", id).put("order", order))
+        }
+        request("PUT", "/api/user/radio-presets/reorder", JSONObject().put("orders", items))
     }
 
     fun updateProfile(
@@ -568,7 +678,7 @@ class ApiClient(
 
     fun uploadFile(fileBytes: ByteArray, fileName: String, fileType: String): String {
         val session = currentSession() ?: throw ApiException(401, "请先登录")
-        val baseUrl = session.baseUrl
+        val baseUrl = normalizeBaseUrl(session.baseUrl)
         val boundary = "----WebKitFormBoundary${System.currentTimeMillis()}"
         val lineEnd = "\r\n"
 
@@ -604,7 +714,10 @@ class ApiClient(
 
         val response = JSONObject(responseText)
         val data = response.optJSONObject("data") ?: response
-        return data.optStringClean("url").ifBlank { data.optStringClean("file_url") }
+        return resolveHttpsUrl(
+            baseUrl,
+            data.optStringClean("url").ifBlank { data.optStringClean("file_url") },
+        )
     }
 
     fun changePassword(oldPassword: String, newPassword: String) {
@@ -612,6 +725,20 @@ class ApiClient(
             .put("old_password", oldPassword)
             .put("new_password", newPassword)
         request("PUT", "/api/me/password", body)
+    }
+
+    fun changeEmail(
+        oldSessionId: String,
+        oldCode: String,
+        newSessionId: String,
+        newCode: String,
+    ): User {
+        request(
+            "PUT",
+            "/api/me/email",
+            emailChangeRequestJson(oldSessionId, oldCode, newSessionId, newCode),
+        )
+        return getMe()
     }
 
     private fun request(
@@ -623,7 +750,8 @@ class ApiClient(
     ): JSONObject {
         val session = currentSession()
         if (requiresAuth && session == null) throw ApiException(401, "请先登录")
-        val baseUrl = session?.baseUrl ?: throw ApiException(400, "服务器地址未配置")
+        val baseUrl = session?.baseUrl?.let(::normalizeBaseUrl)
+            ?: throw ApiException(400, "服务器地址未配置")
         val token = if (requiresAuth) session.accessToken else null
         val response = rawRequest(baseUrl, method, path, body, token)
         val code = response.optInt("code", 200)
@@ -672,7 +800,8 @@ class ApiClient(
         body: JSONObject?,
         accessToken: String?,
     ): JSONObject {
-        val connection = URL(baseUrl + path).openConnection() as HttpURLConnection
+        val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
+        val connection = URL(normalizedBaseUrl + path).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
             connection.connectTimeout = CONNECT_TIMEOUT_MS
@@ -711,7 +840,10 @@ class ApiClient(
         onSessionChanged(session)
     }
 
-    private fun parseUser(json: JSONObject): User {
+    private fun parseUser(
+        json: JSONObject,
+        baseUrl: String = currentSession()?.baseUrl.orEmpty(),
+    ): User {
         val roles = json.opt("roles")
         val role = when (roles) {
             is JSONArray -> roles.optString(0, "user")
@@ -726,10 +858,14 @@ class ApiClient(
             nickname = json.optStringClean("nickname"),
             callsign = json.optStringClean("callsign"),
             email = json.optStringClean("email"),
+            emailVerified = json.optBoolean("email_verified"),
             role = role,
             approvalStatus = json.optInt("approval_status"),
             reviewNote = json.optStringClean("review_note"),
-            avatarUrl = json.optStringClean("avatar_thumb").ifBlank { json.optStringClean("avatar") },
+            avatarUrl = optionalHttpsUrl(
+                json.optStringClean("avatar_thumb").ifBlank { json.optStringClean("avatar") },
+                baseUrl,
+            ),
             address = json.optStringClean("address"),
             phone = json.optStringClean("phone"),
             introduction = json.optStringClean("introduction"),
@@ -802,11 +938,31 @@ class ApiClient(
             val normalized = if (trimmed.contains("://")) trimmed else "https://$trimmed"
             val uri = runCatching { URI(normalized) }.getOrNull()
                 ?: throw ApiException(400, "服务器地址格式不正确")
-            if (uri.scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
-                throw ApiException(400, "服务器地址必须是 HTTP 或 HTTPS 地址")
+            if (uri.scheme != "https" || uri.host.isNullOrBlank()) {
+                throw ApiException(400, "服务器地址必须是 HTTPS 地址")
             }
             return normalized
         }
+
+        fun resolveHttpsUrl(baseUrl: String, value: String): String {
+            val candidate = value.trim()
+            if (candidate.isBlank()) return ""
+            val base = normalizeBaseUrl(baseUrl)
+            val resolved = runCatching { URI("$base/").resolve(candidate) }.getOrNull()
+                ?: throw ApiException(400, "资源地址格式不正确")
+            if (resolved.scheme != "https" || resolved.host.isNullOrBlank()) {
+                throw ApiException(400, "资源地址必须使用 HTTPS")
+            }
+            return resolved.toASCIIString()
+        }
+    }
+
+    private fun optionalHttpsUrl(
+        value: String,
+        baseUrl: String = currentSession()?.baseUrl.orEmpty(),
+    ): String {
+        if (value.isBlank() || baseUrl.isBlank()) return ""
+        return runCatching { resolveHttpsUrl(baseUrl, value) }.getOrDefault("")
     }
 }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -59,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,7 +87,8 @@ import java.math.RoundingMode
 
 @Composable
 fun DevicesScreen(controller: AppController) {
-    var filter by remember { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
     var detailDeviceId by remember { mutableStateOf<Int?>(null) }
     var showDefaultGroup by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
@@ -102,7 +105,7 @@ fun DevicesScreen(controller: AppController) {
             device.callsign.contains(query, ignoreCase = true) ||
             device.ssid.toString().contains(query)
     }
-    val defaultGroup = controller.defaultDeviceGroupId?.let { id -> controller.groups.firstOrNull { it.id == id } }
+    val defaultGroup = controller.deviceManagement.defaultDeviceGroupId?.let { id -> controller.groups.firstOrNull { it.id == id } }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -119,11 +122,11 @@ fun DevicesScreen(controller: AppController) {
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = {
-                controller.resetDeviceBinding()
+                controller.deviceManagement.resetBinding()
                 showBind = true
             }) { Icon(Icons.Default.QrCodeScanner, contentDescription = "动态码绑定") }
             IconButton(onClick = {
-                controller.loadDevicePassword()
+                controller.deviceManagement.loadPassword()
                 showPassword = true
             }) { Icon(Icons.Default.Key, contentDescription = "设备密码") }
         }
@@ -154,6 +157,7 @@ fun DevicesScreen(controller: AppController) {
             )
             visibleDevices.isEmpty() -> EmptyState(Icons.Default.Search, "没有匹配的设备", "换一个名称、呼号或 SSID 试试")
             else -> LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
@@ -174,16 +178,16 @@ fun DevicesScreen(controller: AppController) {
         DeviceDetailDialog(
             device = device,
             groupName = controller.groups.firstOrNull { it.id == device.groupId }?.name.orEmpty(),
-            busy = controller.managementBusy,
+            busy = controller.deviceManagement.busy,
             onClose = { detailDeviceId = null },
             onRename = { renameTarget = device },
             onSwitchGroup = { groupTarget = device },
             onConfig = {
                 configTarget = device
-                controller.loadDeviceConfig(device.id)
+                controller.deviceManagement.loadConfig(device.id)
             },
-            onSendChanged = { controller.updateDevice(device, disableSend = it) },
-            onReceiveChanged = { controller.updateDevice(device, disableReceive = it) },
+            onSendChanged = { controller.deviceManagement.updateDevice(device, disableSend = it) },
+            onReceiveChanged = { controller.deviceManagement.updateDevice(device, disableReceive = it) },
             onDelete = { deleteTarget = device },
         )
     }
@@ -192,11 +196,11 @@ fun DevicesScreen(controller: AppController) {
         GroupPickerDialog(
             title = "新设备默认群组",
             groups = controller.groups.filter { it.status == 1 },
-            selectedGroupId = controller.defaultDeviceGroupId,
+            selectedGroupId = controller.deviceManagement.defaultDeviceGroupId,
             allowNone = true,
             onDismiss = { showDefaultGroup = false },
             onSelect = {
-                controller.setDefaultDeviceGroup(it?.id)
+                controller.deviceManagement.setDefaultGroup(it?.id)
                 showDefaultGroup = false
             },
         )
@@ -205,9 +209,9 @@ fun DevicesScreen(controller: AppController) {
     renameTarget?.let { device ->
         RenameDeviceDialog(
             device = device,
-            busy = controller.managementBusy,
+            busy = controller.deviceManagement.busy,
             onDismiss = { renameTarget = null },
-            onSave = { name -> controller.updateDevice(device, name = name) { renameTarget = null } },
+            onSave = { name -> controller.deviceManagement.updateDevice(device, name = name) { renameTarget = null } },
         )
     }
 
@@ -219,7 +223,7 @@ fun DevicesScreen(controller: AppController) {
             allowNone = false,
             onDismiss = { groupTarget = null },
             onSelect = { group ->
-                if (group != null) controller.switchDeviceGroup(device, group) { groupTarget = null }
+                if (group != null) controller.deviceManagement.switchGroup(device, group) { groupTarget = null }
             },
         )
     }
@@ -230,7 +234,7 @@ fun DevicesScreen(controller: AppController) {
             device = device,
             onClose = {
                 configTarget = null
-                controller.closeDeviceConfig()
+                controller.deviceManagement.closeConfig()
             },
         )
     }
@@ -242,7 +246,7 @@ fun DevicesScreen(controller: AppController) {
             confirmText = "删除",
             onDismiss = { deleteTarget = null },
             onConfirm = {
-                controller.deleteDevice(device) {
+                controller.deviceManagement.deleteDevice(device) {
                     deleteTarget = null
                     detailDeviceId = null
                 }
@@ -257,7 +261,7 @@ fun DevicesScreen(controller: AppController) {
     if (showBind) {
         DynamicBindDialog(controller, onClose = {
             showBind = false
-            controller.resetDeviceBinding()
+            controller.deviceManagement.resetBinding()
         })
     }
 }
@@ -516,9 +520,9 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
     var sqlActiveHigh by remember(device.id) { mutableStateOf(false) }
     var pttActiveHigh by remember(device.id) { mutableStateOf(false) }
 
-    LaunchedEffect(controller.deviceConfig, controller.deviceConfigDeviceId) {
-        if (controller.deviceConfigDeviceId != device.id || controller.deviceConfig.isEmpty()) return@LaunchedEffect
-        val config = controller.deviceConfig
+    LaunchedEffect(controller.deviceManagement.config, controller.deviceManagement.configDeviceId) {
+        if (controller.deviceManagement.configDeviceId != device.id || controller.deviceManagement.config.isEmpty()) return@LaunchedEffect
+        val config = controller.deviceManagement.config
         txFreq = hzToMhz(config["tx_freq"].orEmpty())
         rxFreq = hzToMhz(config["rx_freq"].orEmpty())
         sameFrequency = rxFreq.isBlank() || txFreq == rxFreq
@@ -545,7 +549,7 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                         Text("参数配置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(device.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (controller.managementBusy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    if (controller.deviceManagement.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 }
             },
         ) { padding ->
@@ -609,7 +613,7 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                 DeviceSwitchRow("PTT 高电平有效", "发射控制极性", pttActiveHigh, false) { pttActiveHigh = it }
                 Button(
                     onClick = {
-                        val updated = controller.deviceConfig.toMutableMap().apply {
+                        val updated = controller.deviceManagement.config.toMutableMap().apply {
                             put("tx_freq", mhzToHz(txFreq))
                             put("rx_freq", mhzToHz(if (sameFrequency) txFreq else rxFreq))
                             put("sql_level", squelch.toInt().toString())
@@ -625,9 +629,9 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                             put("sql_active_high", if (sqlActiveHigh) "1" else "0")
                             put("ptt_active_high", if (pttActiveHigh) "1" else "0")
                         }
-                        controller.saveDeviceConfig(device, updated, onClose)
+                        controller.deviceManagement.saveConfig(device, updated, onClose)
                     },
-                    enabled = !controller.managementBusy && txFreq.isNotBlank() && (sameFrequency || rxFreq.isNotBlank()),
+                    enabled = !controller.deviceManagement.busy && txFreq.isNotBlank() && (sameFrequency || rxFreq.isNotBlank()),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 ) {
                     Text(if (device.online) "保存并同步" else "保存配置")
@@ -670,7 +674,7 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("设备密码", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text("此密码只用于硬件设备接入，不是账号登录密码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (controller.managementBusy && controller.devicePasswordInfo == null) {
+                if (controller.deviceManagement.busy && controller.deviceManagement.passwordInfo == null) {
                     Box(Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 } else {
                     Text("账号", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -678,7 +682,7 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
                     Text("设备密码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (visible) controller.devicePasswordInfo?.password.orEmpty() else "••••••••",
+                            if (visible) controller.deviceManagement.passwordInfo?.password.orEmpty() else "••••••••",
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f),
@@ -687,12 +691,12 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
                             Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "显示或隐藏密码")
                         }
                         IconButton(onClick = {
-                            copyText(context, "设备密码", controller.devicePasswordInfo?.password.orEmpty())
+                            copyText(context, "设备密码", controller.deviceManagement.passwordInfo?.password.orEmpty())
                         }) { Icon(Icons.Default.ContentCopy, "复制密码") }
                     }
                 }
                 Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { confirmRegenerate = true }, enabled = !controller.managementBusy) { Text("刷新密码") }
+                    OutlinedButton(onClick = { confirmRegenerate = true }, enabled = !controller.deviceManagement.busy) { Text("刷新密码") }
                     Button(onClick = onClose) { Text("关闭") }
                 }
             }
@@ -707,7 +711,7 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
             onConfirm = {
                 confirmRegenerate = false
                 visible = true
-                controller.regenerateDevicePassword()
+                controller.deviceManagement.regeneratePassword()
             },
         )
     }
@@ -719,8 +723,8 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
     var ssid by remember { mutableStateOf("") }
     var replacement by remember { mutableStateOf<ReplaceableDevice?>(null) }
     val context = LocalContext.current
-    val preview = controller.deviceBindPreview
-    val result = controller.deviceBindResult
+    val preview = controller.deviceManagement.bindPreview
+    val result = controller.deviceManagement.bindResult
 
     LaunchedEffect(preview) {
         if (preview != null) {
@@ -769,12 +773,12 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
                     when {
                         result != null -> Unit
                         preview != null -> Button(
-                            onClick = { controller.submitDeviceBinding(ssid.toIntOrNull(), replacement?.deviceId) },
-                            enabled = !controller.managementBusy && (ssid.isNotBlank() || replacement != null),
+                            onClick = { controller.deviceManagement.submitBinding(ssid.toIntOrNull(), replacement?.deviceId) },
+                            enabled = !controller.deviceManagement.busy && (ssid.isNotBlank() || replacement != null),
                         ) { Text("提交配置") }
                         else -> Button(
-                            onClick = { controller.lookupDeviceBindCode(code) },
-                            enabled = !controller.managementBusy && code.length == 6,
+                            onClick = { controller.deviceManagement.lookupBindCode(code) },
+                            enabled = !controller.deviceManagement.busy && code.length == 6,
                         ) { Text("下一步") }
                     }
                 }

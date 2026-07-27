@@ -20,3 +20,4 @@ local.properties
 *.apk
 *.jks
 *.keystore
+keystore.properties

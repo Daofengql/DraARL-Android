@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -49,8 +50,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +73,8 @@ import cn.silverdragon.draarl.ui.components.StatusPill
 
 @Composable
 fun GroupsScreen(controller: AppController) {
-    var filter by remember { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
     var detailGroupId by remember { mutableStateOf<Int?>(null) }
     var showSearch by remember { mutableStateOf(false) }
     var showEditor by remember { mutableStateOf(false) }
@@ -102,7 +106,7 @@ fun GroupsScreen(controller: AppController) {
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = {
-                controller.clearGroupSearch()
+                controller.groupManagement.clearSearch()
                 showSearch = true
             }) {
                 Icon(Icons.Default.Groups, contentDescription = "搜索并加入群组")
@@ -119,6 +123,7 @@ fun GroupsScreen(controller: AppController) {
             EmptyState(Icons.Default.Groups, "暂无群组", "可搜索加入私有群组，或创建新群组")
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
@@ -142,7 +147,7 @@ fun GroupsScreen(controller: AppController) {
     detailGroup?.let { group ->
         GroupDetailDialog(
             group = group,
-            busy = controller.managementBusy,
+            busy = controller.groupManagement.busy,
             onClose = { detailGroupId = null },
             onEdit = {
                 editingGroup = group
@@ -150,9 +155,9 @@ fun GroupsScreen(controller: AppController) {
             },
             onManageDevices = {
                 managedGroup = group
-                controller.loadGroupDevices(group.id)
+                controller.groupManagement.loadDevices(group.id)
             },
-            onEnabledChange = { controller.setGroupEnabled(group, it) },
+            onEnabledChange = { controller.groupManagement.setEnabled(group, it) },
             onLeave = { leaveTarget = group },
             onDelete = { deleteTarget = group },
         )
@@ -163,7 +168,7 @@ fun GroupsScreen(controller: AppController) {
             controller = controller,
             onClose = {
                 showSearch = false
-                controller.clearGroupSearch()
+                controller.groupManagement.clearSearch()
             },
             onJoin = { joinTarget = it },
         )
@@ -172,10 +177,10 @@ fun GroupsScreen(controller: AppController) {
     if (showEditor) {
         GroupEditorDialog(
             group = editingGroup,
-            busy = controller.managementBusy,
+            busy = controller.groupManagement.busy,
             onDismiss = { showEditor = false },
             onSave = { name, type, password, note ->
-                controller.saveGroup(editingGroup, name, type, password, note) {
+                controller.groupManagement.save(editingGroup, name, type, password, note) {
                     showEditor = false
                 }
             },
@@ -190,7 +195,7 @@ fun GroupsScreen(controller: AppController) {
                 controller.joinGroup(group, password)
                 joinTarget = null
                 showSearch = false
-                controller.clearGroupSearch()
+                controller.groupManagement.clearSearch()
             },
         )
     }
@@ -216,7 +221,7 @@ fun GroupsScreen(controller: AppController) {
             confirmText = "删除",
             onDismiss = { deleteTarget = null },
             onConfirm = {
-                controller.deleteGroup(group) {
+                controller.groupManagement.delete(group) {
                     deleteTarget = null
                     detailGroupId = null
                 }
@@ -227,17 +232,17 @@ fun GroupsScreen(controller: AppController) {
     managedGroup?.let { group ->
         GroupDevicesDialog(
             group = group,
-            devices = if (controller.managedGroupId == group.id) controller.managedGroupDevices else emptyList(),
-            busy = controller.managementBusy,
+            devices = if (controller.groupManagement.managedGroupId == group.id) controller.groupManagement.managedDevices else emptyList(),
+            busy = controller.groupManagement.busy,
             onClose = {
                 managedGroup = null
-                controller.closeGroupDevices()
+                controller.groupManagement.closeDevices()
             },
-            onRefresh = { controller.loadGroupDevices(group.id) },
+            onRefresh = { controller.groupManagement.loadDevices(group.id) },
             onCommControl = { device, disableSend, disableReceive ->
-                controller.updateGroupDeviceCommControl(group.id, device, disableSend, disableReceive)
+                controller.groupManagement.updateDeviceControl(group.id, device, disableSend, disableReceive)
             },
-            onKick = { controller.kickGroupDevice(group.id, it) },
+            onKick = { controller.groupManagement.kickDevice(group.id, it) },
         )
     }
 }
@@ -449,18 +454,18 @@ private fun GroupSearchDialog(controller: AppController, onClose: () -> Unit, on
                     placeholder = { Text("输入群组 ID 或名称") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
-                        IconButton(onClick = { controller.searchGroups(keyword) }, enabled = !controller.managementBusy) {
+                        IconButton(onClick = { controller.groupManagement.search(keyword) }, enabled = !controller.groupManagement.busy) {
                             Icon(Icons.Default.Search, contentDescription = "搜索")
                         }
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (controller.managementBusy) {
+                if (controller.groupManagement.busy) {
                     Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
-                } else if (controller.groupSearchResults.isEmpty()) {
+                } else if (controller.groupManagement.searchResults.isEmpty()) {
                     Text(
                         "搜索结果会显示在这里",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -468,7 +473,7 @@ private fun GroupSearchDialog(controller: AppController, onClose: () -> Unit, on
                     )
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().height(280.dp)) {
-                        items(controller.groupSearchResults, key = Group::id) { group ->
+                        items(controller.groupManagement.searchResults, key = Group::id) { group ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -509,7 +514,7 @@ private fun GroupEditorDialog(
     onSave: (String, Int, String, String) -> Unit,
 ) {
     var name by remember(group) { mutableStateOf(group?.name.orEmpty()) }
-    var type by remember(group) { mutableStateOf(group?.type ?: 1) }
+    var type by remember(group) { mutableIntStateOf(group?.type ?: 1) }
     var password by remember(group) { mutableStateOf("") }
     var note by remember(group) { mutableStateOf(group?.note.orEmpty()) }
     Dialog(onDismissRequest = onDismiss) {

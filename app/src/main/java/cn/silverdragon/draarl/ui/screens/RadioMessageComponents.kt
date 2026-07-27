@@ -1,0 +1,164 @@
+package cn.silverdragon.draarl.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.AppController
+import cn.silverdragon.draarl.data.OnlineDevice
+import cn.silverdragon.draarl.data.RadioMessage
+import cn.silverdragon.draarl.data.RadioMessageType
+import cn.silverdragon.draarl.data.formatRadioIdentity
+import cn.silverdragon.draarl.ui.components.UserAvatar
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+internal fun OnlineDeviceStrip(devices: List<OnlineDevice>) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(devices, key = { "${it.id}-${it.ssid}-${it.username}" }) { device ->
+            Card(shape = RoundedCornerShape(6.dp)) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text(device.callsign.ifBlank { device.nickname.ifBlank { device.username } }, fontWeight = FontWeight.SemiBold)
+                    Text("SSID ${device.ssid}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MessageItem(controller: AppController, message: RadioMessage, showTimeDivider: Boolean) {
+    val profile = if (message.mine) controller.user else controller.publicProfile(message.senderUsername)
+    val callsign = message.senderCallsign.ifBlank { profile?.callsign.orEmpty() }.ifBlank { message.senderUsername }
+    val nickname = message.senderNickname.ifBlank { profile?.nickname.orEmpty() }.ifBlank { message.senderUsername }
+    val time = remember(message.timestamp) { formatTime(message.timestamp) }
+    val timeDivider = remember(message.timestamp) { formatTimeDivider(message.timestamp) }
+    if (showTimeDivider) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) {
+            Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Text(
+                    timeDivider,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        if (!message.mine) {
+            UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = if (message.mine) Alignment.End else Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (nickname.isNotBlank()) {
+                    Text(nickname, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    formatRadioIdentity(callsign, message.senderSsid),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Surface(
+                modifier = Modifier.widthIn(max = 300.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = if (message.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (message.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
+                if (message.type == RadioMessageType.VOICE) {
+                    VoiceMessageContent(controller, message)
+                } else {
+                    Text(message.content, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                }
+            }
+            Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (message.mine) {
+            Spacer(Modifier.width(8.dp))
+            UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
+        }
+    }
+}
+
+@Composable
+private fun VoiceMessageContent(controller: AppController, message: RadioMessage) {
+    val playable = message.audioCacheKey.isNotBlank() || message.audioUrl.isNotBlank()
+    val playing = controller.playingMessageId == message.id
+    val contentColor = LocalContentColor.current
+    Row(
+        modifier = Modifier.widthIn(min = 170.dp).padding(horizontal = 6.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = { controller.toggleVoicePlayback(message) }, enabled = playable) {
+            Icon(
+                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (playing) "暂停语音" else "播放语音",
+            )
+        }
+        Row(
+            modifier = Modifier.width(82.dp).height(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VOICE_BAR_HEIGHTS.forEach { height ->
+                Box(
+                    Modifier.width(3.dp).height(height.dp).background(
+                        color = contentColor,
+                        shape = RoundedCornerShape(2.dp),
+                    ),
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(AppController.formatDuration(message.durationMs), style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+private val TIME_FORMATTER = SimpleDateFormat("HH:mm", Locale.CHINA)
+private val TIME_DIVIDER_FORMATTER = SimpleDateFormat("yyyy-MM-dd  HH:mm", Locale.CHINA)
+
+private fun formatTime(timestamp: Long): String = TIME_FORMATTER.format(Date(timestamp))
+
+private fun formatTimeDivider(timestamp: Long): String = TIME_DIVIDER_FORMATTER.format(Date(timestamp))
+
+internal const val RADIO_TIME_DIVIDER_MS = 10 * 60 * 1_000L
+private val VOICE_BAR_HEIGHTS = listOf(7, 14, 20, 11, 18, 24, 13, 20, 9, 16, 22, 12)

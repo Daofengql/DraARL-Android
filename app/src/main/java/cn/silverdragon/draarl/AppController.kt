@@ -15,14 +15,15 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import cn.silverdragon.draarl.auth.PublicAuthController
 import cn.silverdragon.draarl.data.AccessPoint
+import cn.silverdragon.draarl.data.ApiAppDataSource
+import cn.silverdragon.draarl.data.AppDataFallback
+import cn.silverdragon.draarl.data.AppDataRefresher
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.DashboardData
+import cn.silverdragon.draarl.data.DashboardCacheStore
 import cn.silverdragon.draarl.data.Device
-import cn.silverdragon.draarl.data.DeviceBindPreview
-import cn.silverdragon.draarl.data.DeviceBindResult
-import cn.silverdragon.draarl.data.DevicePasswordInfo
-import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.RadioConnectionPhase
@@ -32,24 +33,25 @@ import cn.silverdragon.draarl.data.RadioMessageStore
 import cn.silverdragon.draarl.data.RadioMessageSyncState
 import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.RadioStatus
-import cn.silverdragon.draarl.data.RegistrationResult
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.User
+import cn.silverdragon.draarl.devices.DeviceManagementController
+import cn.silverdragon.draarl.groups.GroupManagementController
 import cn.silverdragon.draarl.network.ApiClient
 import cn.silverdragon.draarl.network.ApiException
+import cn.silverdragon.draarl.profile.ProfileController
 import cn.silverdragon.draarl.radio.AccessPointProbe
 import cn.silverdragon.draarl.radio.AccessPointSelector
 import cn.silverdragon.draarl.radio.RadioConnectionConfig
 import cn.silverdragon.draarl.radio.RadioConnectionService
 import cn.silverdragon.draarl.radio.RadioServiceListener
+import cn.silverdragon.draarl.tools.ToolsController
 import java.net.URI
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-
-enum class AppPage { RADIO, DASHBOARD, DEVICES, GROUPS, PROFILE, SETTINGS, ACCOUNT_SECURITY }
 
 class AppController(application: Application) : AndroidViewModel(application), RadioServiceListener {
     private val appContext = application.applicationContext
@@ -59,6 +61,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
     private val sessionStore = SecureSessionStore(appContext)
     private val messageStore = RadioMessageStore(appContext)
+    private val dashboardStore = DashboardCacheStore(appContext)
     private var serviceBinder: RadioConnectionService.LocalBinder? = null
     private var serviceBound = false
     private var pendingConnection: RadioConnectionConfig? = null
@@ -67,10 +70,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val refreshingRadioToken = AtomicBoolean(false)
     private val syncingRadioData = AtomicBoolean(false)
     private val syncingGroupCounts = AtomicBoolean(false)
+    private val groupCountsGeneration = AtomicInteger(0)
+    private val accessPointDiscoveryGeneration = AtomicInteger(0)
+    private val radioDataGeneration = AtomicInteger(0)
+    private val groupSwitchGeneration = AtomicInteger(0)
     private val radioConnectionGeneration = AtomicInteger(0)
-    private val captchaGeneration = AtomicInteger(0)
     private val preparingRadioConnection = AtomicBoolean(false)
     private val disposed = AtomicBoolean(false)
+    private val refreshAllCoordinator = RefreshCoordinator()
     private val loadingPublicProfiles = ConcurrentHashMap.newKeySet<String>()
     private val loadingCachedRadioMessages = ConcurrentHashMap.newKeySet<String>()
     private var displayedRadioMessageGroupId: Int? = null
@@ -97,6 +104,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             user = session?.user
             serviceBinder?.updateAccessToken(session?.accessToken.orEmpty())
             if (session == null) {
+                refreshAllCoordinator.cancel()
+                invalidateBackgroundRequests()
+                contentLoading = false
                 radioConnectionGeneration.incrementAndGet()
                 preparingRadioConnection.set(false)
                 pendingConnection = null
@@ -107,6 +117,52 @@ class AppController(application: Application) : AndroidViewModel(application), R
             }
         }
     }
+    val tools: ToolsController by lazy { ToolsController(appContext, api) }
+    private val appDataRefresher by lazy { AppDataRefresher(ApiAppDataSource(api), executor) }
+    val deviceManagement: DeviceManagementController by lazy {
+        DeviceManagementController(
+            api = api,
+            executor = executor,
+            mainHandler = mainHandler,
+            currentDevices = { devices },
+            updateDevices = { devices = it },
+            refreshAll = ::refreshAll,
+            showNotice = { notice = it },
+            friendlyError = ::friendlyError,
+        )
+    }
+    val groupManagement: GroupManagementController by lazy {
+        GroupManagementController(
+            api = api,
+            executor = executor,
+            mainHandler = mainHandler,
+            currentGroups = { groups },
+            updateGroups = { groups = it },
+            refreshAll = ::refreshAll,
+            showNotice = { notice = it },
+            friendlyError = ::friendlyError,
+        )
+    }
+    val profile: ProfileController by lazy {
+        ProfileController(
+            api = api,
+            executor = executor,
+            mainHandler = mainHandler,
+            currentUser = { user },
+            updateUser = { user = it },
+            showNotice = { notice = it },
+            friendlyError = ::friendlyError,
+        )
+    }
+    val publicAuth: PublicAuthController by lazy {
+        PublicAuthController(
+            api = api,
+            executor = executor,
+            mainHandler = mainHandler,
+            showLoginError = { loginError = it },
+            friendlyError = ::friendlyError,
+        )
+    }
 
     var initializing by mutableStateOf(true)
         private set
@@ -115,22 +171,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
     var loginBusy by mutableStateOf(false)
         private set
     var loginError by mutableStateOf("")
-        private set
-    var publicAuthBusy by mutableStateOf(false)
-        private set
-    var publicAuthError by mutableStateOf("")
-        private set
-    var registrationRequiresEmailVerification by mutableStateOf(true)
-        private set
-    var registrationResult by mutableStateOf<RegistrationResult?>(null)
-        private set
-    var passwordResetComplete by mutableStateOf(false)
-        private set
-    var captchaId by mutableStateOf("")
-        private set
-    var captchaImageBase64 by mutableStateOf("")
-        private set
-    var captchaLoading by mutableStateOf(false)
         private set
     val serverUrl: String = AppConfig.BASE_URL
     var user by mutableStateOf<User?>(null)
@@ -145,28 +185,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
     var devices by mutableStateOf<List<Device>>(emptyList())
         private set
     var groups by mutableStateOf<List<Group>>(emptyList())
-        private set
-    var groupSearchResults by mutableStateOf<List<Group>>(emptyList())
-        private set
-    var managedGroupDevices by mutableStateOf<List<Device>>(emptyList())
-        private set
-    var managedGroupId by mutableStateOf<Int?>(null)
-        private set
-    var defaultDeviceGroupId by mutableStateOf<Int?>(null)
-        private set
-    var devicePasswordInfo by mutableStateOf<DevicePasswordInfo?>(null)
-        private set
-    var deviceBindPreview by mutableStateOf<DeviceBindPreview?>(null)
-        private set
-    var deviceBindResult by mutableStateOf<DeviceBindResult?>(null)
-        private set
-    var deviceConfig by mutableStateOf<Map<String, String>>(emptyMap())
-        private set
-    var deviceConfigDeviceId by mutableStateOf<Int?>(null)
-        private set
-    var managementBusy by mutableStateOf(false)
-        private set
-    var records by mutableStateOf<List<CommunicationRecord>>(emptyList())
         private set
     var onlineDevices by mutableStateOf<List<OnlineDevice>>(emptyList())
         private set
@@ -221,217 +239,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
         mainHandler.postDelayed(periodicAccessPointProbe, ACCESS_POINT_PROBE_INTERVAL_MS)
     }
 
-    fun loadCaptcha() {
-        val requestGeneration = captchaGeneration.incrementAndGet()
-        captchaId = ""
-        captchaImageBase64 = ""
-        captchaLoading = true
-        executor.execute {
-            runCatching { api.getCaptcha(AppConfig.BASE_URL) }
-                .onSuccess { challenge ->
-                    mainHandler.post {
-                        if (
-                            disposed.get() ||
-                            requestGeneration != captchaGeneration.get()
-                        ) return@post
-                        captchaId = challenge.id
-                        captchaImageBase64 = challenge.imageBase64
-                        captchaLoading = false
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        if (
-                            disposed.get() ||
-                            requestGeneration != captchaGeneration.get()
-                        ) return@post
-                        captchaId = ""
-                        captchaImageBase64 = ""
-                        captchaLoading = false
-                        loginError = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun loadRegistrationConfig() {
-        executor.execute {
-            runCatching { api.getRegistrationRequiresEmailVerification(AppConfig.BASE_URL) }
-                .onSuccess { required ->
-                    mainHandler.post {
-                        if (!disposed.get()) registrationRequiresEmailVerification = required
-                    }
-                }
-        }
-    }
-
-    fun clearPublicAuthState() {
-        publicAuthError = ""
-        registrationResult = null
-        passwordResetComplete = false
-    }
-
-    fun sendPublicEmailCode(
-        email: String,
-        purpose: String,
-        captchaCode: String,
-        onSuccess: (EmailCodeSession) -> Unit,
-    ) {
-        if (publicAuthBusy) return
-        val trimmedEmail = email.trim()
-        val submittedCaptchaId = captchaId
-        val normalizedPurpose = purpose.trim()
-        val validationError = when {
-            !trimmedEmail.matches(EMAIL_PATTERN) -> "请输入正确的邮箱地址"
-            normalizedPurpose !in setOf("register", "reset_password") -> "邮箱验证码用途不正确"
-            submittedCaptchaId.isBlank() || captchaCode.isBlank() -> "请输入图片验证码"
-            else -> null
-        }
-        if (validationError != null) {
-            publicAuthError = validationError
-            if (submittedCaptchaId.isBlank()) loadCaptcha()
-            return
-        }
-        publicAuthBusy = true
-        publicAuthError = ""
-        executor.execute {
-            runCatching {
-                api.sendEmailCode(
-                    baseUrl = AppConfig.BASE_URL,
-                    email = trimmedEmail,
-                    purpose = normalizedPurpose,
-                    captchaId = submittedCaptchaId,
-                    captchaCode = captchaCode,
-                )
-            }.onSuccess { session ->
-                mainHandler.post {
-                    publicAuthBusy = false
-                    publicAuthError = ""
-                    onSuccess(session)
-                    loadCaptcha()
-                }
-            }.onFailure { error ->
-                mainHandler.post {
-                    publicAuthBusy = false
-                    publicAuthError = friendlyError(error)
-                    loadCaptcha()
-                }
-            }
-        }
-    }
-
-    fun registerAccount(
-        username: String,
-        callsign: String,
-        nickname: String,
-        email: String,
-        phone: String,
-        password: String,
-        confirmPassword: String,
-        sessionId: String,
-        emailCode: String,
-        onSuccess: (RegistrationResult) -> Unit,
-    ) {
-        if (publicAuthBusy) return
-        val trimmedUsername = username.trim()
-        val normalizedCallsign = callsign.trim().uppercase()
-        val trimmedEmail = email.trim()
-        val trimmedPhone = phone.trim()
-        val validationError = when {
-            !trimmedUsername.matches(USERNAME_PATTERN) -> "用户名必须是 3-20 位字母、数字或下划线"
-            !normalizedCallsign.matches(CALLSIGN_PATTERN) -> "呼号格式不正确，应以字母开头，3-10 个字符"
-            !trimmedEmail.matches(EMAIL_PATTERN) -> "请输入正确的邮箱地址"
-            trimmedPhone.isNotBlank() && !trimmedPhone.matches(PHONE_PATTERN) -> "手机号格式不正确"
-            password.length < 6 -> "密码长度至少 6 位"
-            password != confirmPassword -> "两次输入的密码不一致"
-            registrationRequiresEmailVerification && (sessionId.isBlank() || emailCode.isBlank()) -> "请先获取并填写邮箱验证码"
-            else -> null
-        }
-        if (validationError != null) {
-            publicAuthError = validationError
-            return
-        }
-        publicAuthBusy = true
-        publicAuthError = ""
-        registrationResult = null
-        executor.execute {
-            runCatching {
-                api.register(
-                    baseUrl = AppConfig.BASE_URL,
-                    username = trimmedUsername,
-                    password = password,
-                    callsign = normalizedCallsign,
-                    phone = trimmedPhone,
-                    nickname = nickname.trim().ifBlank { trimmedUsername },
-                    email = trimmedEmail,
-                    sessionId = if (registrationRequiresEmailVerification) sessionId else "",
-                    emailCode = if (registrationRequiresEmailVerification) emailCode else "",
-                )
-            }.onSuccess { result ->
-                mainHandler.post {
-                    publicAuthBusy = false
-                    publicAuthError = ""
-                    registrationResult = result
-                    onSuccess(result)
-                }
-            }.onFailure { error ->
-                mainHandler.post {
-                    publicAuthBusy = false
-                    publicAuthError = friendlyError(error)
-                }
-            }
-        }
-    }
-
-    fun resetPassword(
-        sessionId: String,
-        emailCode: String,
-        newPassword: String,
-        confirmPassword: String,
-        onSuccess: () -> Unit,
-    ) {
-        if (publicAuthBusy) return
-        val validationError = when {
-            sessionId.isBlank() -> "请先获取邮箱验证码"
-            emailCode.isBlank() -> "请输入邮箱验证码"
-            newPassword.length < 6 -> "新密码长度至少 6 位"
-            newPassword != confirmPassword -> "两次输入的密码不一致"
-            else -> null
-        }
-        if (validationError != null) {
-            publicAuthError = validationError
-            return
-        }
-        publicAuthBusy = true
-        publicAuthError = ""
-        passwordResetComplete = false
-        executor.execute {
-            runCatching { api.resetPassword(AppConfig.BASE_URL, sessionId, emailCode, newPassword) }
-                .onSuccess {
-                    mainHandler.post {
-                        publicAuthBusy = false
-                        publicAuthError = ""
-                        passwordResetComplete = true
-                        onSuccess()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        publicAuthBusy = false
-                        publicAuthError = friendlyError(error)
-                    }
-                }
-        }
-    }
-
     fun login(username: String, password: String, captchaCode: String) {
         if (loginBusy) return
-        if (captchaId.isBlank() || captchaCode.isBlank()) {
+        if (publicAuth.captchaId.isBlank() || captchaCode.isBlank()) {
             loginError = "请输入图片验证码"
-            if (captchaId.isBlank()) loadCaptcha()
+            if (publicAuth.captchaId.isBlank()) publicAuth.loadCaptcha()
             return
         }
-        val submittedCaptchaId = captchaId
+        val submittedCaptchaId = publicAuth.captchaId
         loginBusy = true
         loginError = ""
         executor.execute {
@@ -439,13 +254,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 .onSuccess { session ->
                     mainHandler.post {
                         user = session.user
+                        dashboard = dashboardStore.load(session.user.id) ?: DashboardData()
                         authenticated = true
                         loginBusy = false
                         selectedGroupId = sessionStore.selectedGroupId(
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
-                        page = if (session.user.isApproved) AppPage.RADIO else AppPage.DASHBOARD
+                        page = authenticatedStartPage(session.user.isApproved)
                         manualRadioDisconnect = false
                         if (session.user.isApproved) loadCachedRadioMessages()
                     }
@@ -459,13 +275,17 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     mainHandler.post {
                         loginBusy = false
                         loginError = friendlyError(error)
-                        loadCaptcha()
+                        publicAuth.loadCaptcha()
                     }
                 }
         }
     }
 
     fun logout() {
+        tools.reset()
+        refreshAllCoordinator.cancel()
+        invalidateBackgroundRequests()
+        contentLoading = false
         radioConnectionGeneration.incrementAndGet()
         preparingRadioConnection.set(false)
         pendingConnection = null
@@ -474,17 +294,13 @@ class AppController(application: Application) : AndroidViewModel(application), R
         executor.execute { api.logout() }
         authenticated = false
         user = null
+        dashboard = DashboardData()
         devices = emptyList()
         groups = emptyList()
-        groupSearchResults = emptyList()
-        managedGroupDevices = emptyList()
-        managedGroupId = null
-        defaultDeviceGroupId = null
-        devicePasswordInfo = null
-        resetDeviceBinding()
-        deviceConfig = emptyMap()
-        deviceConfigDeviceId = null
-        records = emptyList()
+        deviceManagement.reset()
+        groupManagement.reset()
+        profile.reset()
+        publicAuth.reset()
         onlineDevices = emptyList()
         radioMessages.clear()
         displayedRadioMessageGroupId = null
@@ -492,28 +308,23 @@ class AppController(application: Application) : AndroidViewModel(application), R
         publicProfiles = emptyMap()
         loadingPublicProfiles.clear()
         playingMessageId = null
-        clearPublicAuthState()
         page = AppPage.RADIO
     }
 
     fun navigate(target: AppPage) {
-        if (target in APPROVED_PAGES && user?.isApproved != true) {
+        if (target in APPROVAL_REQUIRED_PAGES && user?.isApproved != true) {
             notice = "账号审核通过后才能使用该功能"
             return
         }
         page = target
         when (target) {
-            AppPage.DEVICES, AppPage.GROUPS, AppPage.DASHBOARD -> refreshAll()
+            AppPage.DEVICES, AppPage.GROUPS, AppPage.PROFILE -> refreshAll()
             AppPage.RADIO -> {
                 loadCachedRadioMessages()
                 refreshRadioData()
             }
             else -> Unit
         }
-    }
-
-    fun goBack() {
-        page = AppPage.DASHBOARD
     }
 
     fun clearNotice() {
@@ -526,65 +337,81 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun refreshAll() {
         if (api.currentSession() == null) return
-        mainHandler.post { contentLoading = true }
-        // Capture fallback values on the calling (main) thread before submitting
-        val fallbackDevices = devices
-        val fallbackGroups  = groups
-        val fallbackTrend   = dashboard.communicationTrend
-        // Submit all six requests concurrently; collect when every future resolves
-        val fDevices   = CompletableFuture.supplyAsync({ runCatching(api::getDevices).getOrDefault(fallbackDevices) }, executor)
-        val fGroups    = CompletableFuture.supplyAsync({ runCatching(api::getGroups).getOrDefault(fallbackGroups) }, executor)
-        val fDefGroup  = CompletableFuture.supplyAsync({ runCatching(api::getDefaultDeviceGroup) }, executor)
-        val fStats     = CompletableFuture.supplyAsync({ runCatching(api::getCommunicationStats).getOrNull() }, executor)
-        val fTrend     = CompletableFuture.supplyAsync({ runCatching(api::getCommunicationTrend).getOrDefault(fallbackTrend) }, executor)
-        val fMe        = CompletableFuture.supplyAsync({ runCatching(api::getMe).getOrNull() }, executor)
-        CompletableFuture.allOf(fDevices, fGroups, fDefGroup, fStats, fTrend, fMe)
-            .thenRunAsync({
-                val loadedDevices            = fDevices.join()
-                val loadedGroups             = fGroups.join()
-                val loadedDefaultDeviceGroup = fDefGroup.join()
-                val stats                    = fStats.join()
-                val communicationTrend       = fTrend.join()
-                val refreshedUser            = fMe.join()
+        val generation = refreshAllCoordinator.request() ?: return
+        contentLoading = true
+        startRefreshAll(generation)
+    }
+
+    private fun startRefreshAll(generation: Int) {
+        if (disposed.get() || api.currentSession() == null) {
+            refreshAllCoordinator.cancel()
+            contentLoading = false
+            return
+        }
+        appDataRefresher.refresh(
+            AppDataFallback(
+                devices = devices,
+                groups = groups,
+                trend = dashboard.communicationTrend,
+            ),
+        ).whenComplete { snapshot, error ->
                 mainHandler.post {
-                    val previousGroupId = selectedGroupId
-                    devices = loadedDevices
-                    groups  = loadedGroups
-                    if (loadedDefaultDeviceGroup.isSuccess) {
-                        defaultDeviceGroupId = loadedDefaultDeviceGroup.getOrNull()
+                    if (disposed.get()) return@post
+                    val decision = refreshAllCoordinator.complete(generation)
+                    if (decision.applyResults && api.currentSession() != null && error == null && snapshot != null) {
+                        val previousGroupId = selectedGroupId
+                        devices = snapshot.devices
+                        groups = snapshot.groups
+                        if (snapshot.defaultDeviceGroup.isSuccess) {
+                            deviceManagement.applyDefaultGroup(snapshot.defaultDeviceGroup.getOrNull())
+                        }
+                        snapshot.user?.let {
+                            user = it
+                            api.acceptCurrentUser(it)
+                            selectedGroupId = selectedGroupId
+                                .takeIf { id -> snapshot.groups.any { group -> group.id == id } }
+                                ?: it.lastGroupId.takeIf { id -> snapshot.groups.any { group -> group.id == id } }
+                                ?: snapshot.groups.firstOrNull { group -> group.id == 999 }?.id
+                                ?: snapshot.groups.firstOrNull()?.id
+                                ?: 999
+                        }
+                        dashboard = DashboardData(
+                            devices = snapshot.devices.size,
+                            onlineDevices = snapshot.devices.count(Device::online),
+                            groups = snapshot.groups.size,
+                            communications = snapshot.stats?.totalCount ?: dashboard.communications,
+                            communicationDurationMs = snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs,
+                            communicationTrend = snapshot.trend,
+                        )
+                        user?.id?.let { dashboardStore.save(it, dashboard) }
+                        if (selectedGroupId != previousGroupId && page == AppPage.RADIO) {
+                            loadCachedRadioMessages()
+                            refreshRadioData()
+                        }
                     }
-                    refreshedUser?.let {
-                        user = it
-                        selectedGroupId = selectedGroupId.takeIf { id -> loadedGroups.any { group -> group.id == id } }
-                            ?: it.lastGroupId.takeIf { id -> loadedGroups.any { group -> group.id == id } }
-                            ?: loadedGroups.firstOrNull { group -> group.id == 999 }?.id
-                            ?: loadedGroups.firstOrNull()?.id
-                            ?: 999
-                    }
-                    dashboard = DashboardData(
-                        devices = loadedDevices.size,
-                        onlineDevices = loadedDevices.count(Device::online),
-                        groups = loadedGroups.size,
-                        communications = stats?.totalCount ?: dashboard.communications,
-                        communicationDurationMs = stats?.totalDurationMs ?: dashboard.communicationDurationMs,
-                        communicationTrend = communicationTrend,
-                    )
-                    contentLoading = false
-                    if (selectedGroupId != previousGroupId && page == AppPage.RADIO) {
-                        loadCachedRadioMessages()
-                        refreshRadioData()
+                    val nextGeneration = decision.nextGeneration
+                    if (nextGeneration != null && api.currentSession() != null) {
+                        startRefreshAll(nextGeneration)
+                    } else if (decision.isIdle || api.currentSession() == null) {
+                        contentLoading = false
                     }
                 }
-            }, executor)
+            }
     }
 
     fun refreshGroupOnlineCounts() {
+        val userId = user?.id ?: return
         if (api.currentSession() == null || !syncingGroupCounts.compareAndSet(false, true)) return
+        val generation = groupCountsGeneration.incrementAndGet()
         executor.execute {
             try {
                 val stats = runCatching(api::getGroupStats).getOrDefault(emptyMap())
                 if (stats.isEmpty()) return@execute
                 mainHandler.post {
+                    if (
+                        disposed.get() || generation != groupCountsGeneration.get() ||
+                        user?.id != userId || !authenticated
+                    ) return@post
                     groups = groups.map { group ->
                         stats[group.id]?.let { (online, total) ->
                             group.copy(onlineCount = online, totalCount = total)
@@ -592,13 +419,15 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     }
                 }
             } finally {
-                syncingGroupCounts.set(false)
+                if (generation == groupCountsGeneration.get()) syncingGroupCounts.set(false)
             }
         }
     }
 
     fun discoverAccessPoints() {
+        val userId = user?.id ?: return
         if (api.currentSession() == null || selectingAccessPoint) return
+        val generation = accessPointDiscoveryGeneration.incrementAndGet()
         selectingAccessPoint = true
         executor.execute {
             val discovered = runCatching(api::getAccessPoints).getOrElse {
@@ -606,6 +435,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
             }
             if (discovered.isEmpty()) {
                 mainHandler.post {
+                    if (
+                        disposed.get() || generation != accessPointDiscoveryGeneration.get() ||
+                        user?.id != userId || !authenticated
+                    ) return@post
                     selectingAccessPoint = false
                     notice = "服务端没有发布可用的 UDP 入口"
                 }
@@ -619,6 +452,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 selection.selected
             }
             mainHandler.post {
+                if (
+                    disposed.get() || generation != accessPointDiscoveryGeneration.get() ||
+                    user?.id != userId || !authenticated
+                ) return@post
                 accessPoints = discovered
                 accessPointProbes = selection.probes
                 selectedAccessPoint = selected
@@ -752,10 +589,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         if (serviceBinder?.togglePlayback(message) != true) notice = "无法播放这条语音"
     }
 
-    fun toggleRecordPlayback(record: CommunicationRecord) {
-        toggleVoicePlayback(recordToMessage(record, user?.username.orEmpty()))
-    }
-
     fun publicProfile(username: String): User? = publicProfiles[username.lowercase()]
 
     fun toggleMuted() {
@@ -766,6 +599,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun switchGroup(group: Group) {
         if (group.id == selectedGroupId) return
+        val userId = user?.id ?: return
+        val switchGeneration = groupSwitchGeneration.incrementAndGet()
+        radioDataGeneration.incrementAndGet()
+        syncingRadioData.set(false)
         val previousGroupId = selectedGroupId
         selectedGroupId = group.id
         user?.let { sessionStore.setSelectedGroupId(it.id, group.id) }
@@ -791,7 +628,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         remoteMessages
                     }
                     mainHandler.post {
-                        if (selectedGroupId != group.id) return@post
+                        if (
+                            disposed.get() || switchGeneration != groupSwitchGeneration.get() ||
+                            selectedGroupId != group.id || user?.id != userId || !authenticated
+                        ) return@post
                         replaceRadioMessages(cachedMessages, preserveUnsynced = true)
                         onlineDevices = online
                         contentLoading = false
@@ -801,7 +641,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 }
                 .onFailure { error ->
                     mainHandler.post {
-                        if (selectedGroupId != group.id) return@post
+                        if (
+                            disposed.get() || switchGeneration != groupSwitchGeneration.get() ||
+                            selectedGroupId != group.id || user?.id != userId || !authenticated
+                        ) return@post
                         selectedGroupId = previousGroupId
                         user?.let { sessionStore.setSelectedGroupId(it.id, previousGroupId) }
                         serviceBinder?.setGroup(previousGroupId)
@@ -815,7 +658,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     fun refreshRadioData() {
+        val userId = user?.id ?: return
         if (api.currentSession() == null || !syncingRadioData.compareAndSet(false, true)) return
+        val generation = radioDataGeneration.incrementAndGet()
         val groupId = selectedGroupId
         val accountKey = messageAccountKey()
         val accountUsername = user?.username.orEmpty()
@@ -833,13 +678,16 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     remoteMessages
                 }
                 mainHandler.post {
-                    if (groupId != selectedGroupId) return@post
+                    if (
+                        disposed.get() || generation != radioDataGeneration.get() ||
+                        groupId != selectedGroupId || user?.id != userId || !authenticated
+                    ) return@post
                     replaceRadioMessages(cachedMessages, preserveUnsynced = true)
                     onlineDevices = online
                 }
                 preloadPublicProfiles(history.map(CommunicationRecord::username) + online.map(OnlineDevice::username))
             } finally {
-                syncingRadioData.set(false)
+                if (generation == radioDataGeneration.get()) syncingRadioData.set(false)
             }
         }
     }
@@ -863,112 +711,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     refreshAll()
                 }
                 .onFailure { error -> mainHandler.post { notice = friendlyError(error) } }
-        }
-    }
-
-    fun refreshRecords() {
-        if (api.currentSession() == null) return
-        contentLoading = true
-        executor.execute {
-            runCatching { api.getCommunicationRecords() }
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        records = loaded
-                        contentLoading = false
-                    }
-                    preloadPublicProfiles(loaded.map(CommunicationRecord::username))
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        contentLoading = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun updateProfile(
-        nickname: String,
-        phone: String,
-        address: String,
-        introduction: String,
-        birthday: String = "",
-        sex: Int = 0,
-        dmrid: Int = 0,
-        mdcid: String = "",
-        alarmMsg: Boolean = false,
-    ) {
-        contentLoading = true
-        executor.execute {
-            runCatching {
-                api.updateProfile(nickname, phone, address, introduction, birthday, sex, dmrid, mdcid, alarmMsg)
-            }
-                .onSuccess { updated ->
-                    mainHandler.post {
-                        user = updated
-                        contentLoading = false
-                        notice = "个人资料已保存"
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        contentLoading = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun uploadAvatar(fileBytes: ByteArray, fileName: String, onSuccess: () -> Unit = {}) {
-        contentLoading = true
-        executor.execute {
-            runCatching {
-                val url = api.uploadFile(fileBytes, fileName, "avatar")
-                api.updateProfile(
-                    nickname = user?.nickname ?: "",
-                    phone = user?.phone ?: "",
-                    address = user?.address ?: "",
-                    introduction = user?.introduction ?: "",
-                    birthday = user?.birthday ?: "",
-                    sex = user?.sex ?: 0,
-                    dmrid = user?.dmrId ?: 0,
-                    mdcid = user?.mdcId ?: "",
-                    alarmMsg = user?.alarmMsg ?: false,
-                )
-            }
-                .onSuccess { updated ->
-                    mainHandler.post {
-                        user = updated
-                        contentLoading = false
-                        notice = "头像已更新"
-                        onSuccess()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        contentLoading = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun changePassword(oldPassword: String, newPassword: String) {
-        contentLoading = true
-        executor.execute {
-            runCatching { api.changePassword(oldPassword, newPassword) }
-                .onSuccess {
-                    mainHandler.post {
-                        contentLoading = false
-                        notice = "密码已修改"
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        contentLoading = false
-                        notice = friendlyError(error)
-                    }
-                }
         }
     }
 
@@ -1007,439 +749,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         }
                 }
             }
-        }
-    }
-
-    fun searchGroups(keyword: String) {
-        val query = keyword.trim()
-        if (query.isBlank()) {
-            notice = "请输入群组 ID 或名称"
-            return
-        }
-        managementBusy = true
-        executor.execute {
-            runCatching { api.searchGroups(query) }
-                .onSuccess { results ->
-                    mainHandler.post {
-                        groupSearchResults = results
-                        managementBusy = false
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun clearGroupSearch() {
-        groupSearchResults = emptyList()
-    }
-
-    fun saveGroup(
-        editing: Group?,
-        name: String,
-        type: Int,
-        password: String,
-        note: String,
-        onSuccess: () -> Unit = {},
-    ) {
-        val trimmedName = name.trim()
-        if (trimmedName.isBlank()) {
-            notice = "请输入群组名称"
-            return
-        }
-        if (editing == null && type == 2 && password.isBlank()) {
-            notice = "私有群组必须设置加入密码"
-            return
-        }
-        managementBusy = true
-        executor.execute {
-            val operation = if (editing == null) {
-                runCatching { api.createGroup(trimmedName, type, password, note.trim()) }
-            } else {
-                runCatching {
-                    api.updateGroup(
-                        groupId = editing.id,
-                        name = trimmedName,
-                        type = type,
-                        password = password,
-                        note = note.trim(),
-                    )
-                }
-            }
-            operation
-                .onSuccess {
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = if (editing == null) "群组已创建" else "群组设置已保存"
-                        onSuccess()
-                        refreshAll()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun setGroupEnabled(group: Group, enabled: Boolean) {
-        managementBusy = true
-        executor.execute {
-            runCatching { api.updateGroup(group.id, status = if (enabled) 1 else 0) }
-                .onSuccess {
-                    mainHandler.post {
-                        managementBusy = false
-                        groups = groups.map { current ->
-                            if (current.id == group.id) current.copy(status = if (enabled) 1 else 0) else current
-                        }
-                        notice = if (enabled) "群组已启用" else "群组已停用"
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun deleteGroup(group: Group, onSuccess: () -> Unit = {}) {
-        managementBusy = true
-        executor.execute {
-            runCatching { api.deleteGroup(group.id) }
-                .onSuccess {
-                    mainHandler.post {
-                        managementBusy = false
-                        groups = groups.filterNot { it.id == group.id }
-                        notice = "群组已删除"
-                        onSuccess()
-                        refreshAll()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun loadGroupDevices(groupId: Int) {
-        managedGroupId = groupId
-        managedGroupDevices = emptyList()
-        managementBusy = true
-        executor.execute {
-            runCatching { api.getGroupDevices(groupId) }
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        if (managedGroupId == groupId) managedGroupDevices = loaded
-                        managementBusy = false
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun closeGroupDevices() {
-        managedGroupId = null
-        managedGroupDevices = emptyList()
-    }
-
-    fun updateGroupDeviceCommControl(
-        groupId: Int,
-        device: Device,
-        disableSend: Boolean = device.disableSend,
-        disableReceive: Boolean = device.disableReceive,
-    ) {
-        managementBusy = true
-        executor.execute {
-            runCatching {
-                api.updateGroupDeviceCommControl(groupId, device.id, disableSend, disableReceive)
-            }.onSuccess { (sendDisabled, receiveDisabled) ->
-                mainHandler.post {
-                    managementBusy = false
-                    managedGroupDevices = managedGroupDevices.map { current ->
-                        if (current.id == device.id) {
-                            current.copy(disableSend = sendDisabled, disableReceive = receiveDisabled)
-                        } else {
-                            current
-                        }
-                    }
-                }
-            }.onFailure { error ->
-                mainHandler.post {
-                    managementBusy = false
-                    notice = friendlyError(error)
-                }
-            }
-        }
-    }
-
-    fun kickGroupDevice(groupId: Int, device: Device) {
-        managementBusy = true
-        executor.execute {
-            runCatching { api.kickGroupDevice(groupId, device.id) }
-                .onSuccess {
-                    mainHandler.post {
-                        managementBusy = false
-                        managedGroupDevices = managedGroupDevices.filterNot { it.id == device.id }
-                        notice = "设备已移出群组"
-                        refreshAll()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun setDefaultDeviceGroup(groupId: Int?) {
-        managementBusy = true
-        executor.execute {
-            runCatching { api.setDefaultDeviceGroup(groupId) }
-                .onSuccess { saved ->
-                    mainHandler.post {
-                        defaultDeviceGroupId = saved
-                        managementBusy = false
-                        notice = if (saved == null) "已清除新设备默认群组" else "新设备默认群组已保存"
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun updateDevice(
-        device: Device,
-        name: String? = null,
-        disableSend: Boolean? = null,
-        disableReceive: Boolean? = null,
-        onSuccess: () -> Unit = {},
-    ) {
-        managementBusy = true
-        executor.execute {
-            runCatching { api.updateDevice(device.id, name, disableSend, disableReceive) }
-                .onSuccess {
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = "设备设置已保存"
-                        onSuccess()
-                        refreshAll()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun switchDeviceGroup(device: Device, group: Group, password: String = "", onSuccess: () -> Unit = {}) {
-        if (device.groupId == group.id) {
-            onSuccess()
-            return
-        }
-        managementBusy = true
-        executor.execute {
-            runCatching { api.switchDeviceGroup(device.id, group.id, password) }
-                .onSuccess {
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = "设备已切换到 ${group.name}"
-                        onSuccess()
-                        refreshAll()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun deleteDevice(device: Device, onSuccess: () -> Unit = {}) {
-        managementBusy = true
-        executor.execute {
-            runCatching { api.deleteDevice(device.id) }
-                .onSuccess {
-                    mainHandler.post {
-                        managementBusy = false
-                        devices = devices.filterNot { it.id == device.id }
-                        notice = "设备已删除"
-                        onSuccess()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun loadDeviceConfig(deviceId: Int) {
-        deviceConfigDeviceId = deviceId
-        deviceConfig = emptyMap()
-        managementBusy = true
-        executor.execute {
-            runCatching { api.getDeviceConfig(deviceId) }
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        if (deviceConfigDeviceId == deviceId) deviceConfig = loaded
-                        managementBusy = false
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun saveDeviceConfig(device: Device, config: Map<String, String>, onSuccess: () -> Unit = {}) {
-        managementBusy = true
-        executor.execute {
-            runCatching {
-                api.updateDeviceConfig(device.id, config)
-                if (device.online) api.syncDeviceConfig(device.id) else "配置已保存，设备上线后自动同步"
-            }.onSuccess { message ->
-                mainHandler.post {
-                    deviceConfig = config
-                    managementBusy = false
-                    notice = message
-                    onSuccess()
-                }
-            }.onFailure { error ->
-                mainHandler.post {
-                    managementBusy = false
-                    notice = friendlyError(error)
-                }
-            }
-        }
-    }
-
-    fun closeDeviceConfig() {
-        deviceConfigDeviceId = null
-        deviceConfig = emptyMap()
-    }
-
-    fun loadDevicePassword() {
-        managementBusy = true
-        executor.execute {
-            runCatching(api::getDevicePassword)
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        devicePasswordInfo = loaded
-                        managementBusy = false
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun regenerateDevicePassword() {
-        managementBusy = true
-        executor.execute {
-            runCatching(api::regenerateDevicePassword)
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        devicePasswordInfo = loaded
-                        managementBusy = false
-                        notice = "设备密码已刷新，旧密码已失效"
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun resetDeviceBinding() {
-        deviceBindPreview = null
-        deviceBindResult = null
-    }
-
-    fun lookupDeviceBindCode(dynamicCode: String) {
-        if (!dynamicCode.matches(Regex("\\d{6}"))) {
-            notice = "请输入 6 位动态码"
-            return
-        }
-        managementBusy = true
-        executor.execute {
-            runCatching { api.bindDevice(dynamicCode) }
-                .onSuccess { preview ->
-                    mainHandler.post {
-                        deviceBindPreview = preview
-                        deviceBindResult = null
-                        managementBusy = false
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
-        }
-    }
-
-    fun submitDeviceBinding(ssid: Int?, replaceDeviceId: Int?) {
-        val preview = deviceBindPreview ?: return
-        if (replaceDeviceId == null && (ssid == null || ssid !in 1..254 || ssid in 100..105)) {
-            notice = "请选择可用 SSID"
-            return
-        }
-        managementBusy = true
-        executor.execute {
-            runCatching { api.submitDeviceConfig(preview.deviceMac, ssid, replaceDeviceId) }
-                .onSuccess { result ->
-                    mainHandler.post {
-                        deviceBindResult = result
-                        managementBusy = false
-                        refreshAll()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        managementBusy = false
-                        notice = friendlyError(error)
-                    }
-                }
         }
     }
 
@@ -1486,6 +795,13 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     override fun onCleared() {
         if (!disposed.compareAndSet(false, true)) return
+        refreshAllCoordinator.cancel()
+        invalidateBackgroundRequests()
+        tools.close()
+        deviceManagement.close()
+        groupManagement.close()
+        profile.close()
+        publicAuth.close()
         mainHandler.removeCallbacks(periodicRadioSync)
         radioConnectionGeneration.incrementAndGet()
         pendingConnection = null
@@ -1511,6 +827,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             savedSession
         }
         user = stored.user
+        dashboard = dashboardStore.load(stored.user.id) ?: DashboardData()
         executor.execute {
             runCatching(api::restoreAndValidate)
                 .onSuccess { session ->
@@ -1522,7 +839,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
-                        page = if (session.user.isApproved) AppPage.RADIO else AppPage.DASHBOARD
+                        page = authenticatedStartPage(session.user.isApproved)
                         manualRadioDisconnect = false
                         if (session.user.isApproved) loadCachedRadioMessages()
                     }
@@ -1636,6 +953,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     private fun preloadPublicProfiles(usernames: Collection<String>) {
+        val userId = user?.id ?: return
         val pending = usernames.asSequence()
             .map(String::trim)
             .filter(String::isNotBlank)
@@ -1654,10 +972,24 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 .thenAccept { profile ->
                     loadingPublicProfiles.remove(key)
                     if (profile != null) {
-                        mainHandler.post { publicProfiles = publicProfiles + (key to profile) }
+                        mainHandler.post {
+                            if (!disposed.get() && authenticated && user?.id == userId) {
+                                publicProfiles = publicProfiles + (key to profile)
+                            }
+                        }
                     }
                 }
         }
+    }
+
+    private fun invalidateBackgroundRequests() {
+        groupCountsGeneration.incrementAndGet()
+        accessPointDiscoveryGeneration.incrementAndGet()
+        radioDataGeneration.incrementAndGet()
+        groupSwitchGeneration.incrementAndGet()
+        syncingGroupCounts.set(false)
+        syncingRadioData.set(false)
+        selectingAccessPoint = false
     }
 
     private fun parseServerTime(value: String): Long = runCatching {
@@ -1674,12 +1006,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private const val RADIO_SYNC_INTERVAL_MS = 20_000L
         private const val ACCESS_POINT_PROBE_INTERVAL_MS = 10_000L
         private const val MAX_MESSAGES = 200
-        private val USERNAME_PATTERN = Regex("^[a-zA-Z0-9_]{3,20}$")
-        private val CALLSIGN_PATTERN = Regex("^[A-Z][A-Z0-9]{2,9}$")
-        private val EMAIL_PATTERN = Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
-        private val PHONE_PATTERN = Regex("^1[3-9]\\d{9}$")
-        private val APPROVED_PAGES = setOf(AppPage.RADIO, AppPage.DEVICES, AppPage.GROUPS)
-
         fun formatDuration(milliseconds: Long): String {
             val totalSeconds = milliseconds / 1_000
             val hours = totalSeconds / 3_600

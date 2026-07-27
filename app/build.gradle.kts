@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+val releaseSigning = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.isFile) propertiesFile.inputStream().use(::load)
+}
+val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+    .all { !releaseSigning.getProperty(it).isNullOrBlank() }
 
 android {
     namespace = "cn.silverdragon.draarl"
@@ -15,25 +24,27 @@ android {
         applicationId = "cn.silverdragon.draarl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0-beta7"
+        versionCode = 5
+        versionName = "1.0-beta8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("../draarl-release.jks")
-            storePassword = "draarl123"
-            keyAlias = "draarl"
-            keyPassword = "draarl123"
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             optimization {
                 enable = false
             }
@@ -63,6 +74,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.concentus)
     testImplementation(libs.junit)
+    testImplementation(libs.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

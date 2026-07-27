@@ -111,6 +111,7 @@ class SecureSessionStore(context: Context) {
         .put("nickname", user.nickname)
         .put("callsign", user.callsign)
         .put("email", user.email)
+        .put("email_verified", user.emailVerified)
         .put("role", user.role)
         .put("approval_status", user.approvalStatus)
         .put("review_note", user.reviewNote)
@@ -127,6 +128,7 @@ class SecureSessionStore(context: Context) {
         nickname = json.optString("nickname"),
         callsign = json.optString("callsign"),
         email = json.optString("email"),
+        emailVerified = json.optBoolean("email_verified"),
         role = json.optString("role", "user"),
         approvalStatus = json.optInt("approval_status"),
         reviewNote = json.optString("review_note"),
