@@ -30,9 +30,6 @@ internal val APPROVAL_REQUIRED_PAGES = setOf(
     AppPage.LOCATION_MAP,
 )
 
-internal fun authenticatedStartPage(isApproved: Boolean): AppPage =
-    if (isApproved) AppPage.RADIO else AppPage.PROFILE
-
 internal fun pagePosition(page: AppPage): Int {
     val mainIndex = MAIN_NAVIGATION_PAGES.indexOf(page)
     if (mainIndex >= 0) return mainIndex

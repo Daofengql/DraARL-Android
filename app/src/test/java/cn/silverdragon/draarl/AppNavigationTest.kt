@@ -15,10 +15,9 @@ class AppNavigationTest {
     }
 
     @Test
-    fun `unapproved users start on profile`() {
-        assertEquals(AppPage.PROFILE, authenticatedStartPage(isApproved = false))
-        assertEquals(AppPage.RADIO, authenticatedStartPage(isApproved = true))
+    fun `restricted pages remain behind approval checks`() {
         assertTrue(AppPage.RADIO_PRESETS in APPROVAL_REQUIRED_PAGES)
+        assertTrue(AppPage.RADIO in APPROVAL_REQUIRED_PAGES)
     }
 
     @Test

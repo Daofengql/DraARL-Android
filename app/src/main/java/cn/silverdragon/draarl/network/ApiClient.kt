@@ -1,5 +1,6 @@
 package cn.silverdragon.draarl.network
 
+import cn.silverdragon.draarl.auth.accountLoginRejection
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.CaptchaChallenge
 import cn.silverdragon.draarl.data.CommunicationRecord
@@ -104,6 +105,9 @@ class ApiClient(
             refreshExpiresAt = now + data.optLong("refresh_expires_in", 1_209_600L) * 1_000L,
             user = parseUser(data.requireObject("user"), normalizedUrl),
         )
+        accountLoginRejection(session.user)?.let { message ->
+            throw ApiException(403, message)
+        }
         updateSession(session)
         return session
     }
@@ -199,8 +203,12 @@ class ApiClient(
     }
 
     fun restoreAndValidate(): Session {
-        val session = currentSession() ?: throw ApiException(401, "登录状态不存在")
-        val user = getMe()
+        currentSession() ?: throw ApiException(401, "登录状态不存在")
+        val user = getMe(updateSession = false)
+        accountLoginRejection(user)?.let { message ->
+            updateSession(null)
+            throw ApiException(403, message)
+        }
         return currentSession()?.copy(user = user)?.also(::updateSession)
             ?: throw ApiException(401, "登录状态已失效")
     }

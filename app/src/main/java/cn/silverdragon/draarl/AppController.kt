@@ -272,7 +272,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
-                        page = authenticatedStartPage(session.user.isApproved)
+                        page = AppPage.RADIO
                         manualRadioDisconnect = false
                         syncPttOverlay()
                         if (session.user.isApproved) loadCachedRadioMessages()
@@ -882,7 +882,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
-                        page = authenticatedStartPage(session.user.isApproved)
+                        page = AppPage.RADIO
                         manualRadioDisconnect = false
                         syncPttOverlay()
                         if (session.user.isApproved) loadCachedRadioMessages()
@@ -893,13 +893,17 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         if (session.user.isApproved) refreshRadioData()
                     }
                 }
-                .onFailure {
+                .onFailure { error ->
                     mainHandler.post {
                         initializing = false
                         authenticated = false
                         user = null
                         syncPttOverlay()
-                        loginError = "登录状态已过期，请重新登录"
+                        loginError = if (error is ApiException && error.code == 403) {
+                            friendlyError(error)
+                        } else {
+                            "登录状态已过期，请重新登录"
+                        }
                     }
                 }
         }
