@@ -49,6 +49,11 @@ class RadioAudioCache(
             ?.forEach(File::delete)
     }
 
+    @Synchronized
+    fun sizeBytes(): Long = directory.listFiles { file ->
+        file.isFile && file.extension == CACHE_EXTENSION
+    }?.sumOf(File::length) ?: 0L
+
     private fun trimToSize() {
         val files = directory.listFiles { file -> file.isFile && file.extension == CACHE_EXTENSION }
             ?.sortedBy(File::lastModified)

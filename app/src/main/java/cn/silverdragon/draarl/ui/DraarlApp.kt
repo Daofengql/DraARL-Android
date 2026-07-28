@@ -43,6 +43,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,11 +59,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.MAIN_NAVIGATION_PAGES
 import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
+import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.pagePosition
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
@@ -75,11 +80,27 @@ import cn.silverdragon.draarl.ui.screens.ProfileScreen
 import cn.silverdragon.draarl.ui.screens.RadioScreen
 import cn.silverdragon.draarl.ui.screens.RadioPresetsScreen
 import cn.silverdragon.draarl.ui.screens.SettingsScreen
+import cn.silverdragon.draarl.ui.screens.StorageSettingsScreen
 import cn.silverdragon.draarl.ui.screens.SystemSettingsScreen
 import cn.silverdragon.draarl.ui.screens.ToolsScreen
 
 @Composable
 fun DraarlApp(controller: AppController) {
+    val windowSize = LocalWindowInfo.current.containerSize
+    val shortestWindowPixels = minOf(windowSize.width, windowSize.height).toFloat()
+    val appDensity = remember(shortestWindowPixels, controller.appDisplayScale) {
+        Density(
+            density = appDensityFor(shortestWindowPixels, controller.appDisplayScale),
+            fontScale = 1f,
+        )
+    }
+    CompositionLocalProvider(LocalDensity provides appDensity) {
+        DraarlAppContent(controller)
+    }
+}
+
+@Composable
+private fun DraarlAppContent(controller: AppController) {
     when {
         controller.initializing -> LoadingScreen()
         !controller.authenticated -> LoginScreen(controller)
@@ -169,6 +190,7 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.SETTINGS,
         AppPage.SYSTEM_SETTINGS,
         AppPage.ACCOUNT_SECURITY,
+        AppPage.STORAGE_SETTINGS,
         AppPage.LOCATION_MAP,
     )
 
@@ -180,12 +202,14 @@ private fun AuthenticatedApp(controller: AppController) {
             AppPage.SETTINGS,
             AppPage.SYSTEM_SETTINGS,
             AppPage.ACCOUNT_SECURITY,
+            AppPage.STORAGE_SETTINGS,
             AppPage.LOCATION_MAP,
         ),
     ) {
         when (controller.page) {
             AppPage.LOCATION_MAP -> controller.navigate(AppPage.RADIO)
             AppPage.ACCOUNT_SECURITY, AppPage.SYSTEM_SETTINGS -> controller.navigate(AppPage.SETTINGS)
+            AppPage.STORAGE_SETTINGS -> controller.navigate(AppPage.SETTINGS)
             AppPage.EDIT_PROFILE, AppPage.RADIO_PRESETS, AppPage.SETTINGS -> controller.navigate(AppPage.PROFILE)
             else -> {}
         }
@@ -197,6 +221,7 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.SETTINGS,
         AppPage.SYSTEM_SETTINGS,
         AppPage.ACCOUNT_SECURITY,
+        AppPage.STORAGE_SETTINGS,
         AppPage.LOCATION_MAP,
     )
 
@@ -273,6 +298,7 @@ private fun AuthenticatedApp(controller: AppController) {
                         AppPage.SETTINGS -> SettingsScreen(controller)
                         AppPage.SYSTEM_SETTINGS -> SystemSettingsScreen(controller)
                         AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
+                        AppPage.STORAGE_SETTINGS -> StorageSettingsScreen(controller)
                         AppPage.LOCATION_MAP -> LocationMapScreen(
                             initialLocation = mapLocation,
                             onBack = { controller.navigate(AppPage.RADIO) },
@@ -323,6 +349,7 @@ private fun navigationItem(page: AppPage): NavigationItem = when (page) {
     AppPage.SETTINGS,
     AppPage.SYSTEM_SETTINGS,
     AppPage.ACCOUNT_SECURITY,
+    AppPage.STORAGE_SETTINGS,
     AppPage.LOCATION_MAP,
     -> error("Secondary pages are not bottom navigation items")
 }

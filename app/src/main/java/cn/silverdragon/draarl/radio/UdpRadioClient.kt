@@ -60,6 +60,7 @@ class UdpRadioClient(
     @Volatile private var lastVoicePacketAt = 0L
     @Volatile private var lastSpeakerKey = ""
     @Volatile private var pttStartedAt = 0L
+    @Volatile private var transmitTimeoutSeconds = DEFAULT_TRANSMIT_TIMEOUT_SECONDS
     @Volatile private var playingMessageId: String? = null
     @Volatile private var status = RadioStatus()
     private var incomingVoiceStartedAt = 0L
@@ -72,6 +73,7 @@ class UdpRadioClient(
     private var heartbeatTask: ScheduledFuture<*>? = null
     private var watchdogTask: ScheduledFuture<*>? = null
     private var reconnectTask: ScheduledFuture<*>? = null
+    private var pttTimeoutTask: ScheduledFuture<*>? = null
 
     @Synchronized
     fun connect(config: RadioConnectionConfig) {
@@ -144,6 +146,7 @@ class UdpRadioClient(
         }
     }
 
+    @Synchronized
     fun startPtt(): Boolean {
         if (!status.connected || status.transmitting || status.speaker.isNotBlank()) return false
         stopPlayback()
@@ -167,11 +170,14 @@ class UdpRadioClient(
             return false
         }
         pttStartedAt = System.currentTimeMillis()
+        schedulePttTimeout(currentGeneration)
         return true
     }
 
+    @Synchronized
     fun stopPtt() {
         if (!status.transmitting) return
+        cancelPttTimeout()
         val currentGeneration = generation.get()
         val statusUpdated = updateStatusIfActive(currentGeneration) { it.copy(transmitting = false) }
         audioEngine.stopCapture()
@@ -230,6 +236,21 @@ class UdpRadioClient(
     }
 
     fun setMuted(muted: Boolean) = audioEngine.setMuted(muted)
+
+    @Synchronized
+    fun setTransmitTimeoutSeconds(seconds: Int) {
+        transmitTimeoutSeconds = seconds.coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
+        if (status.transmitting) schedulePttTimeout(generation.get())
+    }
+
+    fun transmitTimeoutSeconds(): Int = transmitTimeoutSeconds
+
+    fun audioCacheSizeBytes(): Long = audioCache.sizeBytes()
+
+    fun clearAudioCache() {
+        stopPlayback()
+        audioCache.clear()
+    }
 
     fun setGroup(groupId: Int) {
         desiredConfig = desiredConfig?.copy(groupId = groupId)
@@ -561,8 +582,34 @@ class UdpRadioClient(
         synchronized(taskLock) {
             heartbeatTask?.cancel(false)
             watchdogTask?.cancel(false)
+            pttTimeoutTask?.cancel(false)
             heartbeatTask = null
             watchdogTask = null
+            pttTimeoutTask = null
+        }
+    }
+
+    private fun schedulePttTimeout(expectedGeneration: Int) {
+        synchronized(taskLock) {
+            pttTimeoutTask?.cancel(false)
+            pttTimeoutTask = null
+            if (!isActive(expectedGeneration) || !status.transmitting) return
+            val remaining = transmitTimeoutSeconds * 1_000L -
+                (System.currentTimeMillis() - pttStartedAt)
+            pttTimeoutTask = scheduler.schedule(
+                {
+                    if (isActive(expectedGeneration) && status.transmitting) stopPtt()
+                },
+                remaining.coerceAtLeast(0L),
+                TimeUnit.MILLISECONDS,
+            )
+        }
+    }
+
+    private fun cancelPttTimeout() {
+        synchronized(taskLock) {
+            pttTimeoutTask?.cancel(false)
+            pttTimeoutTask = null
         }
     }
 
@@ -680,5 +727,8 @@ class UdpRadioClient(
         private const val VOICE_PACKET_DURATION_MS = 120L
         private const val WATCHDOG_INTERVAL_MS = 250L
         private const val MAX_CACHED_VOICE_BYTES = 2 * 1024 * 1024
+        private const val MIN_TRANSMIT_TIMEOUT_SECONDS = 10
+        private const val DEFAULT_TRANSMIT_TIMEOUT_SECONDS = 120
+        private const val MAX_TRANSMIT_TIMEOUT_SECONDS = 600
     }
 }

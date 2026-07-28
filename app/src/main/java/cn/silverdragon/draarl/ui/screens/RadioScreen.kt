@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,7 +51,10 @@ import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.runtime.snapshotFlow
 
 @Composable
 fun RadioScreen(
@@ -135,6 +139,17 @@ fun RadioScreen(
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
+    LaunchedEffect(controller.selectedGroupId) {
+        snapshotFlow {
+            Triple(listState.firstVisibleItemIndex, followLatest, messages.firstOrNull()?.id)
+        }
+            .distinctUntilChanged()
+            .collectLatest { (firstVisibleIndex, followsLatest, _) ->
+                if (!followsLatest && firstVisibleIndex <= 2) {
+                    controller.loadOlderRadioMessages()
+                }
+            }
+    }
     LaunchedEffect(controller.selectedGroupId, controller.radioStatus.connected) {
         if (controller.radioStatus.connected) controller.refreshRadioData()
     }
@@ -190,6 +205,13 @@ fun RadioScreen(
                                 tint = MaterialTheme.colorScheme.outline,
                             )
                             Text("暂无通联记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (controller.radioSyncError.isNotBlank()) {
+                                Text(
+                                    "记录同步暂时中断，稍后自动重试",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
                         }
                     }
                 } else {
@@ -199,6 +221,31 @@ fun RadioScreen(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        if (controller.radioHistoryLoading || controller.radioSyncError.isNotBlank()) {
+                            item(key = "radio-history-status") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (controller.radioHistoryLoading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        Text(
+                                            "正在加载更早记录",
+                                            modifier = Modifier.padding(start = 8.dp),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    } else {
+                                        Text(
+                                            "记录同步暂时中断，稍后自动重试",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
                             MessageItem(
                                 controller = controller,

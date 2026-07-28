@@ -4,6 +4,7 @@ import cn.silverdragon.draarl.auth.accountLoginRejection
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.CaptchaChallenge
 import cn.silverdragon.draarl.data.CommunicationRecord
+import cn.silverdragon.draarl.data.CommunicationRecordPage
 import cn.silverdragon.draarl.data.CommunicationStats
 import cn.silverdragon.draarl.data.DailyCommunicationStats
 import cn.silverdragon.draarl.data.Device
@@ -536,29 +537,41 @@ class ApiClient(
         }
     }
 
-    fun getCommunicationRecords(page: Int = 1, groupId: Int? = null): List<CommunicationRecord> {
+    fun getCommunicationRecords(
+        page: Int = 1,
+        pageSize: Int = 100,
+        groupId: Int? = null,
+    ): CommunicationRecordPage {
+        val safePage = page.coerceAtLeast(1)
+        val safePageSize = pageSize.coerceIn(1, 100)
         val query = buildString {
-            append("/api/comm-records?page=").append(page).append("&page_size=30")
+            append("/api/comm-records?page=").append(safePage).append("&page_size=").append(safePageSize)
             if (groupId != null) append("&group_id=").append(groupId)
         }
         val data = request("GET", query).requireObject("data")
         val records = data.optJSONArray("list") ?: JSONArray()
-        return records.objects().map { item ->
-            CommunicationRecord(
-                id = item.optInt("id"),
-                deviceName = item.optStringClean("device_name"),
-                model = item.optInt("dev_model"),
-                groupId = item.optNullableInt("group_id"),
-                groupName = item.optStringClean("group_name"),
-                username = item.optStringClean("username"),
-                nickname = item.optStringClean("nickname"),
-                startedAt = item.optStringClean("start_time"),
-                durationMs = item.optLong("duration_ms"),
-                messageType = item.optInt("msg_type"),
-                text = item.optStringClean("text_content"),
-                audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
-            )
-        }
+        return CommunicationRecordPage(
+            records = records.objects().map { item ->
+                CommunicationRecord(
+                    id = item.optInt("id"),
+                    deviceId = item.optInt("device_id"),
+                    deviceName = item.optStringClean("device_name"),
+                    model = item.optInt("dev_model"),
+                    groupId = item.optNullableInt("group_id"),
+                    groupName = item.optStringClean("group_name"),
+                    username = item.optStringClean("username"),
+                    nickname = item.optStringClean("nickname"),
+                    startedAt = item.optStringClean("start_time"),
+                    durationMs = item.optLong("duration_ms"),
+                    messageType = item.optInt("msg_type"),
+                    text = item.optStringClean("text_content"),
+                    audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
+                )
+            },
+            total = data.optInt("total"),
+            page = data.optInt("page", safePage),
+            pageSize = data.optInt("page_size", safePageSize).coerceAtLeast(1),
+        )
     }
 
     fun searchPublicRelays(location: String): List<RelayStation> {

@@ -78,6 +78,27 @@ class SecureSessionStore(context: Context) {
         preferences.edit { putBoolean(KEY_PTT_OVERLAY, enabled) }
     }
 
+    fun appDisplayScale(): AppDisplayScale = runCatching {
+        AppDisplayScale.valueOf(preferences.getString(KEY_DISPLAY_SCALE, null).orEmpty())
+    }.getOrDefault(AppDisplayScale.COMPACT)
+
+    fun setAppDisplayScale(scale: AppDisplayScale) {
+        preferences.edit { putString(KEY_DISPLAY_SCALE, scale.name) }
+    }
+
+    fun transmitTimeoutSeconds(): Int = preferences
+        .getInt(KEY_TRANSMIT_TIMEOUT_SECONDS, DEFAULT_TRANSMIT_TIMEOUT_SECONDS)
+        .coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
+
+    fun setTransmitTimeoutSeconds(seconds: Int) {
+        preferences.edit {
+            putInt(
+                KEY_TRANSMIT_TIMEOUT_SECONDS,
+                seconds.coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS),
+            )
+        }
+    }
+
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
@@ -163,6 +184,11 @@ class SecureSessionStore(context: Context) {
         private const val KEY_GROUP_PREFIX = "android_group_"
         private const val KEY_MUTED = "muted"
         private const val KEY_PTT_OVERLAY = "ptt_overlay"
+        private const val KEY_DISPLAY_SCALE = "display_scale"
+        private const val KEY_TRANSMIT_TIMEOUT_SECONDS = "transmit_timeout_seconds"
+        private const val MIN_TRANSMIT_TIMEOUT_SECONDS = 10
+        private const val DEFAULT_TRANSMIT_TIMEOUT_SECONDS = 120
+        private const val MAX_TRANSMIT_TIMEOUT_SECONDS = 600
         private const val KEY_ALIAS = "draarl_session_key"
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

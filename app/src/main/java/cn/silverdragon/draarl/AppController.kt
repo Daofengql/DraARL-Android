@@ -16,11 +16,13 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import coil3.SingletonImageLoader
 import cn.silverdragon.draarl.auth.PublicAuthController
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.ApiAppDataSource
 import cn.silverdragon.draarl.data.AppDataFallback
 import cn.silverdragon.draarl.data.AppDataRefresher
+import cn.silverdragon.draarl.data.AppDisplayScale
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.DashboardCacheStore
@@ -35,6 +37,8 @@ import cn.silverdragon.draarl.data.RadioMessageSyncState
 import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.SecureSessionStore
+import cn.silverdragon.draarl.data.StorageCategory
+import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.devices.DeviceManagementController
 import cn.silverdragon.draarl.groups.GroupManagementController
@@ -48,11 +52,28 @@ import cn.silverdragon.draarl.radio.RadioConnectionService
 import cn.silverdragon.draarl.radio.RadioServiceListener
 import cn.silverdragon.draarl.tools.ToolsController
 import java.net.URI
+import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+
+private data class RadioHistoryState(
+    val nextPage: Int = 1,
+    val hasMore: Boolean = true,
+    val total: Int = 0,
+)
+
+private data class RadioSyncSnapshot(
+    val messages: List<RadioMessage>,
+    val hasMoreHistory: Boolean,
+)
+
+private data class OlderRadioHistoryResult(
+    val messages: List<RadioMessage>,
+    val hasMore: Boolean,
+)
 
 class AppController(application: Application) : AndroidViewModel(application), RadioServiceListener {
     private val appContext = application.applicationContext
@@ -70,17 +91,22 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private var manualRadioDisconnect = false
     private val refreshingRadioToken = AtomicBoolean(false)
     private val syncingRadioData = AtomicBoolean(false)
+    private val pendingRadioDataSync = AtomicBoolean(false)
     private val syncingGroupCounts = AtomicBoolean(false)
     private val groupCountsGeneration = AtomicInteger(0)
     private val accessPointDiscoveryGeneration = AtomicInteger(0)
     private val radioDataGeneration = AtomicInteger(0)
+    private val radioCacheLoadGeneration = AtomicInteger(0)
     private val groupSwitchGeneration = AtomicInteger(0)
     private val radioConnectionGeneration = AtomicInteger(0)
     private val preparingRadioConnection = AtomicBoolean(false)
     private val disposed = AtomicBoolean(false)
+    private val storageOperation = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
     private val loadingPublicProfiles = ConcurrentHashMap.newKeySet<String>()
     private val loadingCachedRadioMessages = ConcurrentHashMap.newKeySet<String>()
+    private val radioHistoryStates = ConcurrentHashMap<String, RadioHistoryState>()
+    private val radioVisibleLimits = ConcurrentHashMap<String, Int>()
     private var displayedRadioMessageGroupId: Int? = null
     private val periodicRadioSync = object : Runnable {
         override fun run() {
@@ -210,11 +236,25 @@ class AppController(application: Application) : AndroidViewModel(application), R
     var radioStatus by mutableStateOf(RadioStatus())
         private set
     val radioMessages = mutableStateListOf<RadioMessage>()
+    var radioHistoryLoading by mutableStateOf(false)
+        private set
+    var radioHistoryHasMore by mutableStateOf(true)
+        private set
+    var radioSyncError by mutableStateOf("")
+        private set
     var muted by mutableStateOf(sessionStore.isMuted())
         private set
     var pttOverlayEnabled by mutableStateOf(
         sessionStore.isPttOverlayEnabled() && Settings.canDrawOverlays(appContext),
     )
+        private set
+    var appDisplayScale by mutableStateOf(sessionStore.appDisplayScale())
+        private set
+    var transmitTimeoutSeconds by mutableIntStateOf(sessionStore.transmitTimeoutSeconds())
+        private set
+    var storageUsage by mutableStateOf(StorageUsage())
+        private set
+    var storageBusy by mutableStateOf(false)
         private set
     private var appInForeground = true
     var playingMessageId by mutableStateOf<String?>(null)
@@ -228,6 +268,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             serviceBound = serviceBinder != null
             serviceBinder?.setListener(this@AppController)
             serviceBinder?.setMuted(muted)
+            serviceBinder?.setTransmitTimeoutSeconds(transmitTimeoutSeconds)
             syncPttOverlay()
             pendingConnection?.let {
                 serviceBinder?.connect(it)
@@ -318,6 +359,11 @@ class AppController(application: Application) : AndroidViewModel(application), R
         radioMessages.clear()
         displayedRadioMessageGroupId = null
         loadingCachedRadioMessages.clear()
+        radioHistoryStates.clear()
+        radioVisibleLimits.clear()
+        radioHistoryLoading = false
+        radioHistoryHasMore = true
+        radioSyncError = ""
         publicProfiles = emptyMap()
         loadingPublicProfiles.clear()
         playingMessageId = null
@@ -625,6 +671,71 @@ class AppController(application: Application) : AndroidViewModel(application), R
         return true
     }
 
+    fun updateAppDisplayScale(scale: AppDisplayScale) {
+        if (appDisplayScale == scale) return
+        appDisplayScale = scale
+        sessionStore.setAppDisplayScale(scale)
+    }
+
+    fun updateTransmitTimeoutSeconds(seconds: Int) {
+        val normalized = seconds.coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
+        if (transmitTimeoutSeconds == normalized) return
+        transmitTimeoutSeconds = normalized
+        sessionStore.setTransmitTimeoutSeconds(normalized)
+        serviceBinder?.setTransmitTimeoutSeconds(normalized)
+    }
+
+    fun refreshStorageUsage() {
+        if (!storageOperation.compareAndSet(false, true)) return
+        storageBusy = true
+        executor.execute {
+            val usage = calculateStorageUsage()
+            mainHandler.post {
+                storageUsage = usage
+                storageBusy = false
+                storageOperation.set(false)
+            }
+        }
+    }
+
+    fun clearStorage(category: StorageCategory) {
+        if (!storageOperation.compareAndSet(false, true)) return
+        storageBusy = true
+        executor.execute {
+            runCatching {
+                if (category == StorageCategory.AUDIO || category == StorageCategory.ALL) {
+                    serviceBinder?.clearAudioCache()
+                        ?: clearDirectoryContents(File(appContext.filesDir, AUDIO_CACHE_DIRECTORY))
+                }
+                if (category == StorageCategory.AVATARS || category == StorageCategory.ALL) {
+                    val imageLoader = SingletonImageLoader.get(appContext)
+                    imageLoader.memoryCache?.clear()
+                    imageLoader.diskCache?.clear()
+                }
+                if (category == StorageCategory.MESSAGES || category == StorageCategory.ALL) {
+                    messageStore.clearAll()
+                    mainHandler.post {
+                        radioMessages.clear()
+                        radioHistoryStates.clear()
+                        radioVisibleLimits.clear()
+                        displayedRadioMessageGroupId = null
+                        radioHistoryLoading = false
+                        radioHistoryHasMore = true
+                        radioSyncError = ""
+                    }
+                }
+            }.onFailure { error ->
+                mainHandler.post { notice = "清理缓存失败：${friendlyError(error)}" }
+            }
+            val usage = calculateStorageUsage()
+            mainHandler.post {
+                storageUsage = usage
+                storageBusy = false
+                storageOperation.set(false)
+            }
+        }
+    }
+
     fun reconcilePttOverlayPermission() {
         if (pttOverlayEnabled && !canDrawPttOverlay()) {
             pttOverlayEnabled = false
@@ -643,7 +754,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
         val userId = user?.id ?: return
         val switchGeneration = groupSwitchGeneration.incrementAndGet()
         radioDataGeneration.incrementAndGet()
-        syncingRadioData.set(false)
+        radioCacheLoadGeneration.incrementAndGet()
+        pendingRadioDataSync.set(false)
         val previousGroupId = selectedGroupId
         selectedGroupId = group.id
         user?.let { sessionStore.setSelectedGroupId(it.id, group.id) }
@@ -651,35 +763,23 @@ class AppController(application: Application) : AndroidViewModel(application), R
         syncPttOverlay()
         radioMessages.clear()
         displayedRadioMessageGroupId = null
+        radioHistoryLoading = false
+        radioHistoryHasMore = true
+        radioSyncError = ""
         loadCachedRadioMessages(group.id)
         contentLoading = true
-        val accountKey = messageAccountKey()
-        val accountUsername = user?.username.orEmpty()
         executor.execute {
             runCatching { api.switchRadioGroup(group.id) }
                 .onSuccess {
-                    val history = runCatching { api.getCommunicationRecords(groupId = group.id) }.getOrDefault(emptyList())
-                    val online = runCatching { api.getOnlineDevices(group.id) }.getOrDefault(emptyList())
-                    val remoteMessages = RadioMessageReconciler.settledRemoteMessages(
-                        history.asReversed().map { recordToMessage(it, accountUsername) },
-                    )
-                    val cachedMessages = if (accountKey != null) {
-                        messageStore.reconcile(accountKey, group.id, remoteMessages)
-                        messageStore.load(accountKey, group.id)
-                    } else {
-                        remoteMessages
-                    }
                     mainHandler.post {
                         if (
                             disposed.get() || switchGeneration != groupSwitchGeneration.get() ||
                             selectedGroupId != group.id || user?.id != userId || !authenticated
                         ) return@post
-                        replaceRadioMessages(cachedMessages, preserveUnsynced = true)
-                        onlineDevices = online
                         contentLoading = false
                         notice = "已切换到 ${group.name}"
+                        refreshRadioData()
                     }
-                    preloadPublicProfiles(history.map(CommunicationRecord::username))
                 }
                 .onFailure { error ->
                     mainHandler.post {
@@ -692,6 +792,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         serviceBinder?.setGroup(previousGroupId)
                         syncPttOverlay()
                         radioMessages.clear()
+                        displayedRadioMessageGroupId = null
+                        radioCacheLoadGeneration.incrementAndGet()
                         loadCachedRadioMessages(previousGroupId)
                         contentLoading = false
                         notice = friendlyError(error)
@@ -701,36 +803,51 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     fun refreshRadioData() {
-        val userId = user?.id ?: return
-        if (api.currentSession() == null || !syncingRadioData.compareAndSet(false, true)) return
+        val accountUser = user ?: return
+        val userId = accountUser.id
+        if (api.currentSession() == null) return
+        if (!syncingRadioData.compareAndSet(false, true)) {
+            pendingRadioDataSync.set(true)
+            return
+        }
+        pendingRadioDataSync.set(false)
         val generation = radioDataGeneration.incrementAndGet()
         val groupId = selectedGroupId
         val accountKey = messageAccountKey()
-        val accountUsername = user?.username.orEmpty()
         executor.execute {
             try {
-                val history = runCatching { api.getCommunicationRecords(groupId = groupId) }.getOrDefault(emptyList())
-                val online = runCatching { api.getOnlineDevices(groupId) }.getOrDefault(emptyList())
-                val remoteMessages = RadioMessageReconciler.settledRemoteMessages(
-                    history.asReversed().map { recordToMessage(it, accountUsername) },
-                )
-                val cachedMessages = if (accountKey != null) {
-                    messageStore.reconcile(accountKey, groupId, remoteMessages)
-                    messageStore.load(accountKey, groupId)
-                } else {
-                    remoteMessages
+                val historyResult = runCatching {
+                    synchronizeLatestRadioHistory(groupId, accountKey, accountUser)
                 }
+                val onlineResult = runCatching { api.getOnlineDevices(groupId) }
                 mainHandler.post {
                     if (
                         disposed.get() || generation != radioDataGeneration.get() ||
                         groupId != selectedGroupId || user?.id != userId || !authenticated
                     ) return@post
-                    replaceRadioMessages(cachedMessages, preserveUnsynced = true)
-                    onlineDevices = online
+                    historyResult
+                        .onSuccess { snapshot ->
+                            radioCacheLoadGeneration.incrementAndGet()
+                            replaceRadioMessages(snapshot.messages, preserveUnsynced = true)
+                            radioHistoryHasMore = snapshot.hasMoreHistory
+                            radioSyncError = ""
+                        }
+                        .onFailure { error ->
+                            radioSyncError = friendlyError(error)
+                        }
+                    onlineResult.onSuccess { onlineDevices = it }
                 }
-                preloadPublicProfiles(history.map(CommunicationRecord::username) + online.map(OnlineDevice::username))
+                historyResult.getOrNull()?.messages?.let { messages ->
+                    preloadPublicProfiles(messages.map(RadioMessage::senderUsername))
+                }
+                onlineResult.getOrNull()?.let { online ->
+                    preloadPublicProfiles(online.map(OnlineDevice::username))
+                }
             } finally {
-                if (generation == radioDataGeneration.get()) syncingRadioData.set(false)
+                syncingRadioData.set(false)
+                if (pendingRadioDataSync.getAndSet(false) && !disposed.get()) {
+                    mainHandler.post { refreshRadioData() }
+                }
             }
         }
     }
@@ -804,28 +921,49 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         message.senderCallsign.isNotBlank() && device.callsign.equals(message.senderCallsign, true)
                     )
             }
+            val currentClientMessage = !message.mine && currentUser != null &&
+                message.senderUsername.equals(currentUser.username, ignoreCase = true) &&
+                message.senderSsid == radioStatus.ssid
             val enriched = message.copy(
+                mine = message.mine || currentClientMessage,
                 senderUsername = message.senderUsername.ifBlank {
-                    if (message.mine) currentUser?.username.orEmpty() else online?.username.orEmpty()
+                    if (message.mine || currentClientMessage) currentUser?.username.orEmpty() else online?.username.orEmpty()
                 },
                 senderNickname = message.senderNickname.ifBlank {
-                    if (message.mine) currentUser?.nickname.orEmpty() else online?.nickname.orEmpty()
+                    if (message.mine || currentClientMessage) currentUser?.nickname.orEmpty() else online?.nickname.orEmpty()
                 },
                 senderCallsign = message.senderCallsign.ifBlank {
-                    if (message.mine) currentUser?.callsign.orEmpty() else online?.callsign.orEmpty()
+                    if (message.mine || currentClientMessage) currentUser?.callsign.orEmpty() else online?.callsign.orEmpty()
                 },
             )
             // 只有当消息属于当前群组时才添加到列表
             val messageGroupId = if (enriched.groupId > 0) enriched.groupId else selectedGroupId
+            var messageToStore = enriched
             if (messageGroupId == selectedGroupId) {
                 displayedRadioMessageGroupId = selectedGroupId
-                radioMessages += enriched
+                val duplicateIndex = radioMessages.indexOfLast { existing ->
+                    RadioMessageReconciler.isDuplicateLiveDelivery(existing, enriched)
+                }
+                if (duplicateIndex >= 0) {
+                    val existing = radioMessages[duplicateIndex]
+                    messageToStore = existing.copy(
+                        senderUsername = existing.senderUsername.ifBlank { enriched.senderUsername },
+                        senderNickname = existing.senderNickname.ifBlank { enriched.senderNickname },
+                        senderCallsign = existing.senderCallsign.ifBlank { enriched.senderCallsign },
+                        audioCacheKey = existing.audioCacheKey.ifBlank { enriched.audioCacheKey },
+                        durationMs = maxOf(existing.durationMs, enriched.durationMs),
+                    )
+                    radioMessages[duplicateIndex] = messageToStore
+                } else {
+                    radioMessages += enriched
+                }
                 while (radioMessages.size > MAX_MESSAGES) radioMessages.removeAt(0)
             }
             val accountKey = messageAccountKey()
             if (accountKey != null) {
+                val cachedMessage = messageToStore
                 executor.execute {
-                    runCatching { messageStore.save(accountKey, messageGroupId, enriched) }
+                    runCatching { messageStore.save(accountKey, messageGroupId, cachedMessage) }
                 }
             }
             preloadPublicProfiles(listOf(enriched.senderUsername))
@@ -930,6 +1068,22 @@ class AppController(application: Application) : AndroidViewModel(application), R
         )
     }
 
+    private fun calculateStorageUsage(): StorageUsage {
+        return StorageUsage(
+            audioBytes = File(appContext.filesDir, AUDIO_CACHE_DIRECTORY).directorySizeBytes(),
+            avatarBytes = File(appContext.cacheDir, AVATAR_CACHE_DIRECTORY).directorySizeBytes(),
+            messageBytes = messageStore.sizeBytes(),
+        )
+    }
+
+    private fun File.directorySizeBytes(): Long = if (!exists()) 0L else walkTopDown()
+        .filter(File::isFile)
+        .sumOf(File::length)
+
+    private fun clearDirectoryContents(directory: File) {
+        directory.listFiles()?.forEach { it.deleteRecursively() }
+    }
+
     private fun derivedAccessPoint(): AccessPoint? {
         val session = api.currentSession() ?: return null
         val host = runCatching { URI(session.baseUrl).host }.getOrNull().orEmpty()
@@ -948,14 +1102,85 @@ class AppController(application: Application) : AndroidViewModel(application), R
         if (displayedRadioMessageGroupId == groupId) return
         val loadKey = "$accountKey#$groupId"
         if (!loadingCachedRadioMessages.add(loadKey)) return
+        val cacheGeneration = radioCacheLoadGeneration.incrementAndGet()
+        val visibleLimit = radioVisibleLimits.getOrDefault(loadKey, INITIAL_VISIBLE_MESSAGES)
         executor.execute {
-            val cachedMessages = runCatching { messageStore.load(accountKey, groupId) }.getOrDefault(emptyList())
+            val cachedMessages = runCatching { messageStore.load(accountKey, groupId, visibleLimit) }.getOrDefault(emptyList())
             mainHandler.post {
                 loadingCachedRadioMessages.remove(loadKey)
-                if (groupId == selectedGroupId && accountKey == messageAccountKey()) {
+                if (
+                    cacheGeneration == radioCacheLoadGeneration.get() &&
+                    groupId == selectedGroupId && accountKey == messageAccountKey()
+                ) {
                     displayedRadioMessageGroupId = groupId
                     replaceRadioMessages(cachedMessages, preserveUnsynced = true)
+                    radioHistoryHasMore = cachedMessages.size >= visibleLimit ||
+                        radioHistoryStates[loadKey]?.hasMore != false
                 }
+            }
+        }
+    }
+
+    fun loadOlderRadioMessages() {
+        val accountKey = messageAccountKey() ?: return
+        val groupId = selectedGroupId
+        val accountUser = user ?: return
+        if (radioHistoryLoading || !radioHistoryHasMore) return
+        val stateKey = "$accountKey#$groupId"
+        val previousLimit = radioVisibleLimits.getOrDefault(stateKey, INITIAL_VISIBLE_MESSAGES)
+        if (previousLimit >= MAX_MESSAGES) {
+            radioHistoryHasMore = false
+            return
+        }
+        val requestedLimit = (previousLimit + HISTORY_LOAD_BATCH).coerceAtMost(MAX_MESSAGES)
+        radioHistoryLoading = true
+        executor.execute {
+            val result = runCatching {
+                var historyState = radioHistoryStates[stateKey] ?: RadioHistoryState()
+                var cachedMessages = messageStore.load(accountKey, groupId, requestedLimit)
+                var pagesLoaded = 0
+                while (
+                    cachedMessages.size <= previousLimit && historyState.hasMore &&
+                    pagesLoaded < MAX_HISTORY_PAGES_PER_LOAD
+                ) {
+                    val page = api.getCommunicationRecords(
+                        page = historyState.nextPage,
+                        pageSize = RADIO_HISTORY_PAGE_SIZE,
+                        groupId = groupId,
+                    )
+                    val remoteMessages = RadioMessageReconciler.settledRemoteMessages(
+                        page.records.mapNotNull { recordToMessage(it, accountUser) },
+                    )
+                    messageStore.reconcile(accountKey, groupId, remoteMessages)
+                    historyState = RadioHistoryState(
+                        nextPage = page.page + 1,
+                        hasMore = page.hasMore,
+                        total = page.total,
+                    )
+                    radioHistoryStates[stateKey] = historyState
+                    pagesLoaded++
+                    cachedMessages = messageStore.load(accountKey, groupId, requestedLimit)
+                    if (page.records.isEmpty()) break
+                }
+                radioVisibleLimits[stateKey] = requestedLimit
+                OlderRadioHistoryResult(
+                    messages = cachedMessages,
+                    hasMore = requestedLimit < MAX_MESSAGES &&
+                        (cachedMessages.size >= requestedLimit || historyState.hasMore),
+                )
+            }
+            mainHandler.post {
+                if (groupId != selectedGroupId || accountKey != messageAccountKey() || !authenticated) return@post
+                radioHistoryLoading = false
+                result
+                    .onSuccess { history ->
+                        radioCacheLoadGeneration.incrementAndGet()
+                        replaceRadioMessages(history.messages, preserveUnsynced = true)
+                        radioHistoryHasMore = history.hasMore
+                        radioSyncError = ""
+                        preloadPublicProfiles(history.messages.map(RadioMessage::senderUsername))
+                    }
+                    .onFailure { error -> radioSyncError = friendlyError(error) }
             }
         }
     }
@@ -967,8 +1192,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
         }
         val merged = if (preserveUnsynced) {
             val cachedIds = messages.mapTo(HashSet()) { it.id }
+            val localSettleCutoff = System.currentTimeMillis() - RadioMessageReconciler.REMOTE_SETTLE_DELAY_MS
             val pending = radioMessages.filter { local ->
                 local.syncState == RadioMessageSyncState.LOCAL &&
+                    RadioMessageReconciler.isStillSettling(
+                        local.timestamp,
+                        local.durationMs,
+                        localSettleCutoff,
+                    ) &&
                     local.id !in cachedIds &&
                     messages.none { remote ->
                         remote.syncState == RadioMessageSyncState.CONFIRMED &&
@@ -992,10 +1223,94 @@ class AppController(application: Application) : AndroidViewModel(application), R
         return "${session.baseUrl.trimEnd('/')}#${session.user.id}"
     }
 
-    private fun recordToMessage(record: CommunicationRecord, accountUsername: String): RadioMessage {
-        val ssid = if (record.model in 100..105) record.model else record.deviceName.substringAfterLast('-').toIntOrNull() ?: 0
+    private fun synchronizeLatestRadioHistory(
+        groupId: Int,
+        accountKey: String?,
+        accountUser: User,
+    ): RadioSyncSnapshot {
+        val knownRecordIds = accountKey?.let { messageStore.confirmedServerRecordIds(it, groupId) }.orEmpty()
+        val fetchedRecords = mutableListOf<CommunicationRecord>()
+        val stableMessages = mutableListOf<RadioMessage>()
+        val now = System.currentTimeMillis()
+        var pageNumber = 1
+        var nextPage = 1
+        var total = 0
+        var hasMore = true
+        var foundStableRecord = false
+        var foundKnownRecord = false
+        var allTimestampsValid = true
+
+        while (hasMore && pageNumber <= MAX_LATEST_SYNC_PAGES) {
+            val page = api.getCommunicationRecords(
+                page = pageNumber,
+                pageSize = RADIO_HISTORY_PAGE_SIZE,
+                groupId = groupId,
+            )
+            fetchedRecords += page.records
+            val pageMessages = page.records.mapNotNull { recordToMessage(it, accountUser) }
+            allTimestampsValid = allTimestampsValid && pageMessages.size == page.records.size
+            val settledMessages = RadioMessageReconciler.settledRemoteMessages(pageMessages, now)
+            stableMessages += settledMessages
+            foundStableRecord = foundStableRecord || settledMessages.isNotEmpty()
+            foundKnownRecord = foundKnownRecord || settledMessages.any { message ->
+                message.serverRecordId?.let(knownRecordIds::contains) == true
+            }
+            total = page.total
+            nextPage = page.page + 1
+            hasMore = page.hasMore
+
+            val enoughForInitialLoad = knownRecordIds.isEmpty() && stableMessages.size >= INITIAL_VISIBLE_MESSAGES
+            val caughtUpWithCache = knownRecordIds.isNotEmpty() && foundKnownRecord
+            val reachedCacheCapacity = stableMessages.size >= MAX_MESSAGES
+            if (foundStableRecord && (enoughForInitialLoad || caughtUpWithCache || reachedCacheCapacity)) break
+            if (page.records.isEmpty()) break
+            pageNumber = page.page + 1
+        }
+
+        val remoteMessages = stableMessages
+            .distinctBy { it.serverRecordId ?: it.id }
+            .sortedBy(RadioMessage::timestamp)
+        if (accountKey != null) {
+            val stateKey = "$accountKey#$groupId"
+            val fetchedWithoutPaginationDrift = fetchedRecords.map(CommunicationRecord::id).distinct().size == fetchedRecords.size
+            val settleCutoff = now - RadioMessageReconciler.REMOTE_SETTLE_DELAY_MS
+            val authoritativeWindow = when {
+                !allTimestampsValid || !fetchedWithoutPaginationDrift -> null
+                remoteMessages.isNotEmpty() -> remoteMessages.first().timestamp..settleCutoff
+                !hasMore -> 0L..settleCutoff
+                else -> null
+            }
+            messageStore.reconcile(accountKey, groupId, remoteMessages, authoritativeWindow)
+            radioHistoryStates[stateKey] = RadioHistoryState(
+                nextPage = nextPage,
+                hasMore = hasMore,
+                total = total,
+            )
+            val visibleLimit = radioVisibleLimits.getOrDefault(stateKey, INITIAL_VISIBLE_MESSAGES)
+            val cachedMessages = messageStore.load(accountKey, groupId, visibleLimit + 1)
+            return RadioSyncSnapshot(
+                messages = cachedMessages.takeLast(visibleLimit),
+                hasMoreHistory = visibleLimit < MAX_MESSAGES &&
+                    (cachedMessages.size > visibleLimit || hasMore),
+            )
+        }
+        return RadioSyncSnapshot(
+            messages = remoteMessages.takeLast(INITIAL_VISIBLE_MESSAGES),
+            hasMoreHistory = hasMore || remoteMessages.size > INITIAL_VISIBLE_MESSAGES,
+        )
+    }
+
+    private fun recordToMessage(record: CommunicationRecord, accountUser: User): RadioMessage? {
+        val timestamp = parseServerTime(record.startedAt) ?: return null
+        val ssid = if (record.deviceId == 0 && record.model in 100..105) {
+            record.model
+        } else {
+            record.deviceName.substringAfterLast('-').toIntOrNull() ?: 0
+        }
         val callsign = record.deviceName.removeSuffix(if (ssid > 0) "-$ssid" else "").ifBlank { record.username }
-        val mine = record.username.equals(accountUsername, ignoreCase = true) && ssid == 101
+        val mine = record.deviceId == 0 && ssid == ANDROID_CLIENT_SSID &&
+            record.username.equals(accountUser.username, ignoreCase = true) &&
+            (accountUser.callsign.isBlank() || callsign.equals(accountUser.callsign, ignoreCase = true))
         return RadioMessage(
             id = "record-${record.id}",
             type = if (record.messageType == 1) RadioMessageType.TEXT else RadioMessageType.VOICE,
@@ -1004,12 +1319,13 @@ class AppController(application: Application) : AndroidViewModel(application), R
             senderUsername = record.username,
             senderNickname = record.nickname,
             content = if (record.messageType == 1) record.text else "历史语音 ${formatDuration(record.durationMs)}",
-            timestamp = parseServerTime(record.startedAt),
+            timestamp = timestamp,
             mine = mine,
             durationMs = record.durationMs,
             audioUrl = record.audioUrl,
             serverRecordId = record.id,
             syncState = RadioMessageSyncState.CONFIRMED,
+            groupId = record.groupId ?: 0,
         )
     }
 
@@ -1047,15 +1363,19 @@ class AppController(application: Application) : AndroidViewModel(application), R
         groupCountsGeneration.incrementAndGet()
         accessPointDiscoveryGeneration.incrementAndGet()
         radioDataGeneration.incrementAndGet()
+        radioCacheLoadGeneration.incrementAndGet()
         groupSwitchGeneration.incrementAndGet()
         syncingGroupCounts.set(false)
-        syncingRadioData.set(false)
+        pendingRadioDataSync.set(false)
+        radioHistoryLoading = false
         selectingAccessPoint = false
     }
 
-    private fun parseServerTime(value: String): Long = runCatching {
-        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA).parse(value)?.time
-    }.getOrNull() ?: System.currentTimeMillis()
+    private fun parseServerTime(value: String): Long? = runCatching {
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA).apply {
+            isLenient = false
+        }.parse(value)?.time
+    }.getOrNull()
 
     private fun friendlyError(error: Throwable): String = when (error) {
         is ApiException -> error.message
@@ -1064,9 +1384,19 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     companion object {
         private const val DEFAULT_UDP_PORT = 60_050
+        private const val ANDROID_CLIENT_SSID = 101
         private const val RADIO_SYNC_INTERVAL_MS = 20_000L
         private const val ACCESS_POINT_PROBE_INTERVAL_MS = 10_000L
-        private const val MAX_MESSAGES = 200
+        private const val RADIO_HISTORY_PAGE_SIZE = 100
+        private const val INITIAL_VISIBLE_MESSAGES = 200
+        private const val HISTORY_LOAD_BATCH = 100
+        private const val MAX_HISTORY_PAGES_PER_LOAD = 5
+        private const val MAX_LATEST_SYNC_PAGES = 50
+        private const val MAX_MESSAGES = 1_000
+        private const val AUDIO_CACHE_DIRECTORY = "radio_audio"
+        private const val AVATAR_CACHE_DIRECTORY = "avatar_images"
+        private const val MIN_TRANSMIT_TIMEOUT_SECONDS = 10
+        private const val MAX_TRANSMIT_TIMEOUT_SECONDS = 600
         fun formatDuration(milliseconds: Long): String {
             val totalSeconds = milliseconds / 1_000
             val hours = totalSeconds / 3_600

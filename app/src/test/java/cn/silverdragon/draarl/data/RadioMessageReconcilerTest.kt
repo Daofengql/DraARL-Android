@@ -38,7 +38,7 @@ class RadioMessageReconcilerTest {
         val remote = message(
             type = RadioMessageType.VOICE,
             content = "历史语音 12秒",
-            timestamp = 2_100_000L,
+            timestamp = 2_005_000L,
             serverRecordId = 9,
             syncState = RadioMessageSyncState.CONFIRMED,
         )
@@ -69,7 +69,7 @@ class RadioMessageReconcilerTest {
             id = "record-9",
             type = RadioMessageType.VOICE,
             content = "历史语音",
-            timestamp = 2_050_000L,
+            timestamp = 2_005_000L,
             serverRecordId = 9,
             syncState = RadioMessageSyncState.CONFIRMED,
         )
@@ -79,6 +79,78 @@ class RadioMessageReconcilerTest {
         assertEquals(1, result.size)
         assertEquals("record-9", result.single().id)
         assertEquals("message:local-1", result.single().audioCacheKey)
+    }
+
+    @Test
+    fun `does not merge nearby voice events with clearly different durations`() {
+        val short = message(
+            type = RadioMessageType.VOICE,
+            content = "语音",
+            timestamp = 2_000_000L,
+        ).copy(durationMs = 2_000L)
+        val long = message(
+            type = RadioMessageType.VOICE,
+            content = "历史语音",
+            timestamp = 2_005_000L,
+        ).copy(durationMs = 12_000L)
+
+        assertFalse(RadioMessageReconciler.isLikelySameEvent(short, long))
+    }
+
+    @Test
+    fun `deduplicates immediate repeated live delivery only`() {
+        val first = message(content = "测试", timestamp = 1_000_000L)
+
+        assertTrue(RadioMessageReconciler.isDuplicateLiveDelivery(first, first.copy(id = "echo", timestamp = 1_001_000L)))
+        assertFalse(RadioMessageReconciler.isDuplicateLiveDelivery(first, first.copy(id = "later", timestamp = 1_002_000L)))
+    }
+
+    @Test
+    fun `authoritative window keeps a long voice that only just ended`() {
+        val window = 1_000_000L..2_000_000L
+
+        assertFalse(
+            RadioMessageReconciler.shouldRemoveFromAuthoritativeWindow(
+                serverRecordId = null,
+                timestamp = 1_900_000L,
+                durationMs = 200_000L,
+                authoritativeRecordIds = emptySet(),
+                window = window,
+            ),
+        )
+    }
+
+    @Test
+    fun `authoritative window removes stale local and deleted server records`() {
+        val window = 1_000_000L..2_000_000L
+
+        assertTrue(
+            RadioMessageReconciler.shouldRemoveFromAuthoritativeWindow(
+                serverRecordId = null,
+                timestamp = 1_500_000L,
+                durationMs = 10_000L,
+                authoritativeRecordIds = setOf(7),
+                window = window,
+            ),
+        )
+        assertTrue(
+            RadioMessageReconciler.shouldRemoveFromAuthoritativeWindow(
+                serverRecordId = 8,
+                timestamp = 1_500_000L,
+                durationMs = 0L,
+                authoritativeRecordIds = setOf(7),
+                window = window,
+            ),
+        )
+        assertFalse(
+            RadioMessageReconciler.shouldRemoveFromAuthoritativeWindow(
+                serverRecordId = 7,
+                timestamp = 1_500_000L,
+                durationMs = 0L,
+                authoritativeRecordIds = setOf(7),
+                window = window,
+            ),
+        )
     }
 
     @Test

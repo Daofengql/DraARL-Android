@@ -20,12 +20,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -38,6 +43,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
+import cn.silverdragon.draarl.data.AppDisplayScale
+import kotlin.math.roundToInt
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -98,6 +105,70 @@ fun SystemSettingsScreen(controller: AppController) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
+                SettingsSectionHeader("显示")
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.FormatSize,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Text("界面缩放", style = MaterialTheme.typography.bodyLarge)
+                        }
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            AppDisplayScale.entries.forEachIndexed { index, scale ->
+                                SegmentedButton(
+                                    selected = controller.appDisplayScale == scale,
+                                    onClick = { controller.updateAppDisplayScale(scale) },
+                                    shape = SegmentedButtonDefaults.itemShape(index, AppDisplayScale.entries.size),
+                                ) {
+                                    Text(scale.displayName())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                SettingsSectionHeader("通信")
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("发射超时", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "持续发射达到此时长后自动结束，范围 10–600 秒",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(
+                                "${controller.transmitTimeoutSeconds} 秒",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Slider(
+                            value = controller.transmitTimeoutSeconds.toFloat(),
+                            onValueChange = {
+                                controller.updateTransmitTimeoutSeconds((it / 10f).roundToInt() * 10)
+                            },
+                            valueRange = 10f..600f,
+                            steps = 58,
+                        )
+                    }
+                }
+            }
+            item {
                 SettingsSectionHeader("后台通信")
                 Card(modifier = Modifier.fillMaxWidth()) {
                     OverlaySettingItem(
@@ -111,6 +182,12 @@ fun SystemSettingsScreen(controller: AppController) {
             }
         }
     }
+}
+
+private fun AppDisplayScale.displayName(): String = when (this) {
+    AppDisplayScale.COMPACT -> "紧凑"
+    AppDisplayScale.STANDARD -> "标准"
+    AppDisplayScale.COMFORTABLE -> "宽松"
 }
 
 @Composable

@@ -170,6 +170,7 @@ data class CommunicationStats(
 
 data class CommunicationRecord(
     val id: Int,
+    val deviceId: Int,
     val deviceName: String,
     val model: Int,
     val groupId: Int?,
@@ -182,6 +183,15 @@ data class CommunicationRecord(
     val text: String,
     val audioUrl: String,
 )
+
+data class CommunicationRecordPage(
+    val records: List<CommunicationRecord>,
+    val total: Int,
+    val page: Int,
+    val pageSize: Int,
+) {
+    val hasMore: Boolean get() = page * pageSize < total
+}
 
 data class PlatformInfo(
     val name: String = "DraARL 麟链",

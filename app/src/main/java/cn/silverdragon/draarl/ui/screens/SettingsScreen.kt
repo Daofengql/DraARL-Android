@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -79,6 +80,12 @@ fun SettingsScreen(controller: AppController) {
                         title = "系统设置",
                         subtitle = "后台通信、悬浮窗与系统权限",
                         onClick = { controller.navigate(AppPage.SYSTEM_SETTINGS) },
+                    )
+                    SettingsMenuItem(
+                        icon = Icons.Default.Storage,
+                        title = "存储管理",
+                        subtitle = "查看并清理语音、头像和消息缓存",
+                        onClick = { controller.navigate(AppPage.STORAGE_SETTINGS) },
                     )
                 }
             }

@@ -245,6 +245,10 @@ class RadioConnectionService : Service(), UdpRadioListener {
         fun togglePlayback(message: RadioMessage): Boolean = radioClient.togglePlayback(message)
         fun stopPlayback() = radioClient.stopPlayback()
         fun setMuted(muted: Boolean) = radioClient.setMuted(muted)
+        fun setTransmitTimeoutSeconds(seconds: Int) = radioClient.setTransmitTimeoutSeconds(seconds)
+        fun transmitTimeoutSeconds(): Int = radioClient.transmitTimeoutSeconds()
+        fun audioCacheSizeBytes(): Long = radioClient.audioCacheSizeBytes()
+        fun clearAudioCache() = radioClient.clearAudioCache()
         fun setGroup(groupId: Int) = radioClient.setGroup(groupId)
         fun configurePttOverlay(enabled: Boolean, visible: Boolean, groupName: String): Boolean =
             this@RadioConnectionService.configurePttOverlay(enabled, visible, groupName)

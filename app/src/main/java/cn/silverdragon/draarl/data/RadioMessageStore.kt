@@ -11,6 +11,7 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
     null,
     DATABASE_VERSION,
 ) {
+    private val databaseFile = context.applicationContext.getDatabasePath(DATABASE_NAME)
     override fun onCreate(database: SQLiteDatabase) {
         database.execSQL(
             """
@@ -30,7 +31,8 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                 duration_ms INTEGER NOT NULL,
                 audio_url TEXT NOT NULL,
                 audio_cache_key TEXT NOT NULL,
-                sync_state TEXT NOT NULL
+                sync_state TEXT NOT NULL,
+                source_group_id INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent(),
         )
@@ -54,6 +56,9 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 3) {
             database.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN audio_cache_key TEXT NOT NULL DEFAULT ''")
             database.execSQL("UPDATE $TABLE_MESSAGES SET audio_data = NULL")
+        }
+        if (oldVersion < 4) {
+            database.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN source_group_id INTEGER NOT NULL DEFAULT 0")
         }
     }
 
@@ -79,8 +84,13 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
     }
 
     @Synchronized
-    fun reconcile(accountKey: String, groupId: Int, remoteMessages: List<RadioMessage>) {
-        if (remoteMessages.isEmpty()) return
+    fun reconcile(
+        accountKey: String,
+        groupId: Int,
+        remoteMessages: List<RadioMessage>,
+        authoritativeWindow: LongRange? = null,
+    ) {
+        if (remoteMessages.isEmpty() && authoritativeWindow == null) return
         writableDatabase.transaction {
             remoteMessages.forEach { remote ->
                 var mergedRemote = remote.copy(
@@ -102,6 +112,15 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                     }
                 }
                 upsert(this, accountKey, groupId, mergedRemote)
+            }
+            authoritativeWindow?.let { window ->
+                removeMessagesMissingFromAuthoritativeWindow(
+                    database = this,
+                    accountKey = accountKey,
+                    groupId = groupId,
+                    authoritativeRecordIds = remoteMessages.mapNotNullTo(mutableSetOf(), RadioMessage::serverRecordId),
+                    window = window,
+                )
             }
             prune(this, accountKey, groupId)
         }
@@ -140,6 +159,7 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                     syncState = runCatching {
                         RadioMessageSyncState.valueOf(cursor.getString(cursor.getColumnIndexOrThrow("sync_state")))
                     }.getOrDefault(RadioMessageSyncState.LOCAL),
+                    groupId = cursor.getInt(cursor.getColumnIndexOrThrow("source_group_id")),
                 )
             }
         }
@@ -172,6 +192,7 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                 put("audio_url", message.audioUrl)
                 put("audio_cache_key", message.audioCacheKey)
                 put("sync_state", message.syncState.name)
+                put("source_group_id", message.groupId)
             },
             SQLiteDatabase.CONFLICT_REPLACE,
         )
@@ -261,6 +282,73 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
         )
     }
 
+    private fun removeMessagesMissingFromAuthoritativeWindow(
+        database: SQLiteDatabase,
+        accountKey: String,
+        groupId: Int,
+        authoritativeRecordIds: Set<Int>,
+        window: LongRange,
+    ) {
+        val staleLocalIds = mutableListOf<String>()
+        database.query(
+            TABLE_MESSAGES,
+            arrayOf("local_id", "server_record_id", "timestamp", "duration_ms"),
+            "account_key = ? AND group_id = ? AND timestamp BETWEEN ? AND ?",
+            arrayOf(accountKey, groupId.toString(), window.first.toString(), window.last.toString()),
+            null,
+            null,
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val serverRecordIndex = 1
+                val serverRecordId = if (cursor.isNull(serverRecordIndex)) null else cursor.getInt(serverRecordIndex)
+                if (RadioMessageReconciler.shouldRemoveFromAuthoritativeWindow(
+                        serverRecordId = serverRecordId,
+                        timestamp = cursor.getLong(2),
+                        durationMs = cursor.getLong(3),
+                        authoritativeRecordIds = authoritativeRecordIds,
+                        window = window,
+                    )
+                ) {
+                    staleLocalIds += cursor.getString(0)
+                }
+            }
+        }
+        staleLocalIds.forEach { localId ->
+            database.delete(TABLE_MESSAGES, "local_id = ?", arrayOf(localId))
+        }
+    }
+
+    @Synchronized
+    fun confirmedServerRecordIds(accountKey: String, groupId: Int): Set<Int> {
+        val ids = mutableSetOf<Int>()
+        readableDatabase.query(
+            TABLE_MESSAGES,
+            arrayOf("server_record_id"),
+            "account_key = ? AND group_id = ? AND server_record_id IS NOT NULL",
+            arrayOf(accountKey, groupId.toString()),
+            null,
+            null,
+            "timestamp DESC",
+            CACHE_LIMIT.toString(),
+        ).use { cursor ->
+            while (cursor.moveToNext()) ids += cursor.getInt(0)
+        }
+        return ids
+    }
+
+    @Synchronized
+    fun clearAll() {
+        writableDatabase.delete(TABLE_MESSAGES, null, null)
+    }
+
+    @Synchronized
+    fun sizeBytes(): Long = listOf(
+        databaseFile,
+        java.io.File("${databaseFile.path}-wal"),
+        java.io.File("${databaseFile.path}-shm"),
+    ).sumOf(java.io.File::length)
+
     private inline fun SQLiteDatabase.transaction(block: SQLiteDatabase.() -> Unit) {
         beginTransaction()
         try {
@@ -295,11 +383,12 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
         syncState = runCatching {
             RadioMessageSyncState.valueOf(getString(getColumnIndexOrThrow("sync_state")))
         }.getOrDefault(RadioMessageSyncState.LOCAL),
+        groupId = getInt(getColumnIndexOrThrow("source_group_id")),
     )
 
     companion object {
         private const val DATABASE_NAME = "radio_messages.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = 4
         private const val TABLE_MESSAGES = "radio_messages"
         private const val DISPLAY_LIMIT = 200
         private const val CACHE_LIMIT = 1_000
@@ -318,6 +407,7 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
             "audio_url",
             "audio_cache_key",
             "sync_state",
+            "source_group_id",
         )
     }
 }
