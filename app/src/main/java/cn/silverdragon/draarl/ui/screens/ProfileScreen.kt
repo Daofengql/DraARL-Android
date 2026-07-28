@@ -41,13 +41,11 @@ fun ProfileScreen(controller: AppController) {
                 onAvatarClick = { avatarLauncher.launch("image/*") },
                 onEditClick = { controller.navigate(AppPage.EDIT_PROFILE) },
                 onSettingsClick = { controller.navigate(AppPage.SETTINGS) },
+                onPresetsClick = { controller.navigate(AppPage.RADIO_PRESETS) },
             )
         }
         item {
-            ProfileInfoSection(
-                user = user,
-                onPresetsClick = { controller.navigate(AppPage.RADIO_PRESETS) },
-            )
+            ProfileInfoSection(user = user)
         }
         item { ProfileOverview(controller.dashboard) }
         item { Spacer(Modifier.height(8.dp)) }

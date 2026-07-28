@@ -10,16 +10,20 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -40,8 +44,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -54,16 +62,20 @@ import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.MAIN_NAVIGATION_PAGES
 import cn.silverdragon.draarl.R
+import cn.silverdragon.draarl.data.Wgs84LocationMessage
+import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.pagePosition
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
 import cn.silverdragon.draarl.ui.screens.EditProfileScreen
 import cn.silverdragon.draarl.ui.screens.GroupsScreen
 import cn.silverdragon.draarl.ui.screens.LoginScreen
+import cn.silverdragon.draarl.ui.screens.LocationMapScreen
 import cn.silverdragon.draarl.ui.screens.ProfileScreen
 import cn.silverdragon.draarl.ui.screens.RadioScreen
 import cn.silverdragon.draarl.ui.screens.RadioPresetsScreen
 import cn.silverdragon.draarl.ui.screens.SettingsScreen
+import cn.silverdragon.draarl.ui.screens.SystemSettingsScreen
 import cn.silverdragon.draarl.ui.screens.ToolsScreen
 
 @Composable
@@ -133,9 +145,12 @@ private fun LoadingScreen() {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun AuthenticatedApp(controller: AppController) {
     val snackbarHostState = remember { SnackbarHostState() }
     val pageStateHolder = rememberSaveableStateHolder()
+    var radioExtrasExpanded by rememberSaveable { mutableStateOf(false) }
+    var mapLocation by remember { mutableStateOf<Wgs84LocationMessage?>(null) }
     val notice = controller.notice
     LaunchedEffect(notice) {
         if (notice.isNotBlank()) {
@@ -143,12 +158,18 @@ private fun AuthenticatedApp(controller: AppController) {
             controller.clearNotice()
         }
     }
+    LaunchedEffect(controller.page) {
+        if (controller.page != AppPage.RADIO) radioExtrasExpanded = false
+    }
 
-    val showBottomBar = controller.page !in setOf(
+    val imeVisible = WindowInsets.isImeVisible
+    val showBottomBar = !imeVisible && !radioExtrasExpanded && controller.page !in setOf(
         AppPage.EDIT_PROFILE,
         AppPage.RADIO_PRESETS,
         AppPage.SETTINGS,
+        AppPage.SYSTEM_SETTINGS,
         AppPage.ACCOUNT_SECURITY,
+        AppPage.LOCATION_MAP,
     )
 
     // 处理系统返回操作
@@ -157,11 +178,14 @@ private fun AuthenticatedApp(controller: AppController) {
             AppPage.EDIT_PROFILE,
             AppPage.RADIO_PRESETS,
             AppPage.SETTINGS,
+            AppPage.SYSTEM_SETTINGS,
             AppPage.ACCOUNT_SECURITY,
+            AppPage.LOCATION_MAP,
         ),
     ) {
         when (controller.page) {
-            AppPage.ACCOUNT_SECURITY -> controller.navigate(AppPage.SETTINGS)
+            AppPage.LOCATION_MAP -> controller.navigate(AppPage.RADIO)
+            AppPage.ACCOUNT_SECURITY, AppPage.SYSTEM_SETTINGS -> controller.navigate(AppPage.SETTINGS)
             AppPage.EDIT_PROFILE, AppPage.RADIO_PRESETS, AppPage.SETTINGS -> controller.navigate(AppPage.PROFILE)
             else -> {}
         }
@@ -171,7 +195,9 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.EDIT_PROFILE,
         AppPage.RADIO_PRESETS,
         AppPage.SETTINGS,
+        AppPage.SYSTEM_SETTINGS,
         AppPage.ACCOUNT_SECURITY,
+        AppPage.LOCATION_MAP,
     )
 
     Scaffold(
@@ -179,7 +205,11 @@ private fun AuthenticatedApp(controller: AppController) {
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
         bottomBar = {
-            if (showBottomBar) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBottomBar,
+                enter = expandVertically(expandFrom = Alignment.Bottom),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom),
+            ) {
                 MainBottomBar(selectedPage = controller.page, onNavigate = controller::navigate)
             }
         },
@@ -218,7 +248,19 @@ private fun AuthenticatedApp(controller: AppController) {
             ) { page ->
                 pageStateHolder.SaveableStateProvider(page.name) {
                     when (page) {
-                        AppPage.RADIO -> RadioScreen(controller)
+                        AppPage.RADIO -> RadioScreen(
+                            controller = controller,
+                            extrasExpanded = radioExtrasExpanded,
+                            onExtrasExpandedChange = { radioExtrasExpanded = it },
+                            onPickLocation = {
+                                mapLocation = null
+                                controller.navigate(AppPage.LOCATION_MAP)
+                            },
+                            onOpenLocation = { location ->
+                                mapLocation = location
+                                controller.navigate(AppPage.LOCATION_MAP)
+                            },
+                        )
                         AppPage.DEVICES -> DevicesScreen(controller)
                         AppPage.GROUPS -> GroupsScreen(controller)
                         AppPage.TOOLS -> ToolsScreen(controller)
@@ -229,7 +271,17 @@ private fun AuthenticatedApp(controller: AppController) {
                             onBack = { controller.navigate(AppPage.PROFILE) },
                         )
                         AppPage.SETTINGS -> SettingsScreen(controller)
+                        AppPage.SYSTEM_SETTINGS -> SystemSettingsScreen(controller)
                         AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
+                        AppPage.LOCATION_MAP -> LocationMapScreen(
+                            initialLocation = mapLocation,
+                            onBack = { controller.navigate(AppPage.RADIO) },
+                            onSend = { location ->
+                                controller.sendText(encodeLocationMessage(location)).also { sent ->
+                                    if (sent) controller.navigate(AppPage.RADIO)
+                                }
+                            },
+                        )
                     }
                 }
             }
@@ -269,6 +321,8 @@ private fun navigationItem(page: AppPage): NavigationItem = when (page) {
     AppPage.EDIT_PROFILE,
     AppPage.RADIO_PRESETS,
     AppPage.SETTINGS,
+    AppPage.SYSTEM_SETTINGS,
     AppPage.ACCOUNT_SECURITY,
+    AppPage.LOCATION_MAP,
     -> error("Secondary pages are not bottom navigation items")
 }

@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
@@ -25,8 +28,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.User
+import cn.silverdragon.draarl.data.formatRadioIdentifiers
 import cn.silverdragon.draarl.ui.components.StatusPill
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import cn.silverdragon.draarl.ui.theme.appColors
@@ -37,7 +42,9 @@ internal fun ProfileHeader(
     onAvatarClick: () -> Unit,
     onEditClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    onPresetsClick: () -> Unit,
 ) {
+    val radioIdentifiers = formatRadioIdentifiers(user.mdcId, user.dmrId)
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         shape = MaterialTheme.shapes.small,
@@ -89,12 +96,35 @@ internal fun ProfileHeader(
                         },
                     )
                 }
-                IconButton(onClick = onEditClick) {
-                    Icon(Icons.Default.Edit, contentDescription = "编辑资料")
+                Column(horizontalAlignment = Alignment.End) {
+                    Row {
+                        IconButton(onClick = onEditClick) {
+                            Icon(Icons.Default.Edit, contentDescription = "编辑资料")
+                        }
+                        IconButton(onClick = onSettingsClick) {
+                            Icon(Icons.Default.Settings, contentDescription = "设置")
+                        }
+                    }
+                    IconButton(onClick = onPresetsClick) {
+                        Icon(
+                            Icons.Default.FavoriteBorder,
+                            contentDescription = "电台预设",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
-                IconButton(onClick = onSettingsClick) {
-                    Icon(Icons.Default.Settings, contentDescription = "设置")
-                }
+            }
+            if (radioIdentifiers.isNotBlank()) {
+                ProfileMetaRow(
+                    icon = Icons.Default.Badge,
+                    text = radioIdentifiers,
+                )
+            }
+            if (user.address.isNotBlank()) {
+                ProfileMetaRow(
+                    icon = Icons.Default.LocationOn,
+                    text = user.address,
+                )
             }
             if (user.introduction.isNotBlank()) {
                 Text(
@@ -121,5 +151,31 @@ internal fun ProfileHeader(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ProfileMetaRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

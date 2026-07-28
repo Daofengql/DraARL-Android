@@ -3,8 +3,16 @@ package cn.silverdragon.draarl.ui.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,50 +20,49 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.automirrored.filled.VolumeOff
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.AppController
+import cn.silverdragon.draarl.data.LocationMessageKind
 import cn.silverdragon.draarl.data.RadioConnectionPhase
+import cn.silverdragon.draarl.data.Wgs84LocationMessage
+import cn.silverdragon.draarl.data.encodeLocationMessage
+import cn.silverdragon.draarl.maps.CurrentLocationProvider
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
-fun RadioScreen(controller: AppController) {
+fun RadioScreen(
+    controller: AppController,
+    extrasExpanded: Boolean,
+    onExtrasExpandedChange: (Boolean) -> Unit,
+    onPickLocation: () -> Unit,
+    onOpenLocation: (Wgs84LocationMessage) -> Unit,
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val locationProvider = remember(context) { CurrentLocationProvider(context) }
     val messages = controller.radioMessages
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0),
@@ -67,23 +74,47 @@ fun RadioScreen(controller: AppController) {
     var text by rememberSaveable { mutableStateOf("") }
     var textMode by rememberSaveable { mutableStateOf(false) }
     var showDevices by rememberSaveable { mutableStateOf(false) }
-    val textFocusRequester = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
+    var locating by remember { mutableStateOf(false) }
+    var showLocationChoices by rememberSaveable { mutableStateOf(false) }
+    val dismissExtrasInteraction = remember { MutableInteractionSource() }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         controller.connectRadio()
     }
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val sendCurrentLocation = {
+        if (!locating) {
+            locating = true
+            scope.launch {
+                try {
+                    val location = locationProvider.locate()
+                    val message = Wgs84LocationMessage(
+                        kind = LocationMessageKind.CURRENT,
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        altitudeMeters = if (location.hasAltitude()) location.altitude else null,
+                    )
+                    if (controller.sendText(encodeLocationMessage(message))) {
+                        onExtrasExpandedChange(false)
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    controller.showNotice(error.message ?: "当前位置获取失败")
+                } finally {
+                    locating = false
+                }
+            }
+        }
+    }
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.any { it }) sendCurrentLocation() else controller.showNotice("需要定位权限才能发送当前位置")
+    }
     val canSendText = controller.canSendText()
 
-    LaunchedEffect(textMode) {
-        if (textMode) {
-            textFocusRequester.requestFocus()
-            keyboardController?.show()
-        } else {
-            focusManager.clearFocus()
-            keyboardController?.hide()
-        }
+    BackHandler(enabled = extrasExpanded && !showLocationChoices) { onExtrasExpandedChange(false) }
+
+    LaunchedEffect(extrasExpanded) {
+        if (!extrasExpanded) showLocationChoices = false
     }
 
     LaunchedEffect(userDragging, listState.isScrollInProgress) {
@@ -138,100 +169,133 @@ fun RadioScreen(controller: AppController) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        ConnectionPanel(
-            controller = controller,
-            status = controller.radioStatus,
-            onToggleDevices = { showDevices = !showDevices },
-        )
-        if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
-        if (messages.isEmpty()) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(
-                        Icons.Default.History,
-                        contentDescription = null,
-                        modifier = Modifier.size(44.dp),
-                        tint = MaterialTheme.colorScheme.outline,
-                    )
-                    Text("暂无通联记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
-                    MessageItem(
-                        controller = controller,
-                        message = message,
-                        showTimeDivider = index == 0 ||
-                            message.timestamp - messages[index - 1].timestamp >= RADIO_TIME_DIVIDER_MS,
-                    )
-                }
-            }
-        }
-        Surface(modifier = Modifier.fillMaxWidth().imePadding(), shadowElevation = 8.dp) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                IconButton(onClick = { textMode = !textMode }) {
-                    Icon(
-                        if (textMode) Icons.Default.Mic else Icons.Default.Keyboard,
-                        contentDescription = if (textMode) "切换到语音" else "切换到文本",
-                    )
-                }
-                if (textMode) {
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        modifier = Modifier.weight(1f).focusRequester(textFocusRequester),
-                        placeholder = { Text("发送文本消息") },
-                        singleLine = true,
-                        enabled = controller.radioStatus.connected,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = {
-                            if (canSendText && controller.sendText(text)) text = ""
-                        }),
-                    )
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            Column(Modifier.fillMaxSize()) {
+                ConnectionPanel(
+                    controller = controller,
+                    status = controller.radioStatus,
+                    onToggleDevices = { showDevices = !showDevices },
+                )
+                if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
+                if (messages.isEmpty()) {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.History,
+                                contentDescription = null,
+                                modifier = Modifier.size(44.dp),
+                                tint = MaterialTheme.colorScheme.outline,
+                            )
+                            Text("暂无通联记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 } else {
-                    PttButton(
-                        modifier = Modifier.weight(1f),
-                        transmitting = controller.radioStatus.transmitting,
-                        enabled = controller.radioStatus.connected && controller.radioStatus.speaker.isBlank(),
-                        onStart = startPtt,
-                        onStop = controller::stopPtt,
-                    )
-                }
-                if (textMode) {
-                    IconButton(
-                        onClick = { if (controller.sendText(text)) text = "" },
-                        enabled = canSendText && text.isNotBlank(),
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "发送")
-                    }
-                } else {
-                    IconButton(onClick = controller::toggleMuted) {
-                        Icon(
-                            if (controller.muted) {
-                                Icons.AutoMirrored.Filled.VolumeOff
-                            } else {
-                                Icons.AutoMirrored.Filled.VolumeUp
-                            },
-                            contentDescription = if (controller.muted) "开启接收音频" else "关闭接收音频",
-                            tint = if (controller.muted) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
+                        itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+                            MessageItem(
+                                controller = controller,
+                                message = message,
+                                showTimeDivider = index == 0 ||
+                                    message.timestamp - messages[index - 1].timestamp >= RADIO_TIME_DIVIDER_MS,
+                                onOpenLocation = onOpenLocation,
+                            )
+                        }
                     }
                 }
             }
+            if (extrasExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = dismissExtrasInteraction,
+                            indication = null,
+                        ) { onExtrasExpandedChange(false) },
+                )
+            }
         }
+        RadioComposer(
+            textMode = textMode,
+            text = text,
+            connected = controller.radioStatus.connected,
+            transmitting = controller.radioStatus.transmitting,
+            receiving = controller.radioStatus.speaker.isNotBlank(),
+            canSendText = canSendText,
+            onTextModeChange = {
+                textMode = it
+                onExtrasExpandedChange(false)
+            },
+            onTextChange = { text = it },
+            onTextInputFocused = { onExtrasExpandedChange(false) },
+            onSendText = {
+                onExtrasExpandedChange(false)
+                if (controller.sendText(text)) {
+                    text = ""
+                }
+            },
+            onMoreMessage = {
+                showLocationChoices = false
+                onExtrasExpandedChange(!extrasExpanded)
+            },
+            onStartPtt = {
+                onExtrasExpandedChange(false)
+                startPtt()
+            },
+            onStopPtt = controller::stopPtt,
+        )
+        AnimatedVisibility(
+            visible = extrasExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            RadioExtraPanel(
+                locating = locating,
+                onLocationClick = { showLocationChoices = true },
+            )
+        }
+    }
+    if (showLocationChoices) {
+        LocationTypeSheet(
+            locating = locating,
+            onDismiss = {
+                showLocationChoices = false
+                onExtrasExpandedChange(false)
+            },
+            onCurrentLocation = {
+                showLocationChoices = false
+                onExtrasExpandedChange(false)
+                val fineGranted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                ) == PackageManager.PERMISSION_GRANTED
+                val coarseGranted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ) == PackageManager.PERMISSION_GRANTED
+                if (fineGranted || coarseGranted) {
+                    sendCurrentLocation()
+                } else {
+                    locationPermission.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                        ),
+                    )
+                }
+            },
+            onPickLocation = {
+                showLocationChoices = false
+                onExtrasExpandedChange(false)
+                onPickLocation()
+            },
+        )
     }
 }

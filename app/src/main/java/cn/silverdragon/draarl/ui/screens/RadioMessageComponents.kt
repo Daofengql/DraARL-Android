@@ -1,6 +1,7 @@
 package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +37,8 @@ import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageType
+import cn.silverdragon.draarl.data.Wgs84LocationMessage
+import cn.silverdragon.draarl.data.decodeLocationMessage
 import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import java.text.SimpleDateFormat
@@ -60,12 +64,18 @@ internal fun OnlineDeviceStrip(devices: List<OnlineDevice>) {
 }
 
 @Composable
-internal fun MessageItem(controller: AppController, message: RadioMessage, showTimeDivider: Boolean) {
+internal fun MessageItem(
+    controller: AppController,
+    message: RadioMessage,
+    showTimeDivider: Boolean,
+    onOpenLocation: (Wgs84LocationMessage) -> Unit,
+) {
     val profile = if (message.mine) controller.user else controller.publicProfile(message.senderUsername)
     val callsign = message.senderCallsign.ifBlank { profile?.callsign.orEmpty() }.ifBlank { message.senderUsername }
     val nickname = message.senderNickname.ifBlank { profile?.nickname.orEmpty() }.ifBlank { message.senderUsername }
     val time = remember(message.timestamp) { formatTime(message.timestamp) }
     val timeDivider = remember(message.timestamp) { formatTimeDivider(message.timestamp) }
+    val location = remember(message.content) { decodeLocationMessage(message.content) }
     if (showTimeDivider) {
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) {
             Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -106,6 +116,8 @@ internal fun MessageItem(controller: AppController, message: RadioMessage, showT
             ) {
                 if (message.type == RadioMessageType.VOICE) {
                     VoiceMessageContent(controller, message)
+                } else if (location != null) {
+                    LocationMessageContent(location, onOpenLocation)
                 } else {
                     Text(message.content, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
                 }
@@ -116,6 +128,43 @@ internal fun MessageItem(controller: AppController, message: RadioMessage, showT
             Spacer(Modifier.width(8.dp))
             UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
         }
+    }
+}
+
+@Composable
+private fun LocationMessageContent(location: Wgs84LocationMessage, onOpen: (Wgs84LocationMessage) -> Unit) {
+    Column(
+        modifier = Modifier
+            .widthIn(min = 260.dp)
+            .clickable { onOpen(location) },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Default.LocationOn, contentDescription = null)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    if (location.kind == cn.silverdragon.draarl.data.LocationMessageKind.CURRENT) "当前位置" else "标点位置",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    String.format(Locale.US, "WGS-84  %.6f, %.6f", location.latitude, location.longitude),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Text(
+                    location.altitudeMeters?.let { String.format(Locale.US, "海拔 %.1f 米", it) } ?: "未提供海拔",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+        AmapLocationPreview(
+            location = location,
+            onOpen = { onOpen(location) },
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+        )
     }
 }
 

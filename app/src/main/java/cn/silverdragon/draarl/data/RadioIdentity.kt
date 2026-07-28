@@ -9,3 +9,8 @@ fun formatRadioIdentity(identity: String, ssid: Int): String {
         else -> "未知台站"
     }
 }
+
+fun formatRadioIdentifiers(mdcId: String, dmrId: Int): String = buildList {
+    mdcId.trim().takeIf(String::isNotEmpty)?.let { add("MDC $it") }
+    if (dmrId > 0) add("DMR $dmrId")
+}.joinToString("  ·  ")

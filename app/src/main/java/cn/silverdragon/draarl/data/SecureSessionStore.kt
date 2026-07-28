@@ -127,6 +127,10 @@ class SecureSessionStore(context: Context) {
         .put("phone", user.phone)
         .put("introduction", user.introduction)
         .put("dmrid", user.dmrId)
+        .put("mdcid", user.mdcId)
+        .put("birthday", user.birthday)
+        .put("sex", user.sex)
+        .put("alarm_msg", user.alarmMsg)
         .put("last_group_id", user.lastGroupId)
 
     private fun userFromJson(json: JSONObject) = User(
@@ -144,6 +148,10 @@ class SecureSessionStore(context: Context) {
         phone = json.optString("phone"),
         introduction = json.optString("introduction"),
         dmrId = json.optInt("dmrid"),
+        mdcId = json.optString("mdcid"),
+        birthday = json.optString("birthday"),
+        sex = json.optInt("sex"),
+        alarmMsg = json.optBoolean("alarm_msg"),
         lastGroupId = json.optInt("last_group_id", 999),
     )
 

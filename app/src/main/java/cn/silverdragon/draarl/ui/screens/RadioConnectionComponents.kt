@@ -1,5 +1,6 @@
 package cn.silverdragon.draarl.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Groups
@@ -19,11 +22,11 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioStatus
+import cn.silverdragon.draarl.data.formatRadioIdentifiers
+import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import cn.silverdragon.draarl.ui.theme.appColors
 
@@ -52,7 +57,10 @@ internal fun ConnectionPanel(
     val selectedProbe = controller.accessPointProbes.firstOrNull {
         it.accessPoint.id == controller.selectedAccessPoint?.id
     }
-    val callsign = controller.user?.callsign?.ifBlank { controller.user?.displayName }.orEmpty().ifBlank { "DraARL" }
+    val user = controller.user
+    val callsign = user?.let { it.callsign.ifBlank { it.displayName } }.orEmpty().ifBlank { "DraARL" }
+    val stationIdentity = formatRadioIdentity(callsign, status.ssid)
+    val radioIdentifiers = formatRadioIdentifiers(user?.mdcId.orEmpty(), user?.dmrId ?: 0)
     if (accessMenu) AccessPointDialog(controller = controller, onDismiss = { accessMenu = false })
     if (groupMenu) GroupDialog(controller = controller, onDismiss = { groupMenu = false })
     Surface(color = MaterialTheme.colorScheme.surface) {
@@ -61,10 +69,23 @@ internal fun ConnectionPanel(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                UserAvatar(controller.user?.avatarUrl.orEmpty(), Modifier.size(44.dp))
+                UserAvatar(user?.avatarUrl.orEmpty(), Modifier.size(44.dp))
                 Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("$callsign-101", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        stationIdentity,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                    if (radioIdentifiers.isNotBlank()) {
+                        Text(
+                            radioIdentifiers,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             if (status.connected) Icons.Default.CloudDone else Icons.Default.CloudOff,
@@ -79,8 +100,28 @@ internal fun ConnectionPanel(
                             color = connectionColor(status.phase),
                             maxLines = 1,
                         )
-                        TextButton(onClick = onToggleDevices) { Text("${controller.onlineDevices.size} 在线") }
+                        Text(
+                            "${controller.onlineDevices.size} 在线",
+                            modifier = Modifier.clickable(onClick = onToggleDevices).padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
+                }
+                IconButton(onClick = controller::toggleMuted) {
+                    Icon(
+                        if (controller.muted) {
+                            Icons.AutoMirrored.Filled.VolumeOff
+                        } else {
+                            Icons.AutoMirrored.Filled.VolumeUp
+                        },
+                        contentDescription = if (controller.muted) "开启接收音频" else "关闭接收音频",
+                        tint = if (controller.muted) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

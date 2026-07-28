@@ -27,5 +27,7 @@ class AppNavigationTest {
         assertTrue(pagePosition(AppPage.EDIT_PROFILE) > pagePosition(AppPage.PROFILE))
         assertTrue(pagePosition(AppPage.RADIO_PRESETS) > pagePosition(AppPage.PROFILE))
         assertTrue(pagePosition(AppPage.SETTINGS) > pagePosition(AppPage.PROFILE))
+        assertTrue(pagePosition(AppPage.SYSTEM_SETTINGS) > pagePosition(AppPage.SETTINGS))
+        assertTrue(pagePosition(AppPage.LOCATION_MAP) > pagePosition(AppPage.ACCOUNT_SECURITY))
     }
 }

@@ -9,7 +9,9 @@ enum class AppPage {
     EDIT_PROFILE,
     RADIO_PRESETS,
     SETTINGS,
+    SYSTEM_SETTINGS,
     ACCOUNT_SECURITY,
+    LOCATION_MAP,
 }
 
 internal val MAIN_NAVIGATION_PAGES = listOf(
@@ -25,6 +27,7 @@ internal val APPROVAL_REQUIRED_PAGES = setOf(
     AppPage.GROUPS,
     AppPage.RADIO,
     AppPage.RADIO_PRESETS,
+    AppPage.LOCATION_MAP,
 )
 
 internal fun authenticatedStartPage(isApproved: Boolean): AppPage =
@@ -37,7 +40,9 @@ internal fun pagePosition(page: AppPage): Int {
         AppPage.EDIT_PROFILE -> MAIN_NAVIGATION_PAGES.size
         AppPage.RADIO_PRESETS -> MAIN_NAVIGATION_PAGES.size + 1
         AppPage.SETTINGS -> MAIN_NAVIGATION_PAGES.size + 2
-        AppPage.ACCOUNT_SECURITY -> MAIN_NAVIGATION_PAGES.size + 3
+        AppPage.SYSTEM_SETTINGS -> MAIN_NAVIGATION_PAGES.size + 3
+        AppPage.ACCOUNT_SECURITY -> MAIN_NAVIGATION_PAGES.size + 4
+        AppPage.LOCATION_MAP -> MAIN_NAVIGATION_PAGES.size + 5
         else -> error("Main navigation page is missing from MAIN_NAVIGATION_PAGES: $page")
     }
 }

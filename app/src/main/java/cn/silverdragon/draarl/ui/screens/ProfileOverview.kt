@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,12 +41,8 @@ internal fun ProfileOverview(stats: DashboardData) {
                 Icons.Default.Devices,
                 MaterialTheme.appColors.statDevices,
             ),
-            right = StatValue("可用群组", stats.groups.toString(), Icons.Default.Groups, MaterialTheme.appColors.statGroups),
-        )
-        StatRow(
-            left = StatValue("通信记录", stats.communications.toString(), Icons.Default.Forum, MaterialTheme.appColors.statComms),
             right = StatValue(
-                "累计时长",
+                "累计时长 · ${stats.communications} 条记录",
                 formatCompactDuration(stats.communicationDurationMs),
                 Icons.Default.AccessTime,
                 MaterialTheme.appColors.statDuration,

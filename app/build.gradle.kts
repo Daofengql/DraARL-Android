@@ -9,6 +9,12 @@ val releaseSigning = Properties().apply {
     val propertiesFile = rootProject.file("keystore.properties")
     if (propertiesFile.isFile) propertiesFile.inputStream().use(::load)
 }
+val localProperties = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.isFile) propertiesFile.inputStream().use(::load)
+}
+val amapApiKey = providers.gradleProperty("AMAP_API_KEY").orNull
+    ?: localProperties.getProperty("AMAP_API_KEY").orEmpty()
 val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
     .all { !releaseSigning.getProperty(it).isNullOrBlank() }
 
@@ -26,6 +32,10 @@ android {
         targetSdk = 36
         versionCode = 5
         versionName = "1.0-beta8"
+        manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -70,9 +80,11 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.concentus)
+    implementation(libs.amap.map)
     testImplementation(libs.junit)
     testImplementation(libs.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))

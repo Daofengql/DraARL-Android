@@ -15,4 +15,11 @@ class RadioIdentityTest {
         assertEquals("SSID-105", formatRadioIdentity("", 105))
         assertEquals("未知台站", formatRadioIdentity("", 0))
     }
+
+    @Test
+    fun `formats available mdc and dmr identifiers on one line`() {
+        assertEquals("MDC 1234  ·  DMR 460001", formatRadioIdentifiers(" 1234 ", 460001))
+        assertEquals("DMR 460001", formatRadioIdentifiers("", 460001))
+        assertEquals("MDC A102", formatRadioIdentifiers("A102", 0))
+    }
 }
