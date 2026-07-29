@@ -379,7 +379,14 @@ internal fun ManagedAmapView(
         val aMap = map ?: return@LaunchedEffect
         aMap.clear()
         coordinate?.let {
-            aMap.addMarker(MarkerOptions().position(it).anchor(0.5f, 1f).apply { markerIcon?.let(::icon) })
+            aMap.addMarker(
+                MarkerOptions()
+                    .position(it)
+                    .anchor(0.5f, 1f)
+                    .zIndex(20f)
+                    .draggable(false)
+                    .apply { markerIcon?.let(::icon) },
+            )
             aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, zoom))
         }
     }
