@@ -340,19 +340,29 @@ internal fun ManagedAmapView(
     var map by remember { mutableStateOf<AMap?>(null) }
 
     DisposableEffect(mapView, lifecycle) {
+        var resumed = false
         mapView.onCreate(Bundle())
-        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onResume()
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            mapView.onResume()
+            resumed = true
+        }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_RESUME -> if (!resumed) {
+                    mapView.onResume()
+                    resumed = true
+                }
+                Lifecycle.Event.ON_PAUSE -> if (resumed) {
+                    mapView.onPause()
+                    resumed = false
+                }
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            mapView.onPause()
+            if (resumed) mapView.onPause()
             mapView.onDestroy()
         }
     }

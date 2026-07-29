@@ -12,8 +12,8 @@ kotlin = "2.2.10"
 composeBom = "2026.02.01"
 concentus = "1.0.2"
 coil = "3.3.0"
-amapMap = "9.8.3"
-amapSearch = "9.7.1"
+amapMap = "10.0.600"
+amapSearch = "9.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
