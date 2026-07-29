@@ -7,11 +7,12 @@ import java.util.concurrent.atomic.AtomicInteger
 class OpusAudioEngine(
     audioCache: RadioAudioCache,
     private val historicalAudioLoader: HistoricalAudioLoader = HistoricalAudioLoader(audioCache),
+    onPlaybackLevel: (Float) -> Unit = {},
 ) {
     private val released = AtomicBoolean(false)
     private val recordingPlaybackGeneration = AtomicInteger(0)
     private val capture = OpusCaptureController()
-    private val playback = OpusPlaybackController()
+    private val playback = OpusPlaybackController(onPlaybackLevel)
     private val downloadExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-audio-download")
     }

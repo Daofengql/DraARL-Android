@@ -24,6 +24,7 @@ interface RadioServiceListener {
     fun onRadioStatus(status: RadioStatus)
     fun onRadioMessage(message: RadioMessage)
     fun onPlaybackState(messageId: String?)
+    fun onPlaybackLevel(level: Float)
 }
 
 class RadioConnectionService : Service(), UdpRadioListener {
@@ -100,6 +101,10 @@ class RadioConnectionService : Service(), UdpRadioListener {
 
     override fun onPlaybackState(messageId: String?) {
         listener?.onPlaybackState(messageId)
+    }
+
+    override fun onPlaybackLevel(level: Float) {
+        listener?.onPlaybackLevel(level)
     }
 
     private fun connect(config: RadioConnectionConfig) {

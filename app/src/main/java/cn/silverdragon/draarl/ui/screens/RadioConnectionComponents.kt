@@ -1,5 +1,8 @@
 package cn.silverdragon.draarl.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +39,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
@@ -44,6 +51,8 @@ import cn.silverdragon.draarl.data.formatRadioIdentifiers
 import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import cn.silverdragon.draarl.ui.theme.appColors
+import kotlin.math.PI
+import kotlin.math.sin
 
 @Composable
 internal fun ConnectionPanel(
@@ -108,6 +117,11 @@ internal fun ConnectionPanel(
                         )
                     }
                 }
+                PlaybackLevelMeter(
+                    level = controller.playbackLevel,
+                    active = status.speaker.isNotBlank() || controller.playingMessageId != null,
+                    modifier = Modifier.width(72.dp).height(28.dp),
+                )
                 IconButton(onClick = controller::toggleMuted) {
                     Icon(
                         if (controller.muted) {
@@ -191,6 +205,54 @@ internal fun ConnectionPanel(
                 )
             }
             HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun PlaybackLevelMeter(
+    level: Float,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val animatedLevel by animateFloatAsState(
+        targetValue = if (active) level.coerceIn(0f, 1f) else 0f,
+        animationSpec = tween(durationMillis = 80),
+        label = "playbackLevel",
+    )
+    val primary = MaterialTheme.colorScheme.primary
+    val warning = MaterialTheme.appColors.statusWarning
+    val error = MaterialTheme.colorScheme.error
+    val inactive = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    Canvas(
+        modifier = modifier.semantics {
+            contentDescription = if (active) "播放电平 ${(animatedLevel * 100).toInt()}%" else "当前没有音频播放"
+        },
+    ) {
+        val segments = 12
+        val gap = 2.dp.toPx()
+        val segmentWidth = (size.width - gap * (segments - 1)) / segments
+        repeat(segments) { index ->
+            val progress = (index + 1f) / segments
+            val envelope = 0.4f + 0.6f * sin(progress * PI).toFloat()
+            val barHeight = size.height * envelope
+            val selected = active && animatedLevel >= progress
+            val color = if (!selected) {
+                inactive
+            } else when {
+                progress > 0.84f -> error
+                progress > 0.66f -> warning
+                else -> primary
+            }
+            drawRoundRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(
+                    x = index * (segmentWidth + gap),
+                    y = size.height - barHeight,
+                ),
+                size = androidx.compose.ui.geometry.Size(segmentWidth, barHeight),
+                cornerRadius = CornerRadius(segmentWidth / 2f, segmentWidth / 2f),
+            )
         }
     }
 }

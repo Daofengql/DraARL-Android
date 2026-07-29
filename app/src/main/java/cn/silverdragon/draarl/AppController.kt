@@ -12,6 +12,7 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -275,6 +276,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private var appInForeground = true
     var playingMessageId by mutableStateOf<String?>(null)
         private set
+    var playbackLevel by mutableFloatStateOf(0f)
+        private set
     var publicProfiles by mutableStateOf<Map<String, User>>(emptyMap())
         private set
 
@@ -387,6 +390,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         publicProfiles = emptyMap()
         loadingPublicProfiles.clear()
         playingMessageId = null
+        playbackLevel = 0f
         page = AppPage.RADIO
     }
 
@@ -958,6 +962,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         mainHandler.post {
             val wasConnected = radioStatus.connected
             radioStatus = status.copy(groupId = selectedGroupId)
+            if (status.speaker.isBlank() && playingMessageId == null) playbackLevel = 0f
             if (status.connected) preparingRadioConnection.set(false)
             if (!wasConnected && status.connected) refreshRadioData()
             if (
@@ -1059,7 +1064,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     override fun onPlaybackState(messageId: String?) {
-        mainHandler.post { playingMessageId = messageId }
+        mainHandler.post {
+            playingMessageId = messageId
+            if (messageId == null && radioStatus.speaker.isBlank()) playbackLevel = 0f
+        }
+    }
+
+    override fun onPlaybackLevel(level: Float) {
+        mainHandler.post { playbackLevel = level.coerceIn(0f, 1f) }
     }
 
     override fun onCleared() {

@@ -8,7 +8,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 
-internal class OpusPlaybackController {
+internal class OpusPlaybackController(
+    private val onLevel: (Float) -> Unit = {},
+) {
     private val executor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-opus-playback")
     }
@@ -29,6 +31,7 @@ internal class OpusPlaybackController {
                     writeFrame(track, frame)
                 }
             }.onFailure { error ->
+                onLevel(0f)
                 if (!released.get()) onError(error.message ?: "语音播放失败")
             }
         }
@@ -56,6 +59,7 @@ internal class OpusPlaybackController {
                 writeFrame(track, frame)
             }
         }
+        onLevel(0f)
         if (isActive() && !released.get()) {
             result.fold(
                 onSuccess = { onFinished() },
@@ -65,6 +69,7 @@ internal class OpusPlaybackController {
     }
 
     fun stopRecording() {
+        onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
             runCatching { audioTrack?.pause() }
             runCatching { audioTrack?.flush() }
@@ -73,12 +78,14 @@ internal class OpusPlaybackController {
 
     fun setMuted(value: Boolean) {
         muted = value
+        if (value) onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
             runCatching { audioTrack?.setVolume(if (value) 0f else 1f) }
         }
     }
 
     fun resetDecoder() {
+        onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
             decoder.reset()
             runCatching { audioTrack?.flush() }
@@ -87,6 +94,7 @@ internal class OpusPlaybackController {
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
+        onLevel(0f)
         val cleanup = Runnable {
             val track = audioTrack
             audioTrack = null
@@ -139,6 +147,9 @@ internal class OpusPlaybackController {
 
     private fun writeFrame(track: AudioTrack, frame: ByteArray) {
         val pcm = decoder.decode(frame)
-        if (pcm.isNotEmpty()) track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
+        if (pcm.isNotEmpty()) {
+            onLevel(normalizedPcmLevel(pcm))
+            track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
+        }
     }
 }

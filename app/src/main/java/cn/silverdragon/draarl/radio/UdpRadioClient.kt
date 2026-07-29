@@ -30,6 +30,7 @@ interface UdpRadioListener {
     fun onStatus(status: RadioStatus)
     fun onMessage(message: RadioMessage)
     fun onPlaybackState(messageId: String?)
+    fun onPlaybackLevel(level: Float)
 }
 
 class UdpRadioClient(
@@ -37,7 +38,9 @@ class UdpRadioClient(
     private val listener: UdpRadioListener,
 ) {
     private val audioCache = RadioAudioCache(context.applicationContext.filesDir.resolve("radio_audio"))
-    private val audioEngine = OpusAudioEngine(audioCache)
+    private val audioEngine = OpusAudioEngine(audioCache) { level ->
+        listener.onPlaybackLevel(level)
+    }
     private val connectionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-udp-connect")
     }
