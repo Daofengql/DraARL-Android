@@ -119,11 +119,17 @@ private val DarkAppColors = AppColors(
 )
 
 val LocalAppColors = compositionLocalOf { LightAppColors }
+val LocalAppDarkTheme = compositionLocalOf { false }
 
 val MaterialTheme.appColors: AppColors
     @Composable
     @ReadOnlyComposable
     get() = LocalAppColors.current
+
+val MaterialTheme.isDarkTheme: Boolean
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalAppDarkTheme.current
 
 // ── Theme entry point ─────────────────────────────────────────────────────────
 
@@ -134,6 +140,7 @@ fun DraarlTheme(
 ) {
     CompositionLocalProvider(
         LocalAppColors provides if (darkTheme) DarkAppColors else LightAppColors,
+        LocalAppDarkTheme provides darkTheme,
     ) {
         MaterialTheme(
             colorScheme = if (darkTheme) DarkColors else LightColors,

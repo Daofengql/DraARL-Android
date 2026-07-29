@@ -86,6 +86,14 @@ class SecureSessionStore(context: Context) {
         preferences.edit { putString(KEY_DISPLAY_SCALE, scale.name) }
     }
 
+    fun appThemeMode(): AppThemeMode = runCatching {
+        AppThemeMode.valueOf(preferences.getString(KEY_THEME_MODE, null).orEmpty())
+    }.getOrDefault(AppThemeMode.FOLLOW_SYSTEM)
+
+    fun setAppThemeMode(mode: AppThemeMode) {
+        preferences.edit { putString(KEY_THEME_MODE, mode.name) }
+    }
+
     fun transmitTimeoutSeconds(): Int = preferences
         .getInt(KEY_TRANSMIT_TIMEOUT_SECONDS, DEFAULT_TRANSMIT_TIMEOUT_SECONDS)
         .coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
@@ -187,6 +195,7 @@ class SecureSessionStore(context: Context) {
         private const val KEY_MUTED = "muted"
         private const val KEY_PTT_OVERLAY = "ptt_overlay"
         private const val KEY_DISPLAY_SCALE = "display_scale"
+        private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_TRANSMIT_TIMEOUT_SECONDS = "transmit_timeout_seconds"
         private const val MIN_TRANSMIT_TIMEOUT_SECONDS = 10
         private const val DEFAULT_TRANSMIT_TIMEOUT_SECONDS = 120

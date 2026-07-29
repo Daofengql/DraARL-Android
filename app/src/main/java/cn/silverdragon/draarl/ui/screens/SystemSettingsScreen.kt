@@ -21,7 +21,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +46,7 @@ import androidx.core.net.toUri
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.data.AppDisplayScale
+import cn.silverdragon.draarl.data.AppThemeMode
 import kotlin.math.roundToInt
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -132,6 +135,35 @@ fun SystemSettingsScreen(controller: AppController) {
                                 }
                             }
                         }
+                        HorizontalDivider()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Palette,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column {
+                                Text("外观模式", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "同步调整界面、系统栏和地图明暗",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            AppThemeMode.entries.forEachIndexed { index, mode ->
+                                SegmentedButton(
+                                    selected = controller.appThemeMode == mode,
+                                    onClick = { controller.updateAppThemeMode(mode) },
+                                    shape = SegmentedButtonDefaults.itemShape(index, AppThemeMode.entries.size),
+                                ) {
+                                    Text(mode.displayName())
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -188,6 +220,12 @@ private fun AppDisplayScale.displayName(): String = when (this) {
     AppDisplayScale.COMPACT -> "紧凑"
     AppDisplayScale.STANDARD -> "标准"
     AppDisplayScale.COMFORTABLE -> "宽松"
+}
+
+private fun AppThemeMode.displayName(): String = when (this) {
+    AppThemeMode.FOLLOW_SYSTEM -> "跟随"
+    AppThemeMode.LIGHT -> "日间"
+    AppThemeMode.DARK -> "夜间"
 }
 
 @Composable

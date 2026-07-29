@@ -216,20 +216,27 @@ fun RadioScreen(
         if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
         RadioModeSwitcher(
             mapSelected = contentMode == RadioContentMode.MAP,
-            onMap = { contentMode = RadioContentMode.MAP },
+            onMap = {
+                contentMode = RadioContentMode.MAP
+                onExtrasExpandedChange(false)
+            },
             onMessages = { contentMode = RadioContentMode.MESSAGES },
             modifier = Modifier.fillMaxWidth(),
         )
-        if (contentMode == RadioContentMode.MAP) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
             AprsMapPanel(
                 controller = controller,
                 onStartPtt = startPtt,
                 onStopPtt = controller::stopPtt,
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                visible = contentMode == RadioContentMode.MAP,
+                modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-            Column(Modifier.fillMaxSize()) {
+            if (contentMode == RadioContentMode.MESSAGES) {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    Column(Modifier.fillMaxSize()) {
                 if (messages.isEmpty()) {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Column(
@@ -296,6 +303,7 @@ fun RadioScreen(
                     }
                 }
             }
+                }
             if (extrasExpanded) {
                 Box(
                     modifier = Modifier
@@ -307,6 +315,8 @@ fun RadioScreen(
                 )
             }
         }
+        }
+        if (contentMode == RadioContentMode.MESSAGES) {
         RadioComposer(
             textMode = textMode,
             text = text,

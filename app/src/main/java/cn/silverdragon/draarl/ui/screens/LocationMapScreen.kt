@@ -62,6 +62,7 @@ import cn.silverdragon.draarl.data.LocationMessageKind
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.maps.CoordinateConverter
 import cn.silverdragon.draarl.maps.GeoCoordinate
+import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
@@ -79,6 +80,7 @@ fun LocationMapScreen(
     onSend: (Wgs84LocationMessage) -> Boolean,
 ) {
     val context = LocalContext.current
+    val mapType = if (MaterialTheme.isDarkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL
     val preferences = remember(context) {
         context.getSharedPreferences(MAP_PREFERENCES, Context.MODE_PRIVATE)
     }
@@ -170,6 +172,7 @@ fun LocationMapScreen(
                 zoom = 15f,
                 modifier = Modifier.fillMaxSize(),
                 recenterRequest = recenterRequest,
+                mapType = mapType,
                 onCoordinateSelected = { selectedGcj = it },
             )
             if (selectedGcj != null) {
@@ -231,11 +234,12 @@ internal fun AmapLocationPreview(
     val privacyAccepted = context.getSharedPreferences(MAP_PREFERENCES, Context.MODE_PRIVATE)
         .getBoolean(MAP_PRIVACY_ACCEPTED, false)
     val interactionSource = remember { MutableInteractionSource() }
+    val mapType = if (MaterialTheme.isDarkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL
     val gcj = remember(location.latitude, location.longitude) {
         CoordinateConverter.wgs84ToGcj02(GeoCoordinate(location.latitude, location.longitude))
     }
-    val previewKey = remember(location.latitude, location.longitude) {
-        String.format(Locale.US, "%.5f:%.5f", location.latitude, location.longitude)
+    val previewKey = remember(location.latitude, location.longitude, mapType) {
+        String.format(Locale.US, "%.5f:%.5f:%d", location.latitude, location.longitude, mapType)
     }
     var mapBitmap by remember(previewKey) {
         mutableStateOf(AmapPreviewCache.get(previewKey))
@@ -268,6 +272,7 @@ internal fun AmapLocationPreview(
                 gesturesEnabled = false,
                 showCompass = false,
                 zoom = 15f,
+                mapType = mapType,
                 modifier = Modifier.fillMaxSize(),
                 onMapLoaded = { aMap ->
                     var delivered = false
@@ -325,6 +330,9 @@ internal fun ManagedAmapView(
     zoom: Float,
     modifier: Modifier = Modifier,
     recenterRequest: Int = 0,
+    zoomInRequest: Int = 0,
+    zoomOutRequest: Int = 0,
+    mapType: Int = AMap.MAP_TYPE_NORMAL,
     markerIcon: BitmapDescriptor? = null,
     onCoordinateSelected: (LatLng) -> Unit = {},
     onMapLoaded: ((AMap) -> Unit)? = null,
@@ -360,11 +368,6 @@ internal fun ManagedAmapView(
             if (map !== aMap) {
                 map = aMap
                 aMap.uiSettings.isZoomControlsEnabled = false
-                aMap.uiSettings.isCompassEnabled = showCompass
-                aMap.uiSettings.setAllGesturesEnabled(gesturesEnabled)
-                aMap.setOnMapClickListener { coordinate ->
-                    if (allowSelection) onCoordinateSelected(coordinate)
-                }
                 if (onMapLoaded != null) {
                     aMap.setOnMapLoadedListener { onMapLoaded(aMap) }
                 }
@@ -372,10 +375,15 @@ internal fun ManagedAmapView(
                     ?: CameraUpdateFactory.newLatLngZoom(DEFAULT_MAP_CENTER, 4.5f)
                 aMap.moveCamera(camera)
             }
+            aMap.uiSettings.isCompassEnabled = showCompass
+            aMap.uiSettings.setAllGesturesEnabled(gesturesEnabled)
+            aMap.setOnMapClickListener { selected ->
+                if (allowSelection) onCoordinateSelected(selected)
+            }
         },
     )
 
-    LaunchedEffect(map, coordinate, zoom, recenterRequest, markerIcon) {
+    LaunchedEffect(map, coordinate, markerIcon) {
         val aMap = map ?: return@LaunchedEffect
         aMap.clear()
         coordinate?.let {
@@ -387,8 +395,31 @@ internal fun ManagedAmapView(
                     .draggable(false)
                     .apply { markerIcon?.let(::icon) },
             )
-            aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, zoom))
         }
+    }
+
+    LaunchedEffect(map, coordinate, zoom) {
+        val aMap = map ?: return@LaunchedEffect
+        coordinate?.let { aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, zoom)) }
+    }
+
+    LaunchedEffect(map, mapType) {
+        map?.mapType = mapType
+    }
+
+    LaunchedEffect(recenterRequest) {
+        if (recenterRequest > 0) {
+            val aMap = map ?: return@LaunchedEffect
+            coordinate?.let { aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, zoom)) }
+        }
+    }
+
+    LaunchedEffect(zoomInRequest) {
+        if (zoomInRequest > 0) map?.animateCamera(CameraUpdateFactory.zoomIn())
+    }
+
+    LaunchedEffect(zoomOutRequest) {
+        if (zoomOutRequest > 0) map?.animateCamera(CameraUpdateFactory.zoomOut())
     }
 }
 

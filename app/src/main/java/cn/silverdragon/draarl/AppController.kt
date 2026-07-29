@@ -31,6 +31,7 @@ import cn.silverdragon.draarl.data.ApiAppDataSource
 import cn.silverdragon.draarl.data.AppDataFallback
 import cn.silverdragon.draarl.data.AppDataRefresher
 import cn.silverdragon.draarl.data.AppDisplayScale
+import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.DashboardCacheStore
@@ -262,6 +263,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
     )
         private set
     var appDisplayScale by mutableStateOf(sessionStore.appDisplayScale())
+        private set
+    var appThemeMode by mutableStateOf(sessionStore.appThemeMode())
         private set
     var transmitTimeoutSeconds by mutableIntStateOf(sessionStore.transmitTimeoutSeconds())
         private set
@@ -699,6 +702,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
         if (appDisplayScale == scale) return
         appDisplayScale = scale
         sessionStore.setAppDisplayScale(scale)
+    }
+
+    fun updateAppThemeMode(mode: AppThemeMode) {
+        if (appThemeMode == mode) return
+        appThemeMode = mode
+        sessionStore.setAppThemeMode(mode)
     }
 
     fun updateTransmitTimeoutSeconds(seconds: Int) {

@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,10 +23,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationSearching
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +46,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +61,9 @@ import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.maps.CoordinateConverter
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
+import cn.silverdragon.draarl.maps.LastMapLocationStore
+import cn.silverdragon.draarl.ui.theme.isDarkTheme
+import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.BitmapDescriptorFactory
 import coil3.SingletonImageLoader
@@ -68,13 +80,28 @@ internal fun AprsMapPanel(
     onStartPtt: () -> Boolean,
     onStopPtt: () -> Unit,
     modifier: Modifier = Modifier,
+    visible: Boolean = true,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val provider = remember(context) { CurrentLocationProvider(context) }
-    var coordinate by remember { mutableStateOf<LatLng?>(null) }
+    val locationStore = remember(context) { LastMapLocationStore(context) }
+    val cachedCoordinate = remember(locationStore) {
+        locationStore.load()?.let { cached ->
+            CoordinateConverter.wgs84ToGcj02(GeoCoordinate(cached.latitude, cached.longitude))
+                .let { LatLng(it.latitude, it.longitude) }
+        }
+    }
+    var coordinate by remember { mutableStateOf(cachedCoordinate) }
     var loading by remember { mutableStateOf(false) }
     var recenterRequest by remember { mutableIntStateOf(0) }
+    var zoomInRequest by remember { mutableIntStateOf(0) }
+    var zoomOutRequest by remember { mutableIntStateOf(0) }
+    val darkTheme = MaterialTheme.isDarkTheme
+    var mapType by rememberSaveable {
+        mutableIntStateOf(if (darkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL)
+    }
+    var mapTypeMenuExpanded by remember { mutableStateOf(false) }
     val fallbackMarker = remember {
         BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(null))
     }
@@ -106,6 +133,7 @@ internal fun AprsMapPanel(
         scope.launch {
             try {
                 val location = provider.locate()
+                locationStore.save(location)
                 val gcj = CoordinateConverter.wgs84ToGcj02(GeoCoordinate(location.latitude, location.longitude))
                 coordinate = LatLng(gcj.latitude, gcj.longitude)
             } catch (error: CancellationException) {
@@ -136,15 +164,28 @@ internal fun AprsMapPanel(
         }
     }
 
+    LaunchedEffect(visible) {
+        if (!visible) mapTypeMenuExpanded = false
+    }
+
+    LaunchedEffect(darkTheme) {
+        if (mapType == AMap.MAP_TYPE_NORMAL || mapType == AMap.MAP_TYPE_NIGHT) {
+            mapType = if (darkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL
+        }
+    }
+
     Box(modifier.fillMaxSize()) {
         if (hasAmapApiKey(context)) {
             ManagedAmapView(
                 coordinate = coordinate,
                 allowSelection = false,
-                gesturesEnabled = true,
+                gesturesEnabled = visible,
                 showCompass = true,
                 zoom = 15f,
                 recenterRequest = recenterRequest,
+                zoomInRequest = zoomInRequest,
+                zoomOutRequest = zoomOutRequest,
+                mapType = mapType,
                 markerIcon = avatarMarker ?: fallbackMarker,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -154,33 +195,105 @@ internal fun AprsMapPanel(
             }
         }
 
-        IconButton(
-            onClick = {
-                if (coordinate == null) {
-                    permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                } else {
-                    recenterRequest++
+        if (visible) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 12.dp, end = 12.dp),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                    tonalElevation = 4.dp,
+                    shadowElevation = 4.dp,
+                ) {
+                    Column {
+                        MapControlButton(
+                            onClick = {
+                                if (coordinate == null) {
+                                    permissionLauncher.launch(
+                                        arrayOf(
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                                        ),
+                                    )
+                                } else {
+                                    recenterRequest++
+                                }
+                            },
+                            icon = if (coordinate == null) Icons.Default.LocationSearching else Icons.Default.CenterFocusStrong,
+                            description = "定位当前位置",
+                        )
+                        HorizontalDivider()
+                        MapControlButton(
+                            onClick = { zoomInRequest++ },
+                            icon = Icons.Default.Add,
+                            description = "放大地图",
+                        )
+                        HorizontalDivider()
+                        MapControlButton(
+                            onClick = { zoomOutRequest++ },
+                            icon = Icons.Default.Remove,
+                            description = "缩小地图",
+                        )
+                        HorizontalDivider()
+                        MapControlButton(
+                            onClick = { mapTypeMenuExpanded = true },
+                            icon = Icons.Default.Layers,
+                            description = "选择地图类型",
+                        )
+                    }
                 }
-            },
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 12.dp).shadow(4.dp, CircleShape),
-        ) {
-            Icon(
-                if (coordinate == null) Icons.Default.LocationSearching else Icons.Default.CenterFocusStrong,
-                contentDescription = "定位当前位置",
-            )
+                DropdownMenu(
+                    expanded = mapTypeMenuExpanded,
+                    onDismissRequest = { mapTypeMenuExpanded = false },
+                ) {
+                    MAP_TYPES.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    option.label,
+                                    color = if (mapType == option.value) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                )
+                            },
+                            onClick = {
+                                mapType = option.value
+                                mapTypeMenuExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
         }
 
-        if (loading) {
+        if (visible && loading && coordinate == null) {
             Text("正在定位", modifier = Modifier.align(Alignment.Center).padding(top = 54.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        MapPttButton(
-            transmitting = controller.radioStatus.transmitting,
-            enabled = controller.radioStatus.connected && controller.radioStatus.speaker.isBlank(),
-            onStart = onStartPtt,
-            onStop = onStopPtt,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
-        )
+        if (visible) {
+            MapPttButton(
+                transmitting = controller.radioStatus.transmitting,
+                enabled = controller.radioStatus.connected && controller.radioStatus.speaker.isBlank(),
+                onStart = onStartPtt,
+                onStop = onStopPtt,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MapControlButton(
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(44.dp)) {
+        Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -310,3 +423,9 @@ private const val MARKER_WIDTH = 144
 private const val MARKER_HEIGHT = 168
 private const val MARKER_CENTER = 72f
 private val MARKER_BLUE = AndroidColor.rgb(25, 118, 210)
+private data class MapTypeOption(val label: String, val value: Int)
+private val MAP_TYPES = listOf(
+    MapTypeOption("标准地图", AMap.MAP_TYPE_NORMAL),
+    MapTypeOption("卫星地图", AMap.MAP_TYPE_SATELLITE),
+    MapTypeOption("夜间地图", AMap.MAP_TYPE_NIGHT),
+)

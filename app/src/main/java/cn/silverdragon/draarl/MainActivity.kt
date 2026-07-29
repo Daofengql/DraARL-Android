@@ -4,7 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import cn.silverdragon.draarl.ui.DraarlApp
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
@@ -27,7 +30,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         controller = ViewModelProvider(this)[AppController::class.java]
         setContent {
-            DraarlTheme {
+            val darkTheme = controller.appThemeMode.isDark(isSystemInDarkTheme())
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+            DraarlTheme(darkTheme = darkTheme) {
                 DraarlApp(controller)
             }
         }
