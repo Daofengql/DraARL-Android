@@ -29,6 +29,8 @@ class PublicAuthController(
         private set
     var registrationRequiresEmailVerification by mutableStateOf(true)
         private set
+    var registrationConfigLoading by mutableStateOf(false)
+        private set
     var passwordResetComplete by mutableStateOf(false)
         private set
     var captchaId by mutableStateOf("")
@@ -67,13 +69,26 @@ class PublicAuthController(
     }
 
     fun loadRegistrationConfig() {
+        if (closed.get()) return
         val generation = operationGeneration.get()
+        registrationConfigLoading = true
         executor.execute {
             runCatching { api.getRegistrationRequiresEmailVerification(AppConfig.BASE_URL) }
                 .onSuccess { required ->
                     mainHandler.post {
                         if (closed.get() || generation != operationGeneration.get()) return@post
+                        registrationConfigLoading = false
                         registrationRequiresEmailVerification = required
+                    }
+                }
+                .onFailure {
+                    mainHandler.post {
+                        if (closed.get() || generation != operationGeneration.get()) return@post
+                        // The server remains authoritative during registration. A
+                        // failed public-config request should not trap users in an
+                        // email-verification flow that the server may have disabled.
+                        registrationConfigLoading = false
+                        registrationRequiresEmailVerification = false
                     }
                 }
         }
@@ -83,6 +98,7 @@ class PublicAuthController(
         operationGeneration.incrementAndGet()
         busy = false
         error = ""
+        registrationConfigLoading = false
         passwordResetComplete = false
     }
 

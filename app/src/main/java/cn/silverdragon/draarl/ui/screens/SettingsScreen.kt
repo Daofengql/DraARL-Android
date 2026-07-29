@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -86,6 +87,12 @@ fun SettingsScreen(controller: AppController) {
                         title = "存储管理",
                         subtitle = "查看并清理语音、头像和消息缓存",
                         onClick = { controller.navigate(AppPage.STORAGE_SETTINGS) },
+                    )
+                    SettingsMenuItem(
+                        icon = Icons.Default.MyLocation,
+                        title = "APRS 设置",
+                        subtitle = "APRS-IS 位置上报与自动上报",
+                        onClick = { controller.navigate(AppPage.APRS_SETTINGS) },
                     )
                 }
             }

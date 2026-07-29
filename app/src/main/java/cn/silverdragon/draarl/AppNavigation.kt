@@ -12,6 +12,7 @@ enum class AppPage {
     SYSTEM_SETTINGS,
     ACCOUNT_SECURITY,
     STORAGE_SETTINGS,
+    APRS_SETTINGS,
     LOCATION_MAP,
 }
 
@@ -41,7 +42,8 @@ internal fun pagePosition(page: AppPage): Int {
         AppPage.SYSTEM_SETTINGS -> MAIN_NAVIGATION_PAGES.size + 3
         AppPage.ACCOUNT_SECURITY -> MAIN_NAVIGATION_PAGES.size + 4
         AppPage.STORAGE_SETTINGS -> MAIN_NAVIGATION_PAGES.size + 5
-        AppPage.LOCATION_MAP -> MAIN_NAVIGATION_PAGES.size + 6
+        AppPage.APRS_SETTINGS -> MAIN_NAVIGATION_PAGES.size + 6
+        AppPage.LOCATION_MAP -> MAIN_NAVIGATION_PAGES.size + 7
         else -> error("Main navigation page is missing from MAIN_NAVIGATION_PAGES: $page")
     }
 }

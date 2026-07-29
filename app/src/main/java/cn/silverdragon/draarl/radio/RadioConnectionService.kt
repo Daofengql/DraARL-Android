@@ -18,6 +18,7 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioStatus
+import java.util.ArrayDeque
 
 interface RadioServiceListener {
     fun onRadioStatus(status: RadioStatus)
@@ -32,6 +33,8 @@ class RadioConnectionService : Service(), UdpRadioListener {
     @Volatile private var listener: RadioServiceListener? = null
     @Volatile private var foreground = false
     @Volatile private var overlayFeatureEnabled = false
+    private val messageBufferLock = Any()
+    private val pendingMessages = ArrayDeque<RadioMessage>()
 
     override fun onCreate() {
         super.onCreate()
@@ -57,6 +60,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
 
     override fun onDestroy() {
         listener = null
+        synchronized(messageBufferLock) { pendingMessages.clear() }
         pttOverlay.hide()
         radioClient.release()
         super.onDestroy()
@@ -84,7 +88,14 @@ class RadioConnectionService : Service(), UdpRadioListener {
     }
 
     override fun onMessage(message: RadioMessage) {
-        listener?.onRadioMessage(message)
+        val target = synchronized(messageBufferLock) {
+            listener ?: run {
+                if (pendingMessages.size >= MAX_PENDING_MESSAGES) pendingMessages.removeFirst()
+                pendingMessages.addLast(message)
+                null
+            }
+        }
+        target?.onRadioMessage(message)
     }
 
     override fun onPlaybackState(messageId: String?) {
@@ -233,8 +244,18 @@ class RadioConnectionService : Service(), UdpRadioListener {
 
     inner class LocalBinder : Binder() {
         fun setListener(value: RadioServiceListener?) {
-            listener = value
+            val pending = synchronized(messageBufferLock) {
+                listener = value
+                if (value == null) {
+                    emptyList()
+                } else {
+                    buildList(pendingMessages.size) {
+                        while (pendingMessages.isNotEmpty()) add(pendingMessages.removeFirst())
+                    }
+                }
+            }
             value?.onRadioStatus(radioClient.snapshot())
+            pending.forEach { value?.onRadioMessage(it) }
         }
 
         fun connect(config: RadioConnectionConfig) = this@RadioConnectionService.connect(config)
@@ -259,6 +280,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
     companion object {
         private const val CHANNEL_ID = "draarl_radio_connection"
         private const val NOTIFICATION_ID = 101
+        private const val MAX_PENDING_MESSAGES = 100
         private const val ACTION_DISCONNECT = "cn.silverdragon.draarl.action.DISCONNECT"
 
         fun startIntent(context: Context): Intent = Intent(context, RadioConnectionService::class.java)

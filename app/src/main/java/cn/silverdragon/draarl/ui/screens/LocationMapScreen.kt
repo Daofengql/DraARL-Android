@@ -68,6 +68,7 @@ import com.amap.api.maps.MapView
 import com.amap.api.maps.MapsInitializer
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.MarkerOptions
+import com.amap.api.maps.model.BitmapDescriptor
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -316,7 +317,7 @@ internal fun AmapLocationPreview(
 }
 
 @Composable
-private fun ManagedAmapView(
+internal fun ManagedAmapView(
     coordinate: LatLng?,
     allowSelection: Boolean,
     gesturesEnabled: Boolean,
@@ -324,6 +325,7 @@ private fun ManagedAmapView(
     zoom: Float,
     modifier: Modifier = Modifier,
     recenterRequest: Int = 0,
+    markerIcon: BitmapDescriptor? = null,
     onCoordinateSelected: (LatLng) -> Unit = {},
     onMapLoaded: ((AMap) -> Unit)? = null,
 ) {
@@ -373,11 +375,11 @@ private fun ManagedAmapView(
         },
     )
 
-    LaunchedEffect(map, coordinate, zoom, recenterRequest) {
+    LaunchedEffect(map, coordinate, zoom, recenterRequest, markerIcon) {
         val aMap = map ?: return@LaunchedEffect
         aMap.clear()
         coordinate?.let {
-            aMap.addMarker(MarkerOptions().position(it))
+            aMap.addMarker(MarkerOptions().position(it).anchor(0.5f, 1f).apply { markerIcon?.let(::icon) })
             aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, zoom))
         }
     }
@@ -439,7 +441,7 @@ private fun LocationDetailsPanel(
 }
 
 @Suppress("DEPRECATION")
-private fun hasAmapApiKey(context: Context): Boolean = runCatching {
+internal fun hasAmapApiKey(context: Context): Boolean = runCatching {
     val applicationInfo = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
     applicationInfo.metaData?.getString("com.amap.api.v2.apikey").orEmpty().isNotBlank()
 }.getOrDefault(false)

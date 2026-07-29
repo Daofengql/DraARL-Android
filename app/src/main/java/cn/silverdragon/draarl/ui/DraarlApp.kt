@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Devices
@@ -38,9 +39,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -71,6 +74,7 @@ import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.pagePosition
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
+import cn.silverdragon.draarl.ui.screens.AprsSettingsScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
 import cn.silverdragon.draarl.ui.screens.EditProfileScreen
 import cn.silverdragon.draarl.ui.screens.GroupsScreen
@@ -130,7 +134,7 @@ private fun LoadingScreen() {
         label = "glowAlpha",
     )
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F8FF)),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -151,13 +155,13 @@ private fun LoadingScreen() {
             )
             Text(
                 text = "DraARL 麟链",
-                color = Color(0xFF0D47A1),
+                color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 text = "正在接入通信网络",
-                color = Color(0xFF52657D),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.alpha(0.65f + glowAlpha.value),
             )
@@ -191,6 +195,7 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.SYSTEM_SETTINGS,
         AppPage.ACCOUNT_SECURITY,
         AppPage.STORAGE_SETTINGS,
+        AppPage.APRS_SETTINGS,
         AppPage.LOCATION_MAP,
     )
 
@@ -203,6 +208,7 @@ private fun AuthenticatedApp(controller: AppController) {
             AppPage.SYSTEM_SETTINGS,
             AppPage.ACCOUNT_SECURITY,
             AppPage.STORAGE_SETTINGS,
+            AppPage.APRS_SETTINGS,
             AppPage.LOCATION_MAP,
         ),
     ) {
@@ -210,6 +216,7 @@ private fun AuthenticatedApp(controller: AppController) {
             AppPage.LOCATION_MAP -> controller.navigate(AppPage.RADIO)
             AppPage.ACCOUNT_SECURITY, AppPage.SYSTEM_SETTINGS -> controller.navigate(AppPage.SETTINGS)
             AppPage.STORAGE_SETTINGS -> controller.navigate(AppPage.SETTINGS)
+            AppPage.APRS_SETTINGS -> controller.navigate(AppPage.SETTINGS)
             AppPage.EDIT_PROFILE, AppPage.RADIO_PRESETS, AppPage.SETTINGS -> controller.navigate(AppPage.PROFILE)
             else -> {}
         }
@@ -222,6 +229,7 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.SYSTEM_SETTINGS,
         AppPage.ACCOUNT_SECURITY,
         AppPage.STORAGE_SETTINGS,
+        AppPage.APRS_SETTINGS,
         AppPage.LOCATION_MAP,
     )
 
@@ -299,6 +307,7 @@ private fun AuthenticatedApp(controller: AppController) {
                         AppPage.SYSTEM_SETTINGS -> SystemSettingsScreen(controller)
                         AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
                         AppPage.STORAGE_SETTINGS -> StorageSettingsScreen(controller)
+                        AppPage.APRS_SETTINGS -> AprsSettingsScreen(controller)
                         AppPage.LOCATION_MAP -> LocationMapScreen(
                             initialLocation = mapLocation,
                             onBack = { controller.navigate(AppPage.RADIO) },
@@ -320,13 +329,46 @@ internal fun MainBottomBar(selectedPage: AppPage, onNavigate: (AppPage) -> Unit)
     val items = MAIN_NAVIGATION_PAGES.map(::navigationItem)
     NavigationBar(
         windowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
     ) {
         items.forEach { item ->
             NavigationBarItem(
                 selected = selectedPage == item.page,
                 onClick = { onNavigate(item.page) },
-                icon = { Icon(item.icon, contentDescription = item.label) },
+                icon = {
+                    if (item.page == AppPage.RADIO) {
+                        Surface(
+                            modifier = Modifier.size(52.dp),
+                            shape = CircleShape,
+                            color = if (selectedPage == AppPage.RADIO) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            },
+                            contentColor = if (selectedPage == AppPage.RADIO) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            },
+                            tonalElevation = if (selectedPage == AppPage.RADIO) 4.dp else 0.dp,
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(item.icon, contentDescription = item.label, modifier = Modifier.size(26.dp))
+                            }
+                        }
+                    } else {
+                        Icon(item.icon, contentDescription = item.label)
+                    }
+                },
                 label = { Text(item.label) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    indicatorColor = Color.Transparent,
+                ),
             )
         }
     }
@@ -350,6 +392,7 @@ private fun navigationItem(page: AppPage): NavigationItem = when (page) {
     AppPage.SYSTEM_SETTINGS,
     AppPage.ACCOUNT_SECURITY,
     AppPage.STORAGE_SETTINGS,
+    AppPage.APRS_SETTINGS,
     AppPage.LOCATION_MAP,
     -> error("Secondary pages are not bottom navigation items")
 }

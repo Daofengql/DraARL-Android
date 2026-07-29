@@ -56,6 +56,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.runtime.snapshotFlow
 
+private enum class RadioContentMode {
+    MAP,
+    MESSAGES,
+}
+
 @Composable
 fun RadioScreen(
     controller: AppController,
@@ -78,8 +83,11 @@ fun RadioScreen(
     var text by rememberSaveable { mutableStateOf("") }
     var textMode by rememberSaveable { mutableStateOf(false) }
     var showDevices by rememberSaveable { mutableStateOf(false) }
+    var contentMode by rememberSaveable { mutableStateOf(RadioContentMode.MAP) }
     var locating by remember { mutableStateOf(false) }
     var showLocationChoices by rememberSaveable { mutableStateOf(false) }
+    var historyAnchorId by rememberSaveable(controller.selectedGroupId) { mutableStateOf("") }
+    var historyAnchorOffset by rememberSaveable(controller.selectedGroupId) { mutableStateOf(0) }
     val dismissExtrasInteraction = remember { MutableInteractionSource() }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         controller.connectRadio()
@@ -139,6 +147,15 @@ fun RadioScreen(
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
+    LaunchedEffect(messages.firstOrNull()?.id, messages.size, controller.radioHistoryLoading) {
+        if (controller.radioHistoryLoading || historyAnchorId.isBlank()) return@LaunchedEffect
+        val anchorIndex = messages.indexOfFirst { it.id == historyAnchorId }
+        if (anchorIndex >= 0) {
+            listState.scrollToItem(anchorIndex, historyAnchorOffset)
+        }
+        historyAnchorId = ""
+        historyAnchorOffset = 0
+    }
     LaunchedEffect(controller.selectedGroupId) {
         snapshotFlow {
             Triple(listState.firstVisibleItemIndex, followLatest, messages.firstOrNull()?.id)
@@ -146,6 +163,13 @@ fun RadioScreen(
             .distinctUntilChanged()
             .collectLatest { (firstVisibleIndex, followsLatest, _) ->
                 if (!followsLatest && firstVisibleIndex <= 2) {
+                    val anchor = listState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { it.key != "radio-history-status" }
+                    val anchorId = anchor?.key as? String
+                    if (!anchorId.isNullOrBlank()) {
+                        historyAnchorId = anchorId
+                        historyAnchorOffset = -(anchor.offset)
+                    }
                     controller.loadOlderRadioMessages()
                 }
             }
@@ -184,14 +208,28 @@ fun RadioScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().weight(1f)) {
+        ConnectionPanel(
+            controller = controller,
+            status = controller.radioStatus,
+            onToggleDevices = { showDevices = !showDevices },
+        )
+        if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
+        RadioModeSwitcher(
+            mapSelected = contentMode == RadioContentMode.MAP,
+            onMap = { contentMode = RadioContentMode.MAP },
+            onMessages = { contentMode = RadioContentMode.MESSAGES },
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp, bottom = 8.dp),
+        )
+        if (contentMode == RadioContentMode.MAP) {
+            AprsMapPanel(
+                controller = controller,
+                onStartPtt = startPtt,
+                onStopPtt = controller::stopPtt,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
+        } else {
+            Box(Modifier.fillMaxWidth().weight(1f)) {
             Column(Modifier.fillMaxSize()) {
-                ConnectionPanel(
-                    controller = controller,
-                    status = controller.radioStatus,
-                    onToggleDevices = { showDevices = !showDevices },
-                )
-                if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
                 if (messages.isEmpty()) {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         Column(
@@ -307,6 +345,7 @@ fun RadioScreen(
                 locating = locating,
                 onLocationClick = { showLocationChoices = true },
             )
+        }
         }
     }
     if (showLocationChoices) {

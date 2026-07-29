@@ -2,6 +2,7 @@ package cn.silverdragon.draarl.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -10,38 +11,62 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 // ── Material3 color schemes ──────────────────────────────────────────────────
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF1565C0),
+    primary = Color(0xFF2856D7),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFD9E8FF),
-    onPrimaryContainer = Color(0xFF001A41),
-    secondary = Color(0xFF4E5F7A),
-    secondaryContainer = Color(0xFFD9E3F8),
-    tertiary = Color(0xFF006A67),
-    tertiaryContainer = Color(0xFF9CF1ED),
+    primaryContainer = Color(0xFFDDE6FF),
+    onPrimaryContainer = Color(0xFF10265F),
+    secondary = Color(0xFF50637B),
+    secondaryContainer = Color(0xFFE3E9F2),
+    tertiary = Color(0xFF087F79),
+    tertiaryContainer = Color(0xFFB8F2E9),
     error = Color(0xFFBA1A1A),
-    background = Color(0xFFF9F9FC),
-    surface = Color(0xFFF9F9FC),
-    surfaceVariant = Color(0xFFE1E7F0),
-    outline = Color(0xFF737780),
+    background = Color(0xFFF4F6FA),
+    surface = Color(0xFFFCFCFE),
+    surfaceVariant = Color(0xFFE8ECF3),
+    outline = Color(0xFF737A88),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFA9C7FF),
-    onPrimary = Color(0xFF003063),
-    primaryContainer = Color(0xFF00468B),
-    onPrimaryContainer = Color(0xFFD9E8FF),
-    secondary = Color(0xFFBCC7DC),
-    tertiary = Color(0xFF80D5D1),
-    tertiaryContainer = Color(0xFF004F4D),
+    primary = Color(0xFFAEC2FF),
+    onPrimary = Color(0xFF172D72),
+    primaryContainer = Color(0xFF29479A),
+    onPrimaryContainer = Color(0xFFE0E7FF),
+    secondary = Color(0xFFBBC7DC),
+    secondaryContainer = Color(0xFF344258),
+    tertiary = Color(0xFF72D9CB),
+    tertiaryContainer = Color(0xFF07534F),
     error = Color(0xFFFFB4AB),
-    background = Color(0xFF111318),
-    surface = Color(0xFF111318),
-    surfaceVariant = Color(0xFF43474F),
-    onSurfaceVariant = Color(0xFFC3C6CF),
+    background = Color(0xFF0D1422),
+    surface = Color(0xFF121B2A),
+    surfaceVariant = Color(0xFF273347),
+    onSurfaceVariant = Color(0xFFC1C9D8),
+)
+
+private val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(6.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(12.dp),
+    extraLarge = RoundedCornerShape(16.dp),
+)
+
+private val AppTypography = Typography(
+    titleLarge = androidx.compose.ui.text.TextStyle(
+        fontWeight = FontWeight.SemiBold,
+    ),
+    titleMedium = androidx.compose.ui.text.TextStyle(
+        fontWeight = FontWeight.SemiBold,
+    ),
+    labelLarge = androidx.compose.ui.text.TextStyle(
+        fontWeight = FontWeight.SemiBold,
+    ),
 )
 
 // ── Semantic / status colours ────────────────────────────────────────────────
@@ -72,25 +97,25 @@ data class AppColors(
 )
 
 private val LightAppColors = AppColors(
-    statusConnected = Color(0xFF087F5B),
-    statusWarning   = Color(0xFF9A6700),
-    statDevices     = Color(0xFF087F5B),
-    statGroups      = Color(0xFF4C5D95),
-    statComms       = Color(0xFF9A6700),
-    statDuration    = Color(0xFF765B00),
-    latencyGood     = Color(0xFF2E7D32),
-    latencyWarn     = Color(0xFFF57C00),
+    statusConnected = Color(0xFF087F79),
+    statusWarning   = Color(0xFFB26A00),
+    statDevices     = Color(0xFF087F79),
+    statGroups      = Color(0xFF2856D7),
+    statComms       = Color(0xFFC05621),
+    statDuration    = Color(0xFF8E5A00),
+    latencyGood     = Color(0xFF147D55),
+    latencyWarn     = Color(0xFFB26A00),
 )
 
 private val DarkAppColors = AppColors(
-    statusConnected = Color(0xFF40C79A),
-    statusWarning   = Color(0xFFFFB951),
-    statDevices     = Color(0xFF40C79A),
-    statGroups      = Color(0xFF8FA3D1),
-    statComms       = Color(0xFFFFB951),
-    statDuration    = Color(0xFFD4A830),
-    latencyGood     = Color(0xFF66BB6A),
-    latencyWarn     = Color(0xFFFFB74D),
+    statusConnected = Color(0xFF72D9CB),
+    statusWarning   = Color(0xFFFFC46B),
+    statDevices     = Color(0xFF72D9CB),
+    statGroups      = Color(0xFFAEC2FF),
+    statComms       = Color(0xFFFFAA78),
+    statDuration    = Color(0xFFFFC46B),
+    latencyGood     = Color(0xFF7ED9A8),
+    latencyWarn     = Color(0xFFFFC46B),
 )
 
 val LocalAppColors = compositionLocalOf { LightAppColors }
@@ -112,7 +137,8 @@ fun DraarlTheme(
     ) {
         MaterialTheme(
             colorScheme = if (darkTheme) DarkColors else LightColors,
-            typography = Typography(),
+            typography = AppTypography,
+            shapes = AppShapes,
             content = content,
         )
     }

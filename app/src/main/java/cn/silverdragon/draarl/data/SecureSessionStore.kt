@@ -153,6 +153,7 @@ class SecureSessionStore(context: Context) {
         .put("sex", user.sex)
         .put("alarm_msg", user.alarmMsg)
         .put("last_group_id", user.lastGroupId)
+        .put("status", user.status)
 
     private fun userFromJson(json: JSONObject) = User(
         id = json.optInt("id"),
@@ -174,6 +175,7 @@ class SecureSessionStore(context: Context) {
         sex = json.optInt("sex"),
         alarmMsg = json.optBoolean("alarm_msg"),
         lastGroupId = json.optInt("last_group_id", 999),
+        status = json.optInt("status", 1),
     )
 
     companion object {

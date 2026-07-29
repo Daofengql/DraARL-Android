@@ -221,6 +221,13 @@ class ApiClient(
 
     fun getMe(updateSession: Boolean = true): User {
         val user = parseUser(request("GET", "/api/me").requireObject("data"))
+        accountLoginRejection(user)?.let { message ->
+            // A successful HTTP response can still represent an account that is
+            // no longer allowed to use the client. Clear the persisted session
+            // immediately so every caller follows the same rejection path.
+            if (currentSession() != null) this.updateSession(null)
+            throw ApiException(403, message)
+        }
         if (updateSession) currentSession()?.copy(user = user)?.let(::updateSession)
         return user
     }
@@ -228,6 +235,10 @@ class ApiClient(
     fun acceptCurrentUser(user: User) {
         val current = currentSession() ?: return
         if (current.user.id != user.id) return
+        if (accountLoginRejection(user) != null) {
+            this.updateSession(null)
+            return
+        }
         updateSession(current.copy(user = user))
     }
 
@@ -401,11 +412,31 @@ class ApiClient(
     }
 
     fun getGroups(): List<Group> {
-        val response = request("GET", "/api/groups?page=1&page_size=100").requireObject("data")
-        val items = response.optJSONArray("items") ?: JSONArray()
-        val groups = items.objects().map(::parseGroup)
+        val groups = mutableListOf<Group>()
+        var page = 1
+        while (page <= MAX_GROUP_PAGES) {
+            val response = request("GET", "/api/groups?page=$page&page_size=$GROUP_PAGE_SIZE")
+                .requireObject("data")
+            val items = response.optJSONArray("items") ?: JSONArray()
+            val pageGroups = items.objects().map(::parseGroup)
+            groups += pageGroups
+            val pagination = response.optJSONObject("pagination")
+            val total = response.optInt("total", pagination?.optInt("total", -1) ?: -1)
+            val hasMore = response.optBoolean(
+                "has_more",
+                response.optBoolean("hasMore", pagination?.optBoolean("has_more", false) ?: false),
+            )
+            val shouldContinue = pageGroups.isNotEmpty() && (
+                hasMore ||
+                    (total >= 0 && groups.size < total) ||
+                    (total < 0 && pageGroups.size >= GROUP_PAGE_SIZE)
+                )
+            if (!shouldContinue) break
+            page++
+        }
+        val uniqueGroups = groups.distinctBy(Group::id)
         val realtime = runCatching { getGroupStats() }.getOrDefault(emptyMap())
-        return groups.map { group ->
+        return uniqueGroups.map { group ->
             realtime[group.id]?.let { (online, total) ->
                 group.copy(onlineCount = online, totalCount = total)
             } ?: group
@@ -720,25 +751,29 @@ class ApiClient(
         connection.readTimeout = 30_000
         connection.doOutput = true
 
-        connection.outputStream.use { it.write(body) }
+        try {
+            connection.outputStream.use { it.write(body) }
 
-        val responseCode = connection.responseCode
-        val responseText = if (responseCode in 200..299) {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } else {
-            connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            val responseCode = connection.responseCode
+            val responseText = if (responseCode in 200..299) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            }
+
+            if (responseCode != 200) {
+                throw ApiException(responseCode, "上传失败: $responseText")
+            }
+
+            val response = JSONObject(responseText)
+            val data = response.optJSONObject("data") ?: response
+            return resolveHttpsUrl(
+                baseUrl,
+                data.optStringClean("url").ifBlank { data.optStringClean("file_url") },
+            )
+        } finally {
+            connection.disconnect()
         }
-
-        if (responseCode != 200) {
-            throw ApiException(responseCode, "上传失败: $responseText")
-        }
-
-        val response = JSONObject(responseText)
-        val data = response.optJSONObject("data") ?: response
-        return resolveHttpsUrl(
-            baseUrl,
-            data.optStringClean("url").ifBlank { data.optStringClean("file_url") },
-        )
     }
 
     fun changePassword(oldPassword: String, newPassword: String) {
@@ -950,6 +985,8 @@ class ApiClient(
 
     companion object {
         const val ANDROID_DEVICE_MODEL = 101
+        private const val GROUP_PAGE_SIZE = 100
+        private const val MAX_GROUP_PAGES = 100
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 15_000
 

@@ -18,6 +18,13 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import coil3.SingletonImageLoader
 import cn.silverdragon.draarl.auth.PublicAuthController
+import cn.silverdragon.draarl.aprs.AprsConfig
+import cn.silverdragon.draarl.aprs.AprsConfigStore
+import cn.silverdragon.draarl.aprs.AprsConnectionState
+import cn.silverdragon.draarl.aprs.AprsIsClient
+import cn.silverdragon.draarl.aprs.AprsPosition
+import cn.silverdragon.draarl.aprs.AprsService
+import cn.silverdragon.draarl.aprs.AprsStatus
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.ApiAppDataSource
 import cn.silverdragon.draarl.data.AppDataFallback
@@ -63,6 +70,7 @@ private data class RadioHistoryState(
     val nextPage: Int = 1,
     val hasMore: Boolean = true,
     val total: Int = 0,
+    val dataGeneration: Int = 0,
 )
 
 private data class RadioSyncSnapshot(
@@ -82,6 +90,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
         Thread(runnable, "draarl-app-worker")
     }
     private val sessionStore = SecureSessionStore(appContext)
+    private val aprsConfigStore = AprsConfigStore(appContext)
+    private val aprsClient = AprsIsClient()
     private val messageStore = RadioMessageStore(appContext)
     private val dashboardStore = DashboardCacheStore(appContext)
     private var serviceBinder: RadioConnectionService.LocalBinder? = null
@@ -97,10 +107,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val accessPointDiscoveryGeneration = AtomicInteger(0)
     private val radioDataGeneration = AtomicInteger(0)
     private val radioCacheLoadGeneration = AtomicInteger(0)
+    private val radioHistoryGeneration = AtomicInteger(0)
     private val groupSwitchGeneration = AtomicInteger(0)
     private val radioConnectionGeneration = AtomicInteger(0)
     private val preparingRadioConnection = AtomicBoolean(false)
     private val disposed = AtomicBoolean(false)
+    private val sendingAprsPosition = AtomicBoolean(false)
     private val storageOperation = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
     private val loadingPublicProfiles = ConcurrentHashMap.newKeySet<String>()
@@ -252,6 +264,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var transmitTimeoutSeconds by mutableIntStateOf(sessionStore.transmitTimeoutSeconds())
         private set
+    var aprsConfig by mutableStateOf(AprsConfig())
+        private set
+    var aprsStatus by mutableStateOf(AprsStatus())
+        private set
     var storageUsage by mutableStateOf(StorageUsage())
         private set
     var storageBusy by mutableStateOf(false)
@@ -306,6 +322,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 .onSuccess { session ->
                     mainHandler.post {
                         user = session.user
+                        aprsConfig = aprsConfigStore.load(session.user.id)
                         dashboard = dashboardStore.load(session.user.id) ?: DashboardData()
                         authenticated = true
                         loginBusy = false
@@ -348,6 +365,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
         executor.execute { api.logout() }
         authenticated = false
         user = null
+        aprsConfig = AprsConfig()
+        aprsStatus = AprsStatus()
+        appContext.stopService(AprsService.stopIntent(appContext))
         dashboard = DashboardData()
         devices = emptyList()
         groups = emptyList()
@@ -685,6 +705,63 @@ class AppController(application: Application) : AndroidViewModel(application), R
         serviceBinder?.setTransmitTimeoutSeconds(normalized)
     }
 
+    fun updateAprsConfig(config: AprsConfig) {
+        val normalized = config.copy(
+            server = config.server.trim().ifBlank { "rotate.aprs2.net" },
+            port = config.port.coerceIn(1, 65_535),
+            callsign = config.callsign.trim().uppercase(),
+            movingIntervalSeconds = config.movingIntervalSeconds.coerceIn(60, 600),
+            stationaryIntervalSeconds = config.stationaryIntervalSeconds.coerceIn(60, 3_600),
+        )
+        aprsConfig = normalized
+        user?.id?.let { aprsConfigStore.save(it, normalized) }
+        val currentUserId = user?.id
+        if (normalized.enabled && normalized.autoReport && currentUserId != null) {
+            runCatching {
+                ContextCompat.startForegroundService(
+                    appContext,
+                    AprsService.startIntent(appContext, currentUserId),
+                )
+            }.onFailure { notice = "无法启动 APRS 后台上报：${friendlyError(it)}" }
+        } else {
+            appContext.stopService(AprsService.stopIntent(appContext))
+        }
+    }
+
+    fun sendAprsPosition(position: AprsPosition): Boolean {
+        val config = aprsConfig
+        if (!config.enabled) {
+            notice = "请先在设置中启用 APRS"
+            return false
+        }
+        if (!sendingAprsPosition.compareAndSet(false, true)) {
+            notice = "APRS 位置正在发送"
+            return false
+        }
+        aprsStatus = AprsStatus(AprsConnectionState.CONNECTING, "正在连接 APRS-IS")
+        executor.execute {
+            runCatching {
+                mainHandler.post { aprsStatus = AprsStatus(AprsConnectionState.SENDING, "正在发送 APRS 位置") }
+                kotlinx.coroutines.runBlocking { aprsClient.sendPosition(config, position) }
+            }.onSuccess {
+                mainHandler.post {
+                    aprsStatus = AprsStatus(
+                        state = AprsConnectionState.SENT,
+                        message = "APRS 位置已发送",
+                        lastSentAt = System.currentTimeMillis(),
+                    )
+                }
+            }.onFailure { error ->
+                mainHandler.post {
+                    aprsStatus = AprsStatus(AprsConnectionState.ERROR, error.message ?: "APRS 发送失败")
+                    notice = error.message ?: "APRS 发送失败"
+                }
+            }
+            sendingAprsPosition.set(false)
+        }
+        return true
+    }
+
     fun refreshStorageUsage() {
         if (!storageOperation.compareAndSet(false, true)) return
         storageBusy = true
@@ -713,6 +790,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     imageLoader.diskCache?.clear()
                 }
                 if (category == StorageCategory.MESSAGES || category == StorageCategory.ALL) {
+                    radioDataGeneration.incrementAndGet()
+                    radioHistoryGeneration.incrementAndGet()
                     messageStore.clearAll()
                     mainHandler.post {
                         radioMessages.clear()
@@ -755,6 +834,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         val switchGeneration = groupSwitchGeneration.incrementAndGet()
         radioDataGeneration.incrementAndGet()
         radioCacheLoadGeneration.incrementAndGet()
+        radioHistoryGeneration.incrementAndGet()
         pendingRadioDataSync.set(false)
         val previousGroupId = selectedGroupId
         selectedGroupId = group.id
@@ -817,7 +897,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         executor.execute {
             try {
                 val historyResult = runCatching {
-                    synchronizeLatestRadioHistory(groupId, accountKey, accountUser)
+                    synchronizeLatestRadioHistory(groupId, accountKey, accountUser, generation)
                 }
                 val onlineResult = runCatching { api.getOnlineDevices(groupId) }
                 mainHandler.post {
@@ -962,8 +1042,16 @@ class AppController(application: Application) : AndroidViewModel(application), R
             val accountKey = messageAccountKey()
             if (accountKey != null) {
                 val cachedMessage = messageToStore
+                val cacheGeneration = messageStore.generation()
                 executor.execute {
-                    runCatching { messageStore.save(accountKey, messageGroupId, cachedMessage) }
+                    runCatching {
+                        messageStore.save(
+                            accountKey,
+                            messageGroupId,
+                            cachedMessage,
+                            expectedGeneration = cacheGeneration,
+                        )
+                    }
                 }
             }
             preloadPublicProfiles(listOf(enriched.senderUsername))
@@ -983,6 +1071,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         groupManagement.close()
         profile.close()
         publicAuth.close()
+        appContext.stopService(AprsService.stopIntent(appContext))
         mainHandler.removeCallbacks(periodicRadioSync)
         radioConnectionGeneration.incrementAndGet()
         pendingConnection = null
@@ -1008,12 +1097,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
             savedSession
         }
         user = stored.user
+        aprsConfig = aprsConfigStore.load(stored.user.id)
         dashboard = dashboardStore.load(stored.user.id) ?: DashboardData()
         executor.execute {
             runCatching(api::restoreAndValidate)
                 .onSuccess { session ->
                     mainHandler.post {
                         user = session.user
+                        aprsConfig = aprsConfigStore.load(session.user.id)
                         authenticated = true
                         initializing = false
                         selectedGroupId = sessionStore.selectedGroupId(
@@ -1115,7 +1206,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     displayedRadioMessageGroupId = groupId
                     replaceRadioMessages(cachedMessages, preserveUnsynced = true)
                     radioHistoryHasMore = cachedMessages.size >= visibleLimit ||
-                        radioHistoryStates[loadKey]?.hasMore != false
+                        radioHistoryStates[loadKey]
+                            ?.takeIf { it.dataGeneration == radioDataGeneration.get() }
+                            ?.hasMore != false
                 }
             }
         }
@@ -1127,6 +1220,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         val accountUser = user ?: return
         if (radioHistoryLoading || !radioHistoryHasMore) return
         val stateKey = "$accountKey#$groupId"
+        val dataGeneration = radioDataGeneration.get()
         val previousLimit = radioVisibleLimits.getOrDefault(stateKey, INITIAL_VISIBLE_MESSAGES)
         if (previousLimit >= MAX_MESSAGES) {
             radioHistoryHasMore = false
@@ -1134,15 +1228,20 @@ class AppController(application: Application) : AndroidViewModel(application), R
         }
         val requestedLimit = (previousLimit + HISTORY_LOAD_BATCH).coerceAtMost(MAX_MESSAGES)
         radioHistoryLoading = true
+        val requestGeneration = radioHistoryGeneration.incrementAndGet()
         executor.execute {
             val result = runCatching {
-                var historyState = radioHistoryStates[stateKey] ?: RadioHistoryState()
+                var historyState = radioHistoryStates[stateKey]
+                    ?.takeIf { it.dataGeneration == dataGeneration }
+                    ?: RadioHistoryState(dataGeneration = dataGeneration)
                 var cachedMessages = messageStore.load(accountKey, groupId, requestedLimit)
                 var pagesLoaded = 0
                 while (
                     cachedMessages.size <= previousLimit && historyState.hasMore &&
                     pagesLoaded < MAX_HISTORY_PAGES_PER_LOAD
                 ) {
+                    check(requestGeneration == radioHistoryGeneration.get())
+                    check(dataGeneration == radioDataGeneration.get())
                     val page = api.getCommunicationRecords(
                         page = historyState.nextPage,
                         pageSize = RADIO_HISTORY_PAGE_SIZE,
@@ -1156,7 +1255,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         nextPage = page.page + 1,
                         hasMore = page.hasMore,
                         total = page.total,
+                        dataGeneration = dataGeneration,
                     )
+                    check(requestGeneration == radioHistoryGeneration.get())
+                    check(dataGeneration == radioDataGeneration.get())
                     radioHistoryStates[stateKey] = historyState
                     pagesLoaded++
                     cachedMessages = messageStore.load(accountKey, groupId, requestedLimit)
@@ -1170,8 +1272,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 )
             }
             mainHandler.post {
-                if (groupId != selectedGroupId || accountKey != messageAccountKey() || !authenticated) return@post
+                if (requestGeneration != radioHistoryGeneration.get()) return@post
                 radioHistoryLoading = false
+                if (groupId != selectedGroupId || accountKey != messageAccountKey() || !authenticated) return@post
                 result
                     .onSuccess { history ->
                         radioCacheLoadGeneration.incrementAndGet()
@@ -1227,6 +1330,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         groupId: Int,
         accountKey: String?,
         accountUser: User,
+        expectedGeneration: Int,
     ): RadioSyncSnapshot {
         val knownRecordIds = accountKey?.let { messageStore.confirmedServerRecordIds(it, groupId) }.orEmpty()
         val fetchedRecords = mutableListOf<CommunicationRecord>()
@@ -1241,6 +1345,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         var allTimestampsValid = true
 
         while (hasMore && pageNumber <= MAX_LATEST_SYNC_PAGES) {
+            check(expectedGeneration == radioDataGeneration.get())
             val page = api.getCommunicationRecords(
                 page = pageNumber,
                 pageSize = RADIO_HISTORY_PAGE_SIZE,
@@ -1271,6 +1376,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             .distinctBy { it.serverRecordId ?: it.id }
             .sortedBy(RadioMessage::timestamp)
         if (accountKey != null) {
+            check(expectedGeneration == radioDataGeneration.get())
             val stateKey = "$accountKey#$groupId"
             val fetchedWithoutPaginationDrift = fetchedRecords.map(CommunicationRecord::id).distinct().size == fetchedRecords.size
             val settleCutoff = now - RadioMessageReconciler.REMOTE_SETTLE_DELAY_MS
@@ -1281,10 +1387,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 else -> null
             }
             messageStore.reconcile(accountKey, groupId, remoteMessages, authoritativeWindow)
+            check(expectedGeneration == radioDataGeneration.get())
             radioHistoryStates[stateKey] = RadioHistoryState(
                 nextPage = nextPage,
                 hasMore = hasMore,
                 total = total,
+                dataGeneration = expectedGeneration,
             )
             val visibleLimit = radioVisibleLimits.getOrDefault(stateKey, INITIAL_VISIBLE_MESSAGES)
             val cachedMessages = messageStore.load(accountKey, groupId, visibleLimit + 1)
@@ -1364,6 +1472,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         accessPointDiscoveryGeneration.incrementAndGet()
         radioDataGeneration.incrementAndGet()
         radioCacheLoadGeneration.incrementAndGet()
+        radioHistoryGeneration.incrementAndGet()
         groupSwitchGeneration.incrementAndGet()
         syncingGroupCounts.set(false)
         pendingRadioDataSync.set(false)

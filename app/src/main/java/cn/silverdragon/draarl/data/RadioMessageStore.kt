@@ -12,6 +12,9 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
     DATABASE_VERSION,
 ) {
     private val databaseFile = context.applicationContext.getDatabasePath(DATABASE_NAME)
+    // Incremented whenever the message cache is cleared. Async writers capture
+    // this value and are ignored if they belong to the previous cache epoch.
+    @Volatile private var cacheGeneration = 0
     override fun onCreate(database: SQLiteDatabase) {
         database.execSQL(
             """
@@ -63,8 +66,15 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
     }
 
     @Synchronized
-    fun save(accountKey: String, groupId: Int, message: RadioMessage) {
+    fun save(
+        accountKey: String,
+        groupId: Int,
+        message: RadioMessage,
+        expectedGeneration: Int = cacheGeneration,
+    ) {
+        if (expectedGeneration != cacheGeneration) return
         writableDatabase.transaction {
+            if (expectedGeneration != cacheGeneration) return@transaction
             if (message.serverRecordId == null) {
                 findMatchingMessage(this, accountKey, groupId, message, confirmed = true)?.let { confirmedId ->
                     if (message.audioCacheKey.isNotBlank()) {
@@ -89,9 +99,12 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
         groupId: Int,
         remoteMessages: List<RadioMessage>,
         authoritativeWindow: LongRange? = null,
+        expectedGeneration: Int = cacheGeneration,
     ) {
+        if (expectedGeneration != cacheGeneration) return
         if (remoteMessages.isEmpty() && authoritativeWindow == null) return
         writableDatabase.transaction {
+            if (expectedGeneration != cacheGeneration) return@transaction
             remoteMessages.forEach { remote ->
                 var mergedRemote = remote.copy(
                     audioCacheKey = remote.audioCacheKey.ifBlank {
@@ -338,8 +351,16 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
     }
 
     @Synchronized
+    fun generation(): Int = cacheGeneration
+
+    @Synchronized
     fun clearAll() {
+        cacheGeneration++
         writableDatabase.delete(TABLE_MESSAGES, null, null)
+        // DELETE can leave the SQLite file and WAL at their previous size.
+        // Checkpoint first, then reclaim free pages while no transaction is open.
+        runCatching { writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)") }
+        runCatching { writableDatabase.execSQL("VACUUM") }
     }
 
     @Synchronized
