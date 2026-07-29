@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CenterFocusStrong
@@ -33,10 +33,9 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.maps.CoordinateConverter
@@ -196,75 +196,67 @@ internal fun AprsMapPanel(
         }
 
         if (visible) {
-            Box(
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 12.dp, end = 12.dp),
+                    .padding(top = 12.dp, end = 12.dp)
+                    .zIndex(2f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                    tonalElevation = 4.dp,
-                    shadowElevation = 4.dp,
-                ) {
-                    Column {
-                        MapControlButton(
-                            onClick = {
-                                if (coordinate == null) {
-                                    permissionLauncher.launch(
-                                        arrayOf(
-                                            Manifest.permission.ACCESS_FINE_LOCATION,
-                                            Manifest.permission.ACCESS_COARSE_LOCATION,
-                                        ),
+                MapControlButton(
+                    onClick = {
+                        if (coordinate == null) {
+                            permissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                ),
+                            )
+                        } else {
+                            recenterRequest++
+                        }
+                    },
+                    icon = if (coordinate == null) Icons.Default.LocationSearching else Icons.Default.CenterFocusStrong,
+                    description = "定位当前位置",
+                )
+                MapControlButton(
+                    onClick = { zoomInRequest++ },
+                    icon = Icons.Default.Add,
+                    description = "放大地图",
+                )
+                MapControlButton(
+                    onClick = { zoomOutRequest++ },
+                    icon = Icons.Default.Remove,
+                    description = "缩小地图",
+                )
+                Box(Modifier.size(MAP_CONTROL_SIZE)) {
+                    MapControlButton(
+                        onClick = { mapTypeMenuExpanded = true },
+                        icon = Icons.Default.Layers,
+                        description = "选择地图类型",
+                    )
+                    DropdownMenu(
+                        expanded = mapTypeMenuExpanded,
+                        onDismissRequest = { mapTypeMenuExpanded = false },
+                    ) {
+                        MAP_TYPES.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        option.label,
+                                        color = if (mapType == option.value) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        },
                                     )
-                                } else {
-                                    recenterRequest++
-                                }
-                            },
-                            icon = if (coordinate == null) Icons.Default.LocationSearching else Icons.Default.CenterFocusStrong,
-                            description = "定位当前位置",
-                        )
-                        HorizontalDivider()
-                        MapControlButton(
-                            onClick = { zoomInRequest++ },
-                            icon = Icons.Default.Add,
-                            description = "放大地图",
-                        )
-                        HorizontalDivider()
-                        MapControlButton(
-                            onClick = { zoomOutRequest++ },
-                            icon = Icons.Default.Remove,
-                            description = "缩小地图",
-                        )
-                        HorizontalDivider()
-                        MapControlButton(
-                            onClick = { mapTypeMenuExpanded = true },
-                            icon = Icons.Default.Layers,
-                            description = "选择地图类型",
-                        )
-                    }
-                }
-                DropdownMenu(
-                    expanded = mapTypeMenuExpanded,
-                    onDismissRequest = { mapTypeMenuExpanded = false },
-                ) {
-                    MAP_TYPES.forEach { option ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    option.label,
-                                    color = if (mapType == option.value) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    },
-                                )
-                            },
-                            onClick = {
-                                mapType = option.value
-                                mapTypeMenuExpanded = false
-                            },
-                        )
+                                },
+                                onClick = {
+                                    mapType = option.value
+                                    mapTypeMenuExpanded = false
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -292,7 +284,12 @@ private fun MapControlButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
 ) {
-    IconButton(onClick = onClick, modifier = Modifier.size(44.dp)) {
+    SmallFloatingActionButton(
+        onClick = onClick,
+        modifier = Modifier.size(MAP_CONTROL_SIZE),
+        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
         Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.onSurface)
     }
 }
@@ -419,6 +416,7 @@ private fun MapPttButton(
 }
 
 private const val AVATAR_BITMAP_SIZE = 144
+private val MAP_CONTROL_SIZE = 44.dp
 private const val MARKER_WIDTH = 144
 private const val MARKER_HEIGHT = 168
 private const val MARKER_CENTER = 72f

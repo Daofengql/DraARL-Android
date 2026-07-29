@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.concentus)
     implementation(libs.amap.map)
+    implementation(libs.amap.search)
     testImplementation(libs.junit)
     testImplementation(libs.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -70,6 +70,9 @@ import com.amap.api.maps.MapsInitializer
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.BitmapDescriptor
+import com.amap.api.maps.model.LatLngBounds
+import com.amap.api.maps.model.PolygonOptions
+import com.amap.api.services.core.ServiceSettings
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,11 +107,7 @@ fun LocationMapScreen(
         return
     }
 
-    remember(context) {
-        MapsInitializer.updatePrivacyShow(context, true, true)
-        MapsInitializer.updatePrivacyAgree(context, true)
-        true
-    }
+    remember(context) { initializeAmapServices(context) }
     if (!hasAmapApiKey(context)) {
         Scaffold(
             topBar = {
@@ -261,11 +260,7 @@ internal fun AmapLocationPreview(
                 contentScale = ContentScale.Crop,
             )
         } else if (privacyAccepted && hasAmapApiKey(context)) {
-            remember(context) {
-                MapsInitializer.updatePrivacyShow(context, true, true)
-                MapsInitializer.updatePrivacyAgree(context, true)
-                true
-            }
+            remember(context) { initializeAmapServices(context) }
             ManagedAmapView(
                 coordinate = LatLng(gcj.latitude, gcj.longitude),
                 allowSelection = false,
@@ -334,6 +329,8 @@ internal fun ManagedAmapView(
     zoomOutRequest: Int = 0,
     mapType: Int = AMap.MAP_TYPE_NORMAL,
     markerIcon: BitmapDescriptor? = null,
+    polygonPoints: List<LatLng> = emptyList(),
+    fitBoundsRequest: Int = 0,
     onCoordinateSelected: (LatLng) -> Unit = {},
     onMapLoaded: ((AMap) -> Unit)? = null,
 ) {
@@ -383,7 +380,7 @@ internal fun ManagedAmapView(
         },
     )
 
-    LaunchedEffect(map, coordinate, markerIcon) {
+    LaunchedEffect(map, coordinate, markerIcon, polygonPoints) {
         val aMap = map ?: return@LaunchedEffect
         aMap.clear()
         coordinate?.let {
@@ -396,11 +393,31 @@ internal fun ManagedAmapView(
                     .apply { markerIcon?.let(::icon) },
             )
         }
+        if (polygonPoints.size >= 3) {
+            aMap.addPolygon(
+                PolygonOptions()
+                    .addAll(polygonPoints)
+                    .strokeColor(MAP_GRID_STROKE_COLOR)
+                    .fillColor(MAP_GRID_FILL_COLOR)
+                    .strokeWidth(4f)
+                    .zIndex(10f),
+            )
+        }
     }
 
-    LaunchedEffect(map, coordinate, zoom) {
+    LaunchedEffect(map, coordinate, zoom, polygonPoints.isEmpty()) {
         val aMap = map ?: return@LaunchedEffect
-        coordinate?.let { aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, zoom)) }
+        if (polygonPoints.isEmpty()) {
+            coordinate?.let { aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, zoom)) }
+        }
+    }
+
+    LaunchedEffect(map, polygonPoints, fitBoundsRequest) {
+        val aMap = map ?: return@LaunchedEffect
+        if (polygonPoints.size >= 3) {
+            val bounds = LatLngBounds.Builder().apply { polygonPoints.forEach(::include) }.build()
+            aMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, MAP_GRID_BOUNDS_PADDING_PX))
+        }
     }
 
     LaunchedEffect(map, mapType) {
@@ -484,9 +501,21 @@ internal fun hasAmapApiKey(context: Context): Boolean = runCatching {
     applicationInfo.metaData?.getString("com.amap.api.v2.apikey").orEmpty().isNotBlank()
 }.getOrDefault(false)
 
-private const val MAP_PREFERENCES = "map_preferences"
-private const val MAP_PRIVACY_ACCEPTED = "amap_privacy_accepted"
+internal fun initializeAmapServices(context: Context): Boolean {
+    MapsInitializer.updatePrivacyShow(context, true, true)
+    MapsInitializer.updatePrivacyAgree(context, true)
+    ServiceSettings.updatePrivacyShow(context, true, true)
+    ServiceSettings.updatePrivacyAgree(context, true)
+    ServiceSettings.getInstance().setProtocol(ServiceSettings.HTTPS)
+    return true
+}
+
+internal const val MAP_PREFERENCES = "map_preferences"
+internal const val MAP_PRIVACY_ACCEPTED = "amap_privacy_accepted"
 private val DEFAULT_MAP_CENTER = LatLng(34.3416, 108.9398)
+private const val MAP_GRID_BOUNDS_PADDING_PX = 96
+private const val MAP_GRID_STROKE_COLOR = 0xFF2856D7.toInt()
+private const val MAP_GRID_FILL_COLOR = 0x332856D7
 
 private object AmapPreviewCache : LruCache<String, Bitmap>(12 * 1_024) {
     override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1_024

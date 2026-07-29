@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ fun ToolsScreen(controller: AppController) {
         ToolDestination.RELAYS -> RelaySearchScreen(tools = tools, onBack = tools::back)
         ToolDestination.LOGBOOK -> LogbookScreen(controller = controller, tools = tools, onBack = tools::back)
         ToolDestination.LOGBOOK_EDITOR -> LogbookEditorScreen(tools = tools, onBack = tools::back)
+        ToolDestination.MAIDENHEAD -> MaidenheadToolScreen(onBack = tools::back)
     }
 }
 
@@ -50,6 +52,7 @@ private fun ToolsHome(controller: AppController) {
         ToolEntry("蓝牙配置", Icons.AutoMirrored.Filled.BluetoothSearching, ToolDestination.BLE),
         ToolEntry("中继台查询", Icons.Default.SettingsInputAntenna, ToolDestination.RELAYS),
         ToolEntry("通联日志", Icons.AutoMirrored.Filled.MenuBook, ToolDestination.LOGBOOK, true),
+        ToolEntry("梅登海德网格", Icons.Default.GridOn, ToolDestination.MAIDENHEAD),
     )
     LazyColumn(
         state = listState,

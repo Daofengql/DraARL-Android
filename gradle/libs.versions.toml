@@ -12,7 +12,8 @@ kotlin = "2.2.10"
 composeBom = "2026.02.01"
 concentus = "1.0.2"
 coil = "3.3.0"
-amapMap = "10.0.600"
+amapMap = "9.8.3"
+amapSearch = "9.7.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,6 +38,7 @@ concentus = { group = "io.github.jaredmdobson", name = "concentus", version.ref 
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 amap-map = { group = "com.amap.api", name = "3dmap", version.ref = "amapMap" }
+amap-search = { group = "com.amap.api", name = "search", version.ref = "amapSearch" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

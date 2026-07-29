@@ -15,11 +15,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -43,11 +46,30 @@ import cn.silverdragon.draarl.tools.ToolsController
 internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
     val draft = tools.draft
     var showPresets by remember { mutableStateOf(false) }
+    var qthPickerTarget by rememberSaveable { mutableStateOf<QthPickerTarget?>(null) }
     LaunchedEffect(Unit) {
         if (tools.presets.isEmpty()) tools.loadPresets()
     }
     if (draft == null) {
         LaunchedEffect(Unit) { onBack() }
+        return
+    }
+    qthPickerTarget?.let { target ->
+        LogbookPlacePickerScreen(
+            title = if (target == QthPickerTarget.MY) "选择我的 QTH" else "选择对方 QTH",
+            onBack = { qthPickerTarget = null },
+            onConfirm = { selection ->
+                val current = tools.draft ?: return@LogbookPlacePickerScreen
+                tools.updateDraft(
+                    if (target == QthPickerTarget.MY) {
+                        current.copy(myQth = selection.qth)
+                    } else {
+                        current.copy(theirQth = selection.qth)
+                    },
+                )
+                qthPickerTarget = null
+            },
+        )
         return
     }
 
@@ -148,7 +170,14 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
             item { DraftField(draft.myRadio, { tools.updateDraft(draft.copy(myRadio = it)) }, "我的电台") }
             item { DraftField(draft.myAntenna, { tools.updateDraft(draft.copy(myAntenna = it)) }, "我的天线") }
             item { DraftField(draft.myPower, { tools.updateDraft(draft.copy(myPower = it)) }, "功率 W", numeric = true) }
-            item { DraftField(draft.myQth, { tools.updateDraft(draft.copy(myQth = it)) }, "我的 QTH") }
+            item {
+                QthDraftField(
+                    value = draft.myQth,
+                    onValueChange = { tools.updateDraft(draft.copy(myQth = it)) },
+                    label = "我的 QTH",
+                    onPick = { qthPickerTarget = QthPickerTarget.MY },
+                )
+            }
 
             item { LogbookSectionTitle("对方设备") }
             item { DraftField(draft.theirRadio, { tools.updateDraft(draft.copy(theirRadio = it)) }, "对方电台") }
@@ -161,7 +190,14 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                     numeric = true,
                 )
             }
-            item { DraftField(draft.theirQth, { tools.updateDraft(draft.copy(theirQth = it)) }, "对方 QTH") }
+            item {
+                QthDraftField(
+                    value = draft.theirQth,
+                    onValueChange = { tools.updateDraft(draft.copy(theirQth = it)) },
+                    label = "对方 QTH",
+                    onPick = { qthPickerTarget = QthPickerTarget.THEIR },
+                )
+            }
             item {
                 OutlinedTextField(
                     value = draft.notes,
@@ -228,6 +264,29 @@ private fun DraftField(
         keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text),
     )
 }
+
+@Composable
+private fun QthDraftField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    onPick: () -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        trailingIcon = {
+            IconButton(onClick = onPick) {
+                Icon(Icons.Default.Map, contentDescription = "在地图上选择$label")
+            }
+        },
+    )
+}
+
+private enum class QthPickerTarget { MY, THEIR }
 
 @Composable
 private fun PresetPickerDialog(tools: ToolsController, onDismiss: () -> Unit) {

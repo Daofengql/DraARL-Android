@@ -39,7 +39,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
     private var presetError by mutableStateOf("")
     val error: String
         get() = when (destination) {
-            ToolDestination.HOME, ToolDestination.BLE -> homeError
+            ToolDestination.HOME, ToolDestination.BLE, ToolDestination.MAIDENHEAD -> homeError
             ToolDestination.RELAYS -> relayError
             ToolDestination.LOGBOOK, ToolDestination.LOGBOOK_EDITOR -> logbookError
         }
@@ -384,7 +384,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
 
     private fun setError(target: ToolDestination, message: String) {
         when (target) {
-            ToolDestination.HOME, ToolDestination.BLE -> homeError = message
+            ToolDestination.HOME, ToolDestination.BLE, ToolDestination.MAIDENHEAD -> homeError = message
             ToolDestination.RELAYS -> relayError = message
             ToolDestination.LOGBOOK, ToolDestination.LOGBOOK_EDITOR -> logbookError = message
         }
