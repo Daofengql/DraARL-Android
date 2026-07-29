@@ -218,7 +218,7 @@ fun RadioScreen(
             mapSelected = contentMode == RadioContentMode.MAP,
             onMap = { contentMode = RadioContentMode.MAP },
             onMessages = { contentMode = RadioContentMode.MESSAGES },
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp, bottom = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
         )
         if (contentMode == RadioContentMode.MAP) {
             AprsMapPanel(

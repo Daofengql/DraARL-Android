@@ -57,6 +57,7 @@ import com.amap.api.maps.model.BitmapDescriptorFactory
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -86,7 +87,11 @@ internal fun AprsMapPanel(
         } else {
             avatarMarker = runCatching {
                 val result = SingletonImageLoader.get(context).execute(
-                    ImageRequest.Builder(context).data(avatarUrl).size(AVATAR_BITMAP_SIZE).build(),
+                    ImageRequest.Builder(context)
+                        .data(avatarUrl)
+                        .size(AVATAR_BITMAP_SIZE)
+                        .allowHardware(false)
+                        .build(),
                 )
                 (result as? SuccessResult)?.image?.toBitmap(AVATAR_BITMAP_SIZE, AVATAR_BITMAP_SIZE)?.let { avatar ->
                     BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(avatar))
