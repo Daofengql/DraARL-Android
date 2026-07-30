@@ -240,6 +240,10 @@ class UdpRadioClient(
 
     fun setMuted(muted: Boolean) = audioEngine.setMuted(muted)
 
+    fun setPlaybackDenoiseEnabled(enabled: Boolean) = audioEngine.setDenoiseEnabled(enabled)
+
+    fun setPlaybackDenoiseWetMix(value: Float) = audioEngine.setDenoiseWetMix(value)
+
     @Synchronized
     fun setTransmitTimeoutSeconds(seconds: Int) {
         transmitTimeoutSeconds = seconds.coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
@@ -249,6 +253,8 @@ class UdpRadioClient(
     fun transmitTimeoutSeconds(): Int = transmitTimeoutSeconds
 
     fun audioCacheSizeBytes(): Long = audioCache.sizeBytes()
+
+    fun hasAudioCacheKey(key: String): Boolean = audioCache.contains(key)
 
     fun clearAudioCache() {
         stopPlayback()

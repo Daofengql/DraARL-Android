@@ -19,9 +19,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -196,6 +197,37 @@ fun SystemSettingsScreen(controller: AppController) {
                             },
                             valueRange = 10f..600f,
                             steps = 58,
+                        )
+                        HorizontalDivider()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.GraphicEq,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("降噪强度", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "播放降噪开启时生效",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(
+                                "${controller.playbackDenoiseStrengthPercent}%",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        Slider(
+                            value = controller.playbackDenoiseStrengthPercent.toFloat(),
+                            onValueChange = {
+                                controller.updatePlaybackDenoiseStrengthPercent((it / 5f).roundToInt() * 5)
+                            },
+                            valueRange = 0f..100f,
+                            steps = 19,
                         )
                     }
                 }

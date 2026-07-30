@@ -56,9 +56,13 @@ import cn.silverdragon.draarl.network.ApiException
 import cn.silverdragon.draarl.profile.ProfileController
 import cn.silverdragon.draarl.radio.AccessPointProbe
 import cn.silverdragon.draarl.radio.AccessPointSelector
+import cn.silverdragon.draarl.radio.PlaybackDenoiseState
+import cn.silverdragon.draarl.radio.PLAYBACK_DENOISE_MAX_STRENGTH_PERCENT
+import cn.silverdragon.draarl.radio.PLAYBACK_DENOISE_MIN_STRENGTH_PERCENT
 import cn.silverdragon.draarl.radio.RadioConnectionConfig
 import cn.silverdragon.draarl.radio.RadioConnectionService
 import cn.silverdragon.draarl.radio.RadioServiceListener
+import cn.silverdragon.draarl.radio.denoiseStrengthPercentToWetMix
 import cn.silverdragon.draarl.tools.ToolsController
 import java.net.URI
 import java.io.File
@@ -258,6 +262,16 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var muted by mutableStateOf(sessionStore.isMuted())
         private set
+    var playbackDenoiseEnabled by mutableStateOf(sessionStore.isPlaybackDenoiseEnabled())
+        private set
+    var playbackDenoiseStrengthPercent by mutableIntStateOf(sessionStore.playbackDenoiseStrengthPercent())
+        private set
+    var playbackDenoiseState by mutableStateOf(
+        if (sessionStore.isPlaybackDenoiseEnabled()) PlaybackDenoiseState.READY else PlaybackDenoiseState.DISABLED,
+    )
+        private set
+    var playbackDenoiseMessage by mutableStateOf("")
+        private set
     var pttOverlayEnabled by mutableStateOf(
         sessionStore.isPttOverlayEnabled() && Settings.canDrawOverlays(appContext),
     )
@@ -290,6 +304,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
             serviceBound = serviceBinder != null
             serviceBinder?.setListener(this@AppController)
             serviceBinder?.setMuted(muted)
+            serviceBinder?.setPlaybackDenoiseWetMix(denoiseStrengthPercentToWetMix(playbackDenoiseStrengthPercent))
+            serviceBinder?.setPlaybackDenoiseEnabled(playbackDenoiseEnabled)
             serviceBinder?.setTransmitTimeoutSeconds(transmitTimeoutSeconds)
             syncPttOverlay()
             pendingConnection?.let {
@@ -669,11 +685,90 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     fun toggleVoicePlayback(message: RadioMessage) {
-        if (message.audioCacheKey.isBlank() && message.audioUrl.isBlank()) {
+        val playableMessage = withStableAudioCacheKey(message)
+        if (playableMessage.audioCacheKey.isBlank() && playableMessage.audioUrl.isBlank()) {
             notice = "这条语音暂时还没有可回放的数据"
             return
         }
+        val cacheKey = playableMessage.audioCacheKey
+        if (cacheKey.isNotBlank() && serviceBinder?.hasAudioCacheKey(cacheKey) == true) {
+            playVoiceMessage(playableMessage)
+            return
+        }
+        if (playableMessage.serverRecordId != null && playableMessage.syncState == RadioMessageSyncState.CONFIRMED) {
+            refreshServerVoiceUrlAndPlay(playableMessage)
+            return
+        }
+        playVoiceMessage(playableMessage)
+    }
+
+    private fun withStableAudioCacheKey(message: RadioMessage): RadioMessage {
+        val recordId = message.serverRecordId ?: return message
+        if (message.audioCacheKey.isNotBlank()) return message
+        return message.copy(audioCacheKey = "record:$recordId")
+    }
+
+    private fun playVoiceMessage(message: RadioMessage) {
         if (serviceBinder?.togglePlayback(message) != true) notice = "无法播放这条语音"
+    }
+
+    private fun refreshServerVoiceUrlAndPlay(message: RadioMessage) {
+        val recordId = message.serverRecordId ?: run {
+            playVoiceMessage(message)
+            return
+        }
+        val accountUser = user ?: run {
+            playVoiceMessage(message)
+            return
+        }
+        executor.execute {
+            val result = runCatching {
+                val refreshed = recordToMessage(api.getCommunicationRecord(recordId), accountUser)
+                    ?: error("服务器没有返回可播放的语音记录")
+                withStableAudioCacheKey(
+                    message.copy(
+                        audioUrl = refreshed.audioUrl,
+                        durationMs = refreshed.durationMs.takeIf { it > 0 } ?: message.durationMs,
+                        content = refreshed.content.ifBlank { message.content },
+                    ),
+                )
+            }
+            mainHandler.post {
+                result
+                    .onSuccess { refreshed ->
+                        applyRefreshedRadioMessage(refreshed)
+                        playVoiceMessage(refreshed)
+                    }
+                    .onFailure { error ->
+                        if (message.audioUrl.isNotBlank()) {
+                            playVoiceMessage(message)
+                        } else {
+                            notice = friendlyError(error)
+                        }
+                    }
+            }
+        }
+    }
+
+    private fun applyRefreshedRadioMessage(message: RadioMessage) {
+        val index = radioMessages.indexOfFirst { existing ->
+            existing.id == message.id ||
+                (message.serverRecordId != null && existing.serverRecordId == message.serverRecordId)
+        }
+        if (index >= 0) radioMessages[index] = message
+        val accountKey = messageAccountKey() ?: return
+        val cacheGeneration = messageStore.generation()
+        val groupId = if (message.groupId > 0) message.groupId else selectedGroupId
+        executor.execute {
+            runCatching {
+                messageStore.save(
+                    accountKey,
+                    groupId,
+                    message,
+                    expectedGeneration = cacheGeneration,
+                )
+            }
+        }
     }
 
     fun publicProfile(username: String): User? = publicProfiles[username.lowercase()]
@@ -682,6 +777,34 @@ class AppController(application: Application) : AndroidViewModel(application), R
         muted = !muted
         sessionStore.setMuted(muted)
         serviceBinder?.setMuted(muted)
+    }
+
+    fun togglePlaybackDenoise() {
+        playbackDenoiseEnabled = !playbackDenoiseEnabled
+        sessionStore.setPlaybackDenoiseEnabled(playbackDenoiseEnabled)
+        serviceBinder?.setPlaybackDenoiseWetMix(denoiseStrengthPercentToWetMix(playbackDenoiseStrengthPercent))
+        serviceBinder?.setPlaybackDenoiseEnabled(playbackDenoiseEnabled)
+        if (playbackDenoiseEnabled) {
+            playbackDenoiseState = PlaybackDenoiseState.READY
+            playbackDenoiseMessage = "神经网络降噪已开启"
+        } else {
+            playbackDenoiseState = PlaybackDenoiseState.DISABLED
+            playbackDenoiseMessage = ""
+        }
+    }
+
+    fun updatePlaybackDenoiseStrengthPercent(percent: Int) {
+        val normalized = percent.coerceIn(
+            PLAYBACK_DENOISE_MIN_STRENGTH_PERCENT,
+            PLAYBACK_DENOISE_MAX_STRENGTH_PERCENT,
+        )
+        if (playbackDenoiseStrengthPercent == normalized) return
+        playbackDenoiseStrengthPercent = normalized
+        sessionStore.setPlaybackDenoiseStrengthPercent(normalized)
+        serviceBinder?.setPlaybackDenoiseWetMix(denoiseStrengthPercentToWetMix(normalized))
+        if (playbackDenoiseEnabled) {
+            playbackDenoiseMessage = "神经网络降噪强度 $normalized%"
+        }
     }
 
     fun canDrawPttOverlay(): Boolean = Settings.canDrawOverlays(appContext)

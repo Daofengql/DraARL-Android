@@ -16,6 +16,7 @@ internal class OpusPlaybackController(
     }
     private val released = AtomicBoolean(false)
     private val decoder = OpusFrameDecoder()
+    private val denoiser = RnnoisePlaybackDenoiser()
     private var audioTrack: AudioTrack? = null
     @Volatile private var muted = false
 
@@ -53,6 +54,7 @@ internal class OpusPlaybackController(
             val frames = recording.splitFrames()
             require(frames.isNotEmpty()) { "语音记录没有可播放的数据" }
             decoder.reset()
+            denoiser.reset()
             val track = obtainTrack(reset = true)
             for (frame in frames) {
                 if (!isActive() || released.get()) break
@@ -84,10 +86,23 @@ internal class OpusPlaybackController(
         }
     }
 
+    fun setDenoiseEnabled(value: Boolean) {
+        executeIfActive(executor, { !released.get() }) {
+            denoiser.setEnabled(value)
+        }
+    }
+
+    fun setDenoiseWetMix(value: Float) {
+        executeIfActive(executor, { !released.get() }) {
+            denoiser.setWetMix(value)
+        }
+    }
+
     fun resetDecoder() {
         onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
             decoder.reset()
+            denoiser.reset()
             runCatching { audioTrack?.flush() }
         }
     }
@@ -100,6 +115,7 @@ internal class OpusPlaybackController(
             audioTrack = null
             runCatching { track?.stop() }
             runCatching { track?.release() }
+            denoiser.release()
         }
         try {
             executor.execute(cleanup)
@@ -148,8 +164,9 @@ internal class OpusPlaybackController(
     private fun writeFrame(track: AudioTrack, frame: ByteArray) {
         val pcm = decoder.decode(frame)
         if (pcm.isNotEmpty()) {
-            onLevel(normalizedPcmLevel(pcm))
-            track.write(pcm, 0, pcm.size, AudioTrack.WRITE_BLOCKING)
+            val playbackPcm = denoiser.process(pcm)
+            onLevel(normalizedPcmLevel(playbackPcm))
+            track.write(playbackPcm, 0, playbackPcm.size, AudioTrack.WRITE_BLOCKING)
         }
     }
 }

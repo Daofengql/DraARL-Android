@@ -28,4 +28,19 @@ class HistoricalAudioLoaderTest {
         assertArrayEquals(recording, loader.load("record-1", ""))
         assertEquals(1, calls.get())
     }
+
+    @Test
+    fun `reuses cache key when presigned URL rotates`() {
+        val requestedUrls = mutableListOf<String>()
+        val recording = RawOpusRecording.encode(16_000, 1, 960, listOf(byteArrayOf(4, 5, 6)))
+        val loader = HistoricalAudioLoader(RadioAudioCache(directory)) { url ->
+            requestedUrls += url
+            recording
+        }
+
+        assertArrayEquals(recording, loader.load("record:42", "https://s3.example.test/42.raw?signature=one"))
+        assertArrayEquals(recording, loader.load("record:42", "https://s3.example.test/42.raw?signature=two"))
+
+        assertEquals(listOf("https://s3.example.test/42.raw?signature=one"), requestedUrls)
+    }
 }

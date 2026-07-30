@@ -20,13 +20,16 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Router
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -122,6 +125,30 @@ internal fun ConnectionPanel(
                     active = status.speaker.isNotBlank() || controller.playingMessageId != null,
                     modifier = Modifier.width(72.dp).height(28.dp),
                 )
+                FilledTonalIconButton(
+                    onClick = controller::togglePlaybackDenoise,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = if (controller.playbackDenoiseEnabled) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        contentColor = if (controller.playbackDenoiseEnabled) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    ),
+                ) {
+                    Icon(
+                        Icons.Default.GraphicEq,
+                        contentDescription = if (controller.playbackDenoiseEnabled) {
+                            "关闭神经网络降噪"
+                        } else {
+                            "开启神经网络降噪"
+                        },
+                    )
+                }
                 IconButton(onClick = controller::toggleMuted) {
                     Icon(
                         if (controller.muted) {

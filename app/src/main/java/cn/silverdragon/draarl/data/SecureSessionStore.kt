@@ -72,6 +72,25 @@ class SecureSessionStore(context: Context) {
         preferences.edit { putBoolean(KEY_MUTED, muted) }
     }
 
+    fun isPlaybackDenoiseEnabled(): Boolean = preferences.getBoolean(KEY_PLAYBACK_DENOISE, false)
+
+    fun setPlaybackDenoiseEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(KEY_PLAYBACK_DENOISE, enabled) }
+    }
+
+    fun playbackDenoiseStrengthPercent(): Int =
+        preferences.getInt(KEY_PLAYBACK_DENOISE_STRENGTH_PERCENT, DEFAULT_PLAYBACK_DENOISE_STRENGTH_PERCENT)
+            .coerceIn(MIN_PLAYBACK_DENOISE_STRENGTH_PERCENT, MAX_PLAYBACK_DENOISE_STRENGTH_PERCENT)
+
+    fun setPlaybackDenoiseStrengthPercent(percent: Int) {
+        preferences.edit {
+            putInt(
+                KEY_PLAYBACK_DENOISE_STRENGTH_PERCENT,
+                percent.coerceIn(MIN_PLAYBACK_DENOISE_STRENGTH_PERCENT, MAX_PLAYBACK_DENOISE_STRENGTH_PERCENT),
+            )
+        }
+    }
+
     fun isPttOverlayEnabled(): Boolean = preferences.getBoolean(KEY_PTT_OVERLAY, false)
 
     fun setPttOverlayEnabled(enabled: Boolean) {
@@ -193,10 +212,15 @@ class SecureSessionStore(context: Context) {
         private const val KEY_ACCESS_POINT = "access_point"
         private const val KEY_GROUP_PREFIX = "android_group_"
         private const val KEY_MUTED = "muted"
+        private const val KEY_PLAYBACK_DENOISE = "playback_denoise"
+        private const val KEY_PLAYBACK_DENOISE_STRENGTH_PERCENT = "playback_denoise_strength_percent"
         private const val KEY_PTT_OVERLAY = "ptt_overlay"
         private const val KEY_DISPLAY_SCALE = "display_scale"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_TRANSMIT_TIMEOUT_SECONDS = "transmit_timeout_seconds"
+        private const val MIN_PLAYBACK_DENOISE_STRENGTH_PERCENT = 0
+        private const val DEFAULT_PLAYBACK_DENOISE_STRENGTH_PERCENT = 50
+        private const val MAX_PLAYBACK_DENOISE_STRENGTH_PERCENT = 100
         private const val MIN_TRANSMIT_TIMEOUT_SECONDS = 10
         private const val DEFAULT_TRANSMIT_TIMEOUT_SECONDS = 120
         private const val MAX_TRANSMIT_TIMEOUT_SECONDS = 600

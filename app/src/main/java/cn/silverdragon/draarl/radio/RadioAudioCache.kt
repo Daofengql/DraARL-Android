@@ -44,6 +44,9 @@ class RadioAudioCache(
     }
 
     @Synchronized
+    fun contains(key: String): Boolean = get(key) != null
+
+    @Synchronized
     fun clear() {
         directory.listFiles { file -> file.isFile && file.extension == CACHE_EXTENSION }
             ?.forEach(File::delete)

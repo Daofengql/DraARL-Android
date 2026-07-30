@@ -75,6 +75,14 @@ class OpusAudioEngine(
         playback.setMuted(value)
     }
 
+    fun setDenoiseEnabled(value: Boolean) {
+        playback.setDenoiseEnabled(value)
+    }
+
+    fun setDenoiseWetMix(value: Float) {
+        playback.setDenoiseWetMix(value)
+    }
+
     fun resetDecoder() {
         if (!released.get()) playback.resetDecoder()
     }

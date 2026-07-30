@@ -32,6 +32,7 @@ import java.io.BufferedReader
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import java.net.URLEncoder
 import java.util.concurrent.atomic.AtomicReference
 
 class ApiException(val code: Int, override val message: String) : Exception(message)
@@ -582,31 +583,20 @@ class ApiClient(
         val data = request("GET", query).requireObject("data")
         val records = data.optJSONArray("list") ?: JSONArray()
         return CommunicationRecordPage(
-            records = records.objects().map { item ->
-                CommunicationRecord(
-                    id = item.optInt("id"),
-                    deviceId = item.optInt("device_id"),
-                    deviceName = item.optStringClean("device_name"),
-                    model = item.optInt("dev_model"),
-                    groupId = item.optNullableInt("group_id"),
-                    groupName = item.optStringClean("group_name"),
-                    username = item.optStringClean("username"),
-                    nickname = item.optStringClean("nickname"),
-                    startedAt = item.optStringClean("start_time"),
-                    durationMs = item.optLong("duration_ms"),
-                    messageType = item.optInt("msg_type"),
-                    text = item.optStringClean("text_content"),
-                    audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
-                )
-            },
+            records = records.objects().map(::parseCommunicationRecord),
             total = data.optInt("total"),
             page = data.optInt("page", safePage),
             pageSize = data.optInt("page_size", safePageSize).coerceAtLeast(1),
         )
     }
 
+    fun getCommunicationRecord(id: Int): CommunicationRecord {
+        val data = request("GET", "/api/comm-records/${id.coerceAtLeast(1)}").requireObject("data")
+        return parseCommunicationRecord(data)
+    }
+
     fun searchPublicRelays(location: String): List<RelayStation> {
-        val encoded = java.net.URLEncoder.encode(location.trim(), Charsets.UTF_8.name())
+        val encoded = urlEncode(location.trim())
         val items = request(
             "GET",
             "/api/public/relays?location=$encoded",
@@ -622,7 +612,7 @@ class ApiClient(
             append("?page=$page&page_size=$pageSize")
             if (callsign.isNotBlank()) {
                 append("&callsign=")
-                append(java.net.URLEncoder.encode(callsign.trim(), Charsets.UTF_8.name()))
+                append(urlEncode(callsign.trim()))
             }
         }
         val data = request("GET", "/api/logbooks$query").requireObject("data")
@@ -983,6 +973,22 @@ class ApiClient(
         updatedAt = json.optStringClean("update_time"),
     )
 
+    private fun parseCommunicationRecord(item: JSONObject) = CommunicationRecord(
+        id = item.optInt("id"),
+        deviceId = item.optInt("device_id"),
+        deviceName = item.optStringClean("device_name"),
+        model = item.optInt("dev_model"),
+        groupId = item.optNullableInt("group_id"),
+        groupName = item.optStringClean("group_name"),
+        username = item.optStringClean("username"),
+        nickname = item.optStringClean("nickname"),
+        startedAt = item.optStringClean("start_time"),
+        durationMs = item.optLong("duration_ms"),
+        messageType = item.optInt("msg_type"),
+        text = item.optStringClean("text_content"),
+        audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
+    )
+
     companion object {
         const val ANDROID_DEVICE_MODEL = 101
         private const val GROUP_PAGE_SIZE = 100
@@ -1023,6 +1029,8 @@ class ApiClient(
         return runCatching { resolveHttpsUrl(baseUrl, value) }.getOrDefault("")
     }
 }
+
+private fun urlEncode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 
 private fun JSONObject.requireSuccess(): JSONObject {
     val code = optInt("code", 200)
