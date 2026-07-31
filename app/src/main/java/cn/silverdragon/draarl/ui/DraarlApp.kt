@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -35,7 +36,10 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -45,6 +49,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -73,6 +78,8 @@ import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.pagePosition
+import cn.silverdragon.draarl.update.AppUpdateInfo
+import cn.silverdragon.draarl.update.AppUpdateStatus
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.AprsSettingsScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
@@ -185,6 +192,38 @@ private fun AuthenticatedApp(controller: AppController) {
     }
     LaunchedEffect(controller.page) {
         if (controller.page != AppPage.RADIO) radioExtrasExpanded = false
+    }
+
+    var dismissedAppUpdateVersion by rememberSaveable { mutableStateOf("") }
+    val appUpdateInfo = controller.appUpdateInfo
+    val appUpdateStatus = controller.appUpdateStatus
+    val updateDialogStickyStatuses = setOf(
+        AppUpdateStatus.DOWNLOADING,
+        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
+        AppUpdateStatus.READY_TO_INSTALL,
+    )
+    val showAppUpdateDialog = appUpdateInfo != null &&
+        appUpdateStatus in setOf(
+            AppUpdateStatus.AVAILABLE,
+            AppUpdateStatus.DOWNLOADING,
+            AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
+            AppUpdateStatus.READY_TO_INSTALL,
+            AppUpdateStatus.ERROR,
+        ) &&
+        (
+            appUpdateInfo.forceUpdate ||
+                dismissedAppUpdateVersion != appUpdateInfo.version ||
+                appUpdateStatus in updateDialogStickyStatuses
+            )
+    appUpdateInfo?.takeIf { showAppUpdateDialog }?.let { update ->
+        AppUpdateDialog(
+            update = update,
+            status = appUpdateStatus,
+            message = controller.appUpdateMessage,
+            progress = controller.appUpdateProgress,
+            onUpdate = controller::downloadAndInstallAppUpdate,
+            onDismiss = { dismissedAppUpdateVersion = update.version },
+        )
     }
 
     val imeVisible = WindowInsets.isImeVisible
@@ -322,6 +361,94 @@ private fun AuthenticatedApp(controller: AppController) {
             }
         }
     }
+}
+
+@Composable
+private fun AppUpdateDialog(
+    update: AppUpdateInfo,
+    status: AppUpdateStatus,
+    message: String,
+    progress: Float,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val busy = status == AppUpdateStatus.DOWNLOADING
+    val canDismiss = !update.forceUpdate && !busy
+    AlertDialog(
+        onDismissRequest = {
+            if (canDismiss) onDismiss()
+        },
+        title = {
+            Text(if (update.forceUpdate) "必须更新到 ${update.version}" else "发现新版本 ${update.version}")
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = update.displayTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "当前版本 ${update.currentVersionName}，新版本 ${update.version}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (update.changelog.isNotBlank()) {
+                    Text(
+                        text = update.changelog,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (message.isNotBlank()) {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (status) {
+                            AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
+                            AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                if (status == AppUpdateStatus.INSTALL_PERMISSION_REQUIRED) {
+                    Text(
+                        text = "请在系统页面允许 DraARL 安装未知应用，返回后会继续更新。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (busy) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onUpdate, enabled = !busy) {
+                Text(
+                    when (status) {
+                        AppUpdateStatus.READY_TO_INSTALL -> "重新打开安装器"
+                        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> "继续更新"
+                        AppUpdateStatus.ERROR -> "重试"
+                        AppUpdateStatus.DOWNLOADING -> "下载中"
+                        else -> "立即更新"
+                    },
+                )
+            }
+        },
+        dismissButton = if (canDismiss) {
+            {
+                TextButton(onClick = onDismiss) {
+                    Text("稍后")
+                }
+            }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable

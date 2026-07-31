@@ -30,8 +30,8 @@ android {
         applicationId = "cn.silverdragon.draarl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0-beta8"
+        versionCode = 6
+        versionName = "1.0.1"
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
         ndk {
             abiFilters += "arm64-v8a"

@@ -3,6 +3,13 @@ package cn.silverdragon.draarl.network
 import cn.silverdragon.draarl.auth.accountLoginRejection
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.CaptchaChallenge
+import cn.silverdragon.draarl.data.ClientResourceArtifact
+import cn.silverdragon.draarl.data.ClientResourceArtifactTarget
+import cn.silverdragon.draarl.data.ClientResourceDownload
+import cn.silverdragon.draarl.data.ClientResourceManifest
+import cn.silverdragon.draarl.data.ClientResourceManifestItem
+import cn.silverdragon.draarl.data.ClientResourceRelease
+import cn.silverdragon.draarl.data.ClientResourceSummary
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.CommunicationRecordPage
 import cn.silverdragon.draarl.data.CommunicationStats
@@ -254,6 +261,39 @@ class ApiClient(
             name = data.optStringClean("name").ifBlank { "DraARL 麟链" },
             version = data.optStringClean("version"),
             protocolVersion = data.optStringClean("protocol_version").ifBlank { "DraARLv1" },
+        )
+    }
+
+    fun getClientResourceManifest(
+        platform: String,
+        arch: String,
+        clientVersion: String = "",
+        channel: String = "stable",
+        osVersion: String = "",
+        androidApi: Int = 0,
+    ): ClientResourceManifest {
+        val query = buildString {
+            append("/api/public/client-resources/manifest?platform=").append(urlEncode(platform))
+            append("&arch=").append(urlEncode(arch))
+            append("&channel=").append(urlEncode(channel))
+            if (clientVersion.isNotBlank()) append("&client_version=").append(urlEncode(clientVersion))
+            if (osVersion.isNotBlank()) append("&os_version=").append(urlEncode(osVersion))
+            if (androidApi > 0) append("&android_api=").append(androidApi)
+        }
+        val data = request("GET", query, requiresAuth = false).requireObject("data")
+        return parseClientResourceManifest(data)
+    }
+
+    fun getClientResourceArtifactDownload(artifactId: Int): ClientResourceDownload {
+        val data = request(
+            "GET",
+            "/api/public/client-resources/artifacts/${artifactId.coerceAtLeast(1)}/download",
+            requiresAuth = false,
+        ).requireObject("data")
+        return ClientResourceDownload(
+            artifactId = data.optInt("artifact_id", artifactId),
+            downloadUrl = optionalHttpsUrl(data.optStringClean("download_url")),
+            urlExpiresAt = data.optStringClean("url_expires_at"),
         )
     }
 
@@ -987,6 +1027,59 @@ class ApiClient(
         messageType = item.optInt("msg_type"),
         text = item.optStringClean("text_content"),
         audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
+    )
+
+    private fun parseClientResourceManifest(json: JSONObject) = ClientResourceManifest(
+        schemaVersion = json.optInt("schema_version"),
+        resources = (json.optJSONArray("resources") ?: JSONArray()).objects().map { item ->
+            ClientResourceManifestItem(
+                resource = parseClientResourceSummary(item.requireObject("resource")),
+                release = parseClientResourceRelease(item.requireObject("release")),
+                artifacts = (item.optJSONArray("artifacts") ?: JSONArray()).objects().map(::parseClientResourceArtifact),
+            )
+        },
+    )
+
+    private fun parseClientResourceSummary(json: JSONObject) = ClientResourceSummary(
+        id = json.optInt("id"),
+        resourceKey = json.optStringClean("resource_key"),
+        name = json.optStringClean("name"),
+        category = json.optStringClean("category"),
+        required = json.optBoolean("required"),
+    )
+
+    private fun parseClientResourceRelease(json: JSONObject) = ClientResourceRelease(
+        id = json.optInt("id"),
+        version = json.optStringClean("version"),
+        channel = json.optStringClean("channel"),
+        title = json.optStringClean("title"),
+        changelog = json.optStringClean("changelog"),
+        forceUpdate = json.optBoolean("force_update"),
+        minClientVersion = json.optStringClean("min_client_version"),
+        publishedAt = json.optStringClean("published_at"),
+    )
+
+    private fun parseClientResourceArtifact(json: JSONObject) = ClientResourceArtifact(
+        id = json.optInt("id"),
+        releaseId = json.optInt("release_id"),
+        format = json.optStringClean("format"),
+        runtime = json.optStringClean("runtime"),
+        variant = json.optStringClean("variant"),
+        buildNumber = json.optStringClean("build_number"),
+        fileName = json.optStringClean("file_name"),
+        fileSize = json.optLong("file_size"),
+        sha256 = json.optStringClean("sha256"),
+        contentSignature = json.optStringClean("content_signature"),
+        signatureAlgorithm = json.optStringClean("signature_algorithm"),
+        externalUrl = optionalHttpsUrl(json.optStringClean("external_url")),
+        targets = (json.optJSONArray("targets") ?: JSONArray()).objects().map(::parseClientResourceArtifactTarget),
+    )
+
+    private fun parseClientResourceArtifactTarget(json: JSONObject) = ClientResourceArtifactTarget(
+        platform = json.optStringClean("platform"),
+        arch = json.optStringClean("arch"),
+        minOsVersion = json.optStringClean("min_os_version"),
+        minAndroidApi = json.optInt("min_android_api"),
     )
 
     companion object {

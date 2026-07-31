@@ -126,6 +126,12 @@ class SecureSessionStore(context: Context) {
         }
     }
 
+    fun isAutoCheckAppUpdateEnabled(): Boolean = preferences.getBoolean(KEY_AUTO_CHECK_APP_UPDATE, true)
+
+    fun setAutoCheckAppUpdateEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(KEY_AUTO_CHECK_APP_UPDATE, enabled) }
+    }
+
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
@@ -218,6 +224,7 @@ class SecureSessionStore(context: Context) {
         private const val KEY_DISPLAY_SCALE = "display_scale"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_TRANSMIT_TIMEOUT_SECONDS = "transmit_timeout_seconds"
+        private const val KEY_AUTO_CHECK_APP_UPDATE = "auto_check_app_update"
         private const val MIN_PLAYBACK_DENOISE_STRENGTH_PERCENT = 0
         private const val DEFAULT_PLAYBACK_DENOISE_STRENGTH_PERCENT = 50
         private const val MAX_PLAYBACK_DENOISE_STRENGTH_PERCENT = 100

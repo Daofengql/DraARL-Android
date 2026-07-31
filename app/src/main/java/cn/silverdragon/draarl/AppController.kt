@@ -64,6 +64,10 @@ import cn.silverdragon.draarl.radio.RadioConnectionService
 import cn.silverdragon.draarl.radio.RadioServiceListener
 import cn.silverdragon.draarl.radio.denoiseStrengthPercentToWetMix
 import cn.silverdragon.draarl.tools.ToolsController
+import cn.silverdragon.draarl.update.AppUpdateInfo
+import cn.silverdragon.draarl.update.AppUpdateInstallPermissionException
+import cn.silverdragon.draarl.update.AppUpdateManager
+import cn.silverdragon.draarl.update.AppUpdateStatus
 import java.net.URI
 import java.io.File
 import java.util.concurrent.CompletableFuture
@@ -120,6 +124,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val disposed = AtomicBoolean(false)
     private val sendingAprsPosition = AtomicBoolean(false)
     private val storageOperation = AtomicBoolean(false)
+    private val checkingAppUpdate = AtomicBoolean(false)
+    private val downloadingAppUpdate = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
     private val loadingPublicProfiles = ConcurrentHashMap.newKeySet<String>()
     private val loadingCachedRadioMessages = ConcurrentHashMap.newKeySet<String>()
@@ -164,6 +170,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         }
     }
     val tools: ToolsController by lazy { ToolsController(appContext, api) }
+    private val appUpdateManager by lazy { AppUpdateManager(appContext, api) }
     private val appDataRefresher by lazy { AppDataRefresher(ApiAppDataSource(api), executor) }
     val deviceManagement: DeviceManagementController by lazy {
         DeviceManagementController(
@@ -290,7 +297,19 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var storageBusy by mutableStateOf(false)
         private set
+    val currentAppVersionName: String get() = appUpdateManager.currentVersionName
+    var autoCheckAppUpdate by mutableStateOf(sessionStore.isAutoCheckAppUpdateEnabled())
+        private set
+    var appUpdateStatus by mutableStateOf(AppUpdateStatus.IDLE)
+        private set
+    var appUpdateInfo by mutableStateOf<AppUpdateInfo?>(null)
+        private set
+    var appUpdateMessage by mutableStateOf("")
+        private set
+    var appUpdateProgress by mutableFloatStateOf(0f)
+        private set
     private var appInForeground = true
+    private var pendingAppUpdateInstallAfterPermission = false
     var playingMessageId by mutableStateOf<String?>(null)
         private set
     var playbackLevel by mutableFloatStateOf(0f)
@@ -360,6 +379,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     mainHandler.post {
                         refreshAll()
                         discoverAccessPoints()
+                        if (autoCheckAppUpdate) checkAppUpdate(manual = false)
                         if (session.user.isApproved) refreshRadioData()
                     }
                 }
@@ -410,6 +430,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
         loadingPublicProfiles.clear()
         playingMessageId = null
         playbackLevel = 0f
+        appUpdateStatus = AppUpdateStatus.IDLE
+        appUpdateInfo = null
+        appUpdateMessage = ""
+        appUpdateProgress = 0f
         page = AppPage.RADIO
     }
 
@@ -435,6 +459,133 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun showNotice(message: String) {
         notice = message
+    }
+
+    fun checkAppUpdate(manual: Boolean = true) {
+        if (!manual && !autoCheckAppUpdate) return
+        if (api.currentSession() == null) {
+            if (manual) notice = "请先登录后检查更新"
+            return
+        }
+        if (!checkingAppUpdate.compareAndSet(false, true)) return
+        appUpdateStatus = AppUpdateStatus.CHECKING
+        appUpdateMessage = "正在检查客户端更新"
+        appUpdateProgress = 0f
+        executor.execute {
+            val result = runCatching { appUpdateManager.checkForUpdate() }
+            mainHandler.post {
+                checkingAppUpdate.set(false)
+                result
+                    .onSuccess { update ->
+                        if (update == null) {
+                            appUpdateInfo = null
+                            appUpdateStatus = AppUpdateStatus.UP_TO_DATE
+                            appUpdateMessage = "当前已是最新版本"
+                            if (manual) notice = "当前已是最新版本"
+                        } else {
+                            appUpdateInfo = update
+                            appUpdateStatus = AppUpdateStatus.AVAILABLE
+                            appUpdateMessage = buildString {
+                                append("发现新版本 ").append(update.version)
+                                if (update.forceUpdate) append("（强制更新）")
+                            }
+                            notice = appUpdateMessage
+                        }
+                    }
+                    .onFailure { error ->
+                        if (!manual && isClientUpdateUnsupported(error)) {
+                            appUpdateStatus = AppUpdateStatus.IDLE
+                            appUpdateMessage = ""
+                            return@onFailure
+                        }
+                        appUpdateStatus = AppUpdateStatus.ERROR
+                        appUpdateMessage = if (isClientUpdateUnsupported(error)) {
+                            "服务器暂不支持客户端更新"
+                        } else {
+                            friendlyError(error)
+                        }
+                        if (manual) notice = appUpdateMessage
+                    }
+            }
+        }
+    }
+
+    fun downloadAndInstallAppUpdate() {
+        val update = appUpdateInfo ?: run {
+            checkAppUpdate(manual = true)
+            return
+        }
+        if (!appUpdateManager.canRequestPackageInstalls()) {
+            pendingAppUpdateInstallAfterPermission = true
+            appUpdateStatus = AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
+            appUpdateMessage = "需要允许本应用安装更新包，正在打开系统权限设置"
+            notice = appUpdateMessage
+            openAppUpdateInstallPermissionSettings()
+            return
+        }
+        if (!downloadingAppUpdate.compareAndSet(false, true)) return
+        pendingAppUpdateInstallAfterPermission = false
+        appUpdateStatus = AppUpdateStatus.DOWNLOADING
+        appUpdateMessage = "正在下载 ${update.version}"
+        appUpdateProgress = 0f
+        executor.execute {
+            val result = runCatching {
+                val apk = appUpdateManager.downloadUpdate(update) { progress ->
+                    mainHandler.post {
+                        if (appUpdateStatus == AppUpdateStatus.DOWNLOADING) {
+                            appUpdateProgress = progress
+                        }
+                    }
+                }
+                appUpdateManager.installUpdate(apk)
+            }
+            mainHandler.post {
+                downloadingAppUpdate.set(false)
+                result
+                    .onSuccess {
+                        appUpdateStatus = AppUpdateStatus.READY_TO_INSTALL
+                        appUpdateProgress = 1f
+                        appUpdateMessage = "已打开系统安装器"
+                        notice = "已打开系统安装器"
+                    }
+                    .onFailure { error ->
+                        if (error is AppUpdateInstallPermissionException) {
+                            pendingAppUpdateInstallAfterPermission = true
+                            appUpdateStatus = AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
+                            appUpdateMessage = "需要允许本应用安装更新包，正在打开系统权限设置"
+                            openAppUpdateInstallPermissionSettings()
+                        } else {
+                            appUpdateStatus = AppUpdateStatus.ERROR
+                            appUpdateMessage = "更新失败：${friendlyError(error)}"
+                        }
+                        notice = appUpdateMessage
+                    }
+            }
+        }
+    }
+
+    fun openAppUpdateInstallPermissionSettings() {
+        runCatching { appUpdateManager.openInstallPermissionSettings() }
+            .onFailure { notice = "无法打开安装权限设置：${friendlyError(it)}" }
+    }
+
+    fun resumePendingAppUpdateInstall() {
+        if (!pendingAppUpdateInstallAfterPermission) return
+        if (appUpdateInfo == null) {
+            pendingAppUpdateInstallAfterPermission = false
+            return
+        }
+        if (appUpdateManager.canRequestPackageInstalls()) {
+            pendingAppUpdateInstallAfterPermission = false
+            downloadAndInstallAppUpdate()
+        }
+    }
+
+    fun setAutoCheckAppUpdateEnabled(enabled: Boolean) {
+        if (autoCheckAppUpdate == enabled) return
+        autoCheckAppUpdate = enabled
+        sessionStore.setAutoCheckAppUpdateEnabled(enabled)
+        if (enabled) checkAppUpdate(manual = false)
     }
 
     fun refreshAll() {
@@ -961,6 +1112,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun onAppForegroundChanged(inForeground: Boolean) {
         appInForeground = inForeground
+        if (inForeground) resumePendingAppUpdateInstall()
         syncPttOverlay()
     }
 
@@ -1263,6 +1415,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     mainHandler.post {
                         refreshAll()
                         discoverAccessPoints()
+                        if (autoCheckAppUpdate) checkAppUpdate(manual = false)
                         if (session.user.isApproved) refreshRadioData()
                     }
                 }
@@ -1629,6 +1782,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             isLenient = false
         }.parse(value)?.time
     }.getOrNull()
+
+    private fun isClientUpdateUnsupported(error: Throwable): Boolean =
+        error is ApiException && error.code in setOf(404, 405)
 
     private fun friendlyError(error: Throwable): String = when (error) {
         is ApiException -> error.message

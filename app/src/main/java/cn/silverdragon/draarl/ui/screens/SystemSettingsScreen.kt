@@ -23,11 +23,15 @@ import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -48,6 +52,7 @@ import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.data.AppDisplayScale
 import cn.silverdragon.draarl.data.AppThemeMode
+import cn.silverdragon.draarl.update.AppUpdateStatus
 import kotlin.math.roundToInt
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -162,6 +167,100 @@ fun SystemSettingsScreen(controller: AppController) {
                                     shape = SegmentedButtonDefaults.itemShape(index, AppThemeMode.entries.size),
                                 ) {
                                     Text(mode.displayName())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                SettingsSectionHeader("更新")
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.SystemUpdate,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("客户端更新", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "当前版本 ${controller.currentAppVersionName}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("自动检查更新", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "登录或启动后自动查询客户端新版本",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = controller.autoCheckAppUpdate,
+                                onCheckedChange = controller::setAutoCheckAppUpdateEnabled,
+                            )
+                        }
+                        if (controller.appUpdateMessage.isNotBlank()) {
+                            Text(
+                                controller.appUpdateMessage,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = when (controller.appUpdateStatus) {
+                                    AppUpdateStatus.AVAILABLE,
+                                    AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
+                                    -> MaterialTheme.colorScheme.primary
+                                    AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                        controller.appUpdateInfo?.let { update ->
+                            if (update.changelog.isNotBlank()) {
+                                Text(
+                                    update.changelog,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (controller.appUpdateStatus == AppUpdateStatus.DOWNLOADING) {
+                            LinearProgressIndicator(
+                                progress = { controller.appUpdateProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val busy = controller.appUpdateStatus == AppUpdateStatus.CHECKING ||
+                                controller.appUpdateStatus == AppUpdateStatus.DOWNLOADING
+                            OutlinedButton(
+                                onClick = { controller.checkAppUpdate() },
+                                enabled = !busy,
+                            ) {
+                                Text(if (controller.appUpdateStatus == AppUpdateStatus.CHECKING) "检查中" else "手动检查更新")
+                            }
+                            if (controller.appUpdateInfo != null) {
+                                Button(
+                                    onClick = { controller.downloadAndInstallAppUpdate() },
+                                    enabled = !busy,
+                                ) {
+                                    Text(
+                                        if (controller.appUpdateStatus == AppUpdateStatus.READY_TO_INSTALL) {
+                                            "重新安装"
+                                        } else {
+                                            "下载并安装"
+                                        },
+                                    )
                                 }
                             }
                         }
