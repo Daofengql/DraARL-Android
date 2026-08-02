@@ -8,6 +8,7 @@ class OpusAudioEngine(
     audioCache: RadioAudioCache,
     private val historicalAudioLoader: HistoricalAudioLoader = HistoricalAudioLoader(audioCache),
     onPlaybackLevel: (Float) -> Unit = {},
+    private val onCaptureLevel: (Float) -> Unit = {},
 ) {
     private val released = AtomicBoolean(false)
     private val recordingPlaybackGeneration = AtomicInteger(0)
@@ -20,7 +21,7 @@ class OpusAudioEngine(
     fun startCapture(onPacket: (ByteArray) -> Unit, onError: (String) -> Unit): Boolean {
         if (released.get()) return false
         stopRecordingPlayback()
-        return capture.start(onPacket, onError)
+        return capture.start(onPacket, onCaptureLevel, onError)
     }
 
     fun stopCapture() {

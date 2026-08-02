@@ -49,6 +49,7 @@ import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.StorageCategory
 import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.data.User
+import cn.silverdragon.draarl.data.VoicePlaybackQueue
 import cn.silverdragon.draarl.devices.DeviceManagementController
 import cn.silverdragon.draarl.groups.GroupManagementController
 import cn.silverdragon.draarl.network.ApiClient
@@ -62,6 +63,7 @@ import cn.silverdragon.draarl.radio.PLAYBACK_DENOISE_MIN_STRENGTH_PERCENT
 import cn.silverdragon.draarl.radio.RadioConnectionConfig
 import cn.silverdragon.draarl.radio.RadioConnectionService
 import cn.silverdragon.draarl.radio.RadioServiceListener
+import cn.silverdragon.draarl.radio.TransmitTailTone
 import cn.silverdragon.draarl.radio.denoiseStrengthPercentToWetMix
 import cn.silverdragon.draarl.tools.ToolsController
 import cn.silverdragon.draarl.update.AppUpdateInfo
@@ -131,7 +133,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val loadingCachedRadioMessages = ConcurrentHashMap.newKeySet<String>()
     private val radioHistoryStates = ConcurrentHashMap<String, RadioHistoryState>()
     private val radioVisibleLimits = ConcurrentHashMap<String, Int>()
+    private val voiceAutoPlaySkippedIds = mutableSetOf<String>()
+    private var voiceAutoPlayPendingMessageId: String? = null
     private var displayedRadioMessageGroupId: Int? = null
+    private val voiceAutoPlayAdvance = Runnable { advanceVoiceAutoPlay() }
     private val periodicRadioSync = object : Runnable {
         override fun run() {
             if (disposed.get()) return
@@ -289,6 +294,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var transmitTimeoutSeconds by mutableIntStateOf(sessionStore.transmitTimeoutSeconds())
         private set
+    var transmitTailTone by mutableStateOf(sessionStore.transmitTailTone())
+        private set
+    var transmitTailToneToRemoteEnabled by mutableStateOf(sessionStore.isTransmitTailToneToRemoteEnabled())
+        private set
+    var receiveTailToneEnabled by mutableStateOf(sessionStore.isReceiveTailToneEnabled())
+        private set
     var aprsConfig by mutableStateOf(AprsConfig())
         private set
     var aprsStatus by mutableStateOf(AprsStatus())
@@ -312,7 +323,17 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private var pendingAppUpdateInstallAfterPermission = false
     var playingMessageId by mutableStateOf<String?>(null)
         private set
+    var voiceAutoPlayEnabled by mutableStateOf(false)
+        private set
+    val unplayedVoiceCount: Int
+        get() = radioMessages.count(VoicePlaybackQueue::isUnplayed)
     var playbackLevel by mutableFloatStateOf(0f)
+        private set
+    var transmitLevel by mutableFloatStateOf(0f)
+        private set
+    var cwTransmitting by mutableStateOf(false)
+        private set
+    var cwPreviewing by mutableStateOf(false)
         private set
     var publicProfiles by mutableStateOf<Map<String, User>>(emptyMap())
         private set
@@ -326,6 +347,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             serviceBinder?.setPlaybackDenoiseWetMix(denoiseStrengthPercentToWetMix(playbackDenoiseStrengthPercent))
             serviceBinder?.setPlaybackDenoiseEnabled(playbackDenoiseEnabled)
             serviceBinder?.setTransmitTimeoutSeconds(transmitTimeoutSeconds)
+            serviceBinder?.setTransmitTailTone(transmitTailTone)
+            serviceBinder?.setTransmitTailToneToRemoteEnabled(transmitTailToneToRemoteEnabled)
+            serviceBinder?.setReceiveTailToneEnabled(receiveTailToneEnabled)
             syncPttOverlay()
             pendingConnection?.let {
                 serviceBinder?.connect(it)
@@ -394,6 +418,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     fun logout() {
+        stopVoiceAutoPlay(stopCurrent = false)
         tools.reset()
         refreshAllCoordinator.cancel()
         invalidateBackgroundRequests()
@@ -430,6 +455,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
         loadingPublicProfiles.clear()
         playingMessageId = null
         playbackLevel = 0f
+        transmitLevel = 0f
+        cwTransmitting = false
+        cwPreviewing = false
         appUpdateStatus = AppUpdateStatus.IDLE
         appUpdateInfo = null
         appUpdateMessage = ""
@@ -825,6 +853,42 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun canSendText(): Boolean = radioStatus.connected && !radioStatus.transmitting && radioStatus.speaker.isBlank()
 
+    fun sendCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean {
+        stopVoiceAutoPlay(stopCurrent = true)
+        if (cwPreviewing) stopCwPreview()
+        if (!radioStatus.connected) {
+            notice = "电台尚未连接"
+            return false
+        }
+        if (radioStatus.transmitting || radioStatus.speaker.isNotBlank()) {
+            notice = "当前信道正忙，稍后再发送 CW"
+            return false
+        }
+        val sent = serviceBinder?.sendCw(text, wordsPerMinute, toneHz) == true
+        if (sent) cwTransmitting = true
+        if (!sent) notice = "CW 发送失败，请检查内容后重试"
+        return sent
+    }
+
+    fun stopCw() {
+        if (serviceBinder?.stopCw() == true) cwTransmitting = false
+    }
+
+    fun previewCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean {
+        stopVoiceAutoPlay(stopCurrent = true)
+        if (radioStatus.transmitting || radioStatus.speaker.isNotBlank()) {
+            notice = "当前信道正忙，稍后再试听 CW"
+            return false
+        }
+        val started = serviceBinder?.previewCw(text, wordsPerMinute, toneHz) == true
+        if (started) cwPreviewing = true else notice = "CW 试听失败，请检查内容后重试"
+        return started
+    }
+
+    fun stopCwPreview() {
+        if (serviceBinder?.stopCwPreview() == true) cwPreviewing = false
+    }
+
     fun startPtt(): Boolean {
         val started = serviceBinder?.startPtt() == true
         if (!started && !radioStatus.connected) notice = "请先连接电台"
@@ -836,21 +900,97 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     fun toggleVoicePlayback(message: RadioMessage) {
+        if (voiceAutoPlayEnabled) stopVoiceAutoPlay(stopCurrent = false)
+        requestVoicePlayback(message, fromAutoPlay = false)
+    }
+
+    fun toggleVoiceAutoPlay() {
+        if (voiceAutoPlayEnabled) {
+            stopVoiceAutoPlay(stopCurrent = true)
+            return
+        }
+        voiceAutoPlaySkippedIds.clear()
+        if (VoicePlaybackQueue.nextUnplayed(radioMessages) == null) {
+            notice = "当前没有可连续播放的未听语音"
+            return
+        }
+        stopCwPreview()
+        voiceAutoPlayEnabled = true
+        scheduleVoiceAutoPlayAdvance(delayMs = 0L)
+    }
+
+    fun stopVoiceAutoPlay() {
+        stopVoiceAutoPlay(stopCurrent = true)
+    }
+
+    fun clearUnplayedVoiceMessages() {
+        if (unplayedVoiceCount == 0) return
+        stopVoiceAutoPlay(stopCurrent = true)
+        radioMessages.indices.forEach { index ->
+            val message = radioMessages[index]
+            if (VoicePlaybackQueue.isUnplayed(message)) {
+                radioMessages[index] = message.copy(played = true)
+            }
+        }
+        val accountKey = messageAccountKey() ?: return
+        val groupId = selectedGroupId
+        val cacheGeneration = messageStore.generation()
+        executor.execute {
+            messageStore.markAllPlayed(
+                accountKey = accountKey,
+                groupId = groupId,
+                expectedGeneration = cacheGeneration,
+            )
+        }
+    }
+
+    private fun stopVoiceAutoPlay(stopCurrent: Boolean) {
+        voiceAutoPlayEnabled = false
+        voiceAutoPlayPendingMessageId = null
+        voiceAutoPlaySkippedIds.clear()
+        mainHandler.removeCallbacks(voiceAutoPlayAdvance)
+        if (stopCurrent && playingMessageId != null) serviceBinder?.stopPlayback()
+    }
+
+    private fun scheduleVoiceAutoPlayAdvance(delayMs: Long = VOICE_AUTO_PLAY_ADVANCE_DELAY_MS) {
+        mainHandler.removeCallbacks(voiceAutoPlayAdvance)
+        if (voiceAutoPlayEnabled) mainHandler.postDelayed(voiceAutoPlayAdvance, delayMs)
+    }
+
+    private fun advanceVoiceAutoPlay() {
+        if (!voiceAutoPlayEnabled || disposed.get()) return
+        if (
+            playingMessageId != null || voiceAutoPlayPendingMessageId != null ||
+            radioStatus.transmitting || radioStatus.speaker.isNotBlank()
+        ) return
+        val next = VoicePlaybackQueue.nextUnplayed(radioMessages, voiceAutoPlaySkippedIds)
+        if (next == null) {
+            voiceAutoPlayEnabled = false
+            voiceAutoPlaySkippedIds.clear()
+            notice = "未听语音已连续播放完毕"
+            return
+        }
+        voiceAutoPlayPendingMessageId = next.id
+        requestVoicePlayback(next, fromAutoPlay = true)
+    }
+
+    private fun requestVoicePlayback(message: RadioMessage, fromAutoPlay: Boolean) {
+        if (!fromAutoPlay) stopCwPreview()
         val playableMessage = withStableAudioCacheKey(message)
-        if (playableMessage.audioCacheKey.isBlank() && playableMessage.audioUrl.isBlank()) {
-            notice = "这条语音暂时还没有可回放的数据"
+        if (!VoicePlaybackQueue.isPlayable(playableMessage)) {
+            handleVoicePlaybackFailure(playableMessage, fromAutoPlay, "这条语音暂时还没有可回放的数据")
             return
         }
         val cacheKey = playableMessage.audioCacheKey
         if (cacheKey.isNotBlank() && serviceBinder?.hasAudioCacheKey(cacheKey) == true) {
-            playVoiceMessage(playableMessage)
+            playVoiceMessage(playableMessage, fromAutoPlay)
             return
         }
         if (playableMessage.serverRecordId != null && playableMessage.syncState == RadioMessageSyncState.CONFIRMED) {
-            refreshServerVoiceUrlAndPlay(playableMessage)
+            refreshServerVoiceUrlAndPlay(playableMessage, fromAutoPlay)
             return
         }
-        playVoiceMessage(playableMessage)
+        playVoiceMessage(playableMessage, fromAutoPlay)
     }
 
     private fun withStableAudioCacheKey(message: RadioMessage): RadioMessage {
@@ -859,17 +999,22 @@ class AppController(application: Application) : AndroidViewModel(application), R
         return message.copy(audioCacheKey = "record:$recordId")
     }
 
-    private fun playVoiceMessage(message: RadioMessage) {
-        if (serviceBinder?.togglePlayback(message) != true) notice = "无法播放这条语音"
+    private fun playVoiceMessage(message: RadioMessage, fromAutoPlay: Boolean) {
+        if (serviceBinder?.togglePlayback(message) == true) {
+            if (fromAutoPlay) voiceAutoPlayPendingMessageId = null
+            markVoiceMessagePlayed(message)
+        } else {
+            handleVoicePlaybackFailure(message, fromAutoPlay, "无法播放这条语音")
+        }
     }
 
-    private fun refreshServerVoiceUrlAndPlay(message: RadioMessage) {
+    private fun refreshServerVoiceUrlAndPlay(message: RadioMessage, fromAutoPlay: Boolean) {
         val recordId = message.serverRecordId ?: run {
-            playVoiceMessage(message)
+            playVoiceMessage(message, fromAutoPlay)
             return
         }
         val accountUser = user ?: run {
-            playVoiceMessage(message)
+            playVoiceMessage(message, fromAutoPlay)
             return
         }
         executor.execute {
@@ -888,13 +1033,15 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 result
                     .onSuccess { refreshed ->
                         applyRefreshedRadioMessage(refreshed)
-                        playVoiceMessage(refreshed)
+                        if (!fromAutoPlay || voiceAutoPlayEnabled && voiceAutoPlayPendingMessageId == message.id) {
+                            playVoiceMessage(refreshed, fromAutoPlay)
+                        }
                     }
                     .onFailure { error ->
                         if (message.audioUrl.isNotBlank()) {
-                            playVoiceMessage(message)
+                            playVoiceMessage(message, fromAutoPlay)
                         } else {
-                            notice = friendlyError(error)
+                            handleVoicePlaybackFailure(message, fromAutoPlay, friendlyError(error))
                         }
                     }
             }
@@ -919,6 +1066,39 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     expectedGeneration = cacheGeneration,
                 )
             }
+        }
+    }
+
+    private fun handleVoicePlaybackFailure(message: RadioMessage, fromAutoPlay: Boolean, error: String) {
+        if (!fromAutoPlay) {
+            notice = error
+            return
+        }
+        voiceAutoPlayPendingMessageId = null
+        voiceAutoPlaySkippedIds += message.id
+        scheduleVoiceAutoPlayAdvance()
+    }
+
+    private fun markVoiceMessagePlayed(message: RadioMessage) {
+        if (message.type != RadioMessageType.VOICE || message.played) return
+        val index = radioMessages.indexOfFirst { existing ->
+            existing.id == message.id ||
+                (message.serverRecordId != null && existing.serverRecordId == message.serverRecordId)
+        }
+        if (index >= 0 && !radioMessages[index].played) {
+            radioMessages[index] = radioMessages[index].copy(played = true)
+        }
+        val accountKey = messageAccountKey() ?: return
+        val groupId = if (message.groupId > 0) message.groupId else selectedGroupId
+        val cacheGeneration = messageStore.generation()
+        executor.execute {
+            messageStore.markPlayed(
+                accountKey = accountKey,
+                groupId = groupId,
+                localId = message.id,
+                serverRecordId = message.serverRecordId,
+                expectedGeneration = cacheGeneration,
+            )
         }
     }
 
@@ -990,6 +1170,27 @@ class AppController(application: Application) : AndroidViewModel(application), R
         transmitTimeoutSeconds = normalized
         sessionStore.setTransmitTimeoutSeconds(normalized)
         serviceBinder?.setTransmitTimeoutSeconds(normalized)
+    }
+
+    fun updateTransmitTailTone(tone: TransmitTailTone) {
+        if (transmitTailTone == tone) return
+        transmitTailTone = tone
+        sessionStore.setTransmitTailTone(tone)
+        serviceBinder?.setTransmitTailTone(tone)
+    }
+
+    fun updateTransmitTailToneToRemoteEnabled(enabled: Boolean) {
+        if (transmitTailToneToRemoteEnabled == enabled) return
+        transmitTailToneToRemoteEnabled = enabled
+        sessionStore.setTransmitTailToneToRemoteEnabled(enabled)
+        serviceBinder?.setTransmitTailToneToRemoteEnabled(enabled)
+    }
+
+    fun updateReceiveTailToneEnabled(enabled: Boolean) {
+        if (receiveTailToneEnabled == enabled) return
+        receiveTailToneEnabled = enabled
+        sessionStore.setReceiveTailToneEnabled(enabled)
+        serviceBinder?.setReceiveTailToneEnabled(enabled)
     }
 
     fun updateAprsConfig(config: AprsConfig) {
@@ -1077,6 +1278,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     imageLoader.diskCache?.clear()
                 }
                 if (category == StorageCategory.MESSAGES || category == StorageCategory.ALL) {
+                    mainHandler.post { stopVoiceAutoPlay(stopCurrent = true) }
                     radioDataGeneration.incrementAndGet()
                     radioHistoryGeneration.incrementAndGet()
                     messageStore.clearAll()
@@ -1118,6 +1320,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun switchGroup(group: Group) {
         if (group.id == selectedGroupId) return
+        stopVoiceAutoPlay(stopCurrent = true)
         val userId = user?.id ?: return
         val switchGeneration = groupSwitchGeneration.incrementAndGet()
         radioDataGeneration.incrementAndGet()
@@ -1247,6 +1450,15 @@ class AppController(application: Application) : AndroidViewModel(application), R
             val wasConnected = radioStatus.connected
             radioStatus = status.copy(groupId = selectedGroupId)
             if (status.speaker.isBlank() && playingMessageId == null) playbackLevel = 0f
+            if (!status.transmitting) transmitLevel = 0f
+            if (!status.transmitting) cwTransmitting = false
+            if (status.transmitting || status.speaker.isNotBlank()) cwPreviewing = false
+            if (
+                voiceAutoPlayEnabled && !status.transmitting && status.speaker.isBlank() &&
+                playingMessageId == null && voiceAutoPlayPendingMessageId == null
+            ) {
+                scheduleVoiceAutoPlayAdvance()
+            }
             if (status.connected) preparingRadioConnection.set(false)
             if (!wasConnected && status.connected) refreshRadioData()
             if (
@@ -1295,6 +1507,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 message.senderSsid == radioStatus.ssid
             val enriched = message.copy(
                 mine = message.mine || currentClientMessage,
+                played = message.played || message.mine || currentClientMessage ||
+                    (message.type == RadioMessageType.VOICE && !muted),
                 senderUsername = message.senderUsername.ifBlank {
                     if (message.mine || currentClientMessage) currentUser?.username.orEmpty() else online?.username.orEmpty()
                 },
@@ -1327,6 +1541,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     radioMessages += enriched
                 }
                 while (radioMessages.size > MAX_MESSAGES) radioMessages.removeAt(0)
+                if (voiceAutoPlayEnabled && playingMessageId == null && voiceAutoPlayPendingMessageId == null) {
+                    scheduleVoiceAutoPlayAdvance()
+                }
             }
             val accountKey = messageAccountKey()
             if (accountKey != null) {
@@ -1349,8 +1566,16 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     override fun onPlaybackState(messageId: String?) {
         mainHandler.post {
+            val previousMessageId = playingMessageId
             playingMessageId = messageId
             if (messageId == null && radioStatus.speaker.isBlank()) playbackLevel = 0f
+            if (messageId == null) cwPreviewing = false
+            if (
+                voiceAutoPlayEnabled && messageId == null && previousMessageId != null &&
+                voiceAutoPlayPendingMessageId == null
+            ) {
+                scheduleVoiceAutoPlayAdvance()
+            }
         }
     }
 
@@ -1358,8 +1583,17 @@ class AppController(application: Application) : AndroidViewModel(application), R
         mainHandler.post { playbackLevel = level.coerceIn(0f, 1f) }
     }
 
+    override fun onTransmitLevel(level: Float) {
+        mainHandler.post { transmitLevel = level.coerceIn(0f, 1f) }
+    }
+
+    override fun onCwPreviewState(active: Boolean) {
+        mainHandler.post { cwPreviewing = active }
+    }
+
     override fun onCleared() {
         if (!disposed.compareAndSet(false, true)) return
+        mainHandler.removeCallbacks(voiceAutoPlayAdvance)
         refreshAllCoordinator.cancel()
         invalidateBackgroundRequests()
         tools.close()
@@ -1731,6 +1965,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             serverRecordId = record.id,
             syncState = RadioMessageSyncState.CONFIRMED,
             groupId = record.groupId ?: 0,
+            played = mine,
         )
     }
 
@@ -1802,6 +2037,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private const val MAX_HISTORY_PAGES_PER_LOAD = 5
         private const val MAX_LATEST_SYNC_PAGES = 50
         private const val MAX_MESSAGES = 1_000
+        private const val VOICE_AUTO_PLAY_ADVANCE_DELAY_MS = 300L
         private const val AUDIO_CACHE_DIRECTORY = "radio_audio"
         private const val AVATAR_CACHE_DIRECTORY = "avatar_images"
         private const val MIN_TRANSMIT_TIMEOUT_SECONDS = 10

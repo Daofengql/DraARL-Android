@@ -35,7 +35,8 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                 audio_url TEXT NOT NULL,
                 audio_cache_key TEXT NOT NULL,
                 sync_state TEXT NOT NULL,
-                source_group_id INTEGER NOT NULL DEFAULT 0
+                source_group_id INTEGER NOT NULL DEFAULT 0,
+                played INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent(),
         )
@@ -63,6 +64,9 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 4) {
             database.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN source_group_id INTEGER NOT NULL DEFAULT 0")
         }
+        if (oldVersion < 5) {
+            database.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN played INTEGER NOT NULL DEFAULT 1")
+        }
     }
 
     @Synchronized
@@ -82,6 +86,14 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                             TABLE_MESSAGES,
                             ContentValues().apply { put("audio_cache_key", message.audioCacheKey) },
                             "local_id = ? AND audio_cache_key = ''",
+                            arrayOf(confirmedId),
+                        )
+                    }
+                    if (message.mine || message.played) {
+                        update(
+                            TABLE_MESSAGES,
+                            ContentValues().apply { put("played", 1) },
+                            "local_id = ?",
                             arrayOf(confirmedId),
                         )
                     }
@@ -106,20 +118,22 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
         writableDatabase.transaction {
             if (expectedGeneration != cacheGeneration) return@transaction
             remoteMessages.forEach { remote ->
+                val storedState = loadServerPlaybackState(
+                    this,
+                    accountKey,
+                    groupId,
+                    remote.serverRecordId,
+                )
                 var mergedRemote = remote.copy(
-                    audioCacheKey = remote.audioCacheKey.ifBlank {
-                        loadServerAudioCacheKey(
-                            this,
-                            accountKey,
-                            groupId,
-                            remote.serverRecordId,
-                        )
-                    },
+                    audioCacheKey = remote.audioCacheKey.ifBlank { storedState?.audioCacheKey.orEmpty() },
+                    played = remote.mine || (storedState?.played ?: false),
                 )
                 if (mergedRemote.audioCacheKey.isBlank()) {
                     findMatchingMessage(this, accountKey, groupId, remote, confirmed = false)?.let { localId ->
+                        val localState = loadLocalPlaybackState(this, localId)
                         mergedRemote = remote.copy(
-                            audioCacheKey = loadAudioCacheKey(this, localId),
+                            audioCacheKey = localState?.audioCacheKey.orEmpty(),
+                            played = remote.mine || (localState?.played == true),
                         )
                         delete(TABLE_MESSAGES, "local_id = ?", arrayOf(localId))
                     }
@@ -173,6 +187,7 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                         RadioMessageSyncState.valueOf(cursor.getString(cursor.getColumnIndexOrThrow("sync_state")))
                     }.getOrDefault(RadioMessageSyncState.LOCAL),
                     groupId = cursor.getInt(cursor.getColumnIndexOrThrow("source_group_id")),
+                    played = cursor.getInt(cursor.getColumnIndexOrThrow("played")) == 1,
                 )
             }
         }
@@ -206,21 +221,22 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
                 put("audio_cache_key", message.audioCacheKey)
                 put("sync_state", message.syncState.name)
                 put("source_group_id", message.groupId)
+                put("played", if (message.mine || message.played) 1 else 0)
             },
             SQLiteDatabase.CONFLICT_REPLACE,
         )
     }
 
-    private fun loadServerAudioCacheKey(
+    private fun loadServerPlaybackState(
         database: SQLiteDatabase,
         accountKey: String,
         groupId: Int,
         serverRecordId: Int?,
-    ): String {
-        if (serverRecordId == null) return ""
+    ): StoredPlaybackState? {
+        if (serverRecordId == null) return null
         database.query(
             TABLE_MESSAGES,
-            arrayOf("audio_cache_key"),
+            arrayOf("audio_cache_key", "played"),
             "account_key = ? AND group_id = ? AND server_record_id = ?",
             arrayOf(accountKey, groupId.toString(), serverRecordId.toString()),
             null,
@@ -228,14 +244,18 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
             null,
             "1",
         ).use { cursor ->
-            return if (cursor.moveToFirst()) cursor.getString(0) else ""
+            return if (cursor.moveToFirst()) {
+                StoredPlaybackState(cursor.getString(0), cursor.getInt(1) == 1)
+            } else {
+                null
+            }
         }
     }
 
-    private fun loadAudioCacheKey(database: SQLiteDatabase, localId: String): String {
+    private fun loadLocalPlaybackState(database: SQLiteDatabase, localId: String): StoredPlaybackState? {
         database.query(
             TABLE_MESSAGES,
-            arrayOf("audio_cache_key"),
+            arrayOf("audio_cache_key", "played"),
             "local_id = ?",
             arrayOf(localId),
             null,
@@ -243,8 +263,50 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
             null,
             "1",
         ).use { cursor ->
-            return if (cursor.moveToFirst()) cursor.getString(0) else ""
+            return if (cursor.moveToFirst()) {
+                StoredPlaybackState(cursor.getString(0), cursor.getInt(1) == 1)
+            } else {
+                null
+            }
         }
+    }
+
+    @Synchronized
+    fun markPlayed(
+        accountKey: String,
+        groupId: Int,
+        localId: String,
+        serverRecordId: Int?,
+        expectedGeneration: Int = cacheGeneration,
+    ) {
+        if (expectedGeneration != cacheGeneration) return
+        val values = ContentValues().apply { put("played", 1) }
+        val where = if (serverRecordId == null) {
+            "account_key = ? AND group_id = ? AND local_id = ?"
+        } else {
+            "account_key = ? AND group_id = ? AND (local_id = ? OR server_record_id = ?)"
+        }
+        val arguments = if (serverRecordId == null) {
+            arrayOf(accountKey, groupId.toString(), localId)
+        } else {
+            arrayOf(accountKey, groupId.toString(), localId, serverRecordId.toString())
+        }
+        writableDatabase.update(TABLE_MESSAGES, values, where, arguments)
+    }
+
+    @Synchronized
+    fun markAllPlayed(
+        accountKey: String,
+        groupId: Int,
+        expectedGeneration: Int = cacheGeneration,
+    ) {
+        if (expectedGeneration != cacheGeneration) return
+        writableDatabase.update(
+            TABLE_MESSAGES,
+            ContentValues().apply { put("played", 1) },
+            "account_key = ? AND group_id = ? AND message_type = ? AND mine = 0 AND played = 0",
+            arrayOf(accountKey, groupId.toString(), RadioMessageType.VOICE.name),
+        )
     }
 
     private fun findMatchingMessage(
@@ -405,11 +467,17 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
             RadioMessageSyncState.valueOf(getString(getColumnIndexOrThrow("sync_state")))
         }.getOrDefault(RadioMessageSyncState.LOCAL),
         groupId = getInt(getColumnIndexOrThrow("source_group_id")),
+        played = getInt(getColumnIndexOrThrow("played")) == 1,
+    )
+
+    private data class StoredPlaybackState(
+        val audioCacheKey: String,
+        val played: Boolean,
     )
 
     companion object {
         private const val DATABASE_NAME = "radio_messages.db"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
         private const val TABLE_MESSAGES = "radio_messages"
         private const val DISPLAY_LIMIT = 200
         private const val CACHE_LIMIT = 1_000
@@ -429,6 +497,7 @@ class RadioMessageStore(context: Context) : SQLiteOpenHelper(
             "audio_cache_key",
             "sync_state",
             "source_group_id",
+            "played",
         )
     }
 }

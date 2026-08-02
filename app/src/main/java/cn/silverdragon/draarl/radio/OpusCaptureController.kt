@@ -19,7 +19,11 @@ internal class OpusCaptureController {
         get() = capturing.get()
 
     @SuppressLint("MissingPermission")
-    fun start(onPacket: (ByteArray) -> Unit, onError: (String) -> Unit): Boolean {
+    fun start(
+        onPacket: (ByteArray) -> Unit,
+        onLevel: (Float) -> Unit,
+        onError: (String) -> Unit,
+    ): Boolean {
         if (released.get()) return false
         if (!capturing.compareAndSet(false, true)) return true
         val currentGeneration = generation.incrementAndGet()
@@ -46,7 +50,7 @@ internal class OpusCaptureController {
             }
             audioRecord = recorder
             captureThread = Thread(
-                { captureLoop(recorder, currentGeneration, onPacket, onError) },
+                { captureLoop(recorder, currentGeneration, onPacket, onLevel, onError) },
                 "draarl-opus-capture",
             ).apply(Thread::start)
             true
@@ -74,6 +78,7 @@ internal class OpusCaptureController {
         recorder: AudioRecord,
         currentGeneration: Int,
         onPacket: (ByteArray) -> Unit,
+        onLevel: (Float) -> Unit,
         onError: (String) -> Unit,
     ) {
         val encoder = OpusFrameEncoder()
@@ -82,6 +87,7 @@ internal class OpusCaptureController {
             recorder.startRecording()
             while (isActive(currentGeneration) && !Thread.currentThread().isInterrupted) {
                 val pcm = readFrame(recorder, currentGeneration) ?: break
+                onLevel(normalizedPcmLevel(pcm))
                 encoder.encode(pcm)?.let(accumulator::add)
                 if (accumulator.size >= OpusAudioFormat.FRAMES_PER_PACKET) {
                     onPacket(DraarlProtocol.mergeOpusFrames(accumulator.toList()))
@@ -91,6 +97,7 @@ internal class OpusCaptureController {
         } catch (error: Exception) {
             if (isActive(currentGeneration)) onError(error.message ?: "语音采集失败")
         } finally {
+            onLevel(0f)
             if (generation.get() == currentGeneration) capturing.set(false)
             runCatching { recorder.stop() }
             releaseRecorder(recorder)

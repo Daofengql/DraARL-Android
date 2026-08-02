@@ -242,6 +242,7 @@ data class RadioMessage(
     val serverRecordId: Int? = null,
     val syncState: RadioMessageSyncState = RadioMessageSyncState.LOCAL,
     val groupId: Int = 0, // 0 表示未知，用于兼容旧数据
+    val played: Boolean = false,
 )
 
 data class DashboardData(

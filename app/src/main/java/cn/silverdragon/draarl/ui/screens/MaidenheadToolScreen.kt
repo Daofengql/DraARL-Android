@@ -1,6 +1,10 @@
 package cn.silverdragon.draarl.ui.screens
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,10 +24,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -31,13 +37,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
+import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.maps.CoordinateConverter
+import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.MaidenheadCell
 import cn.silverdragon.draarl.maps.MaidenheadLocator
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
@@ -64,12 +74,16 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
     }
 
     remember(context) { initializeAmapServices(context) }
+    val scope = rememberCoroutineScope()
+    val locationProvider = remember(context) { CurrentLocationProvider(context) }
     var input by rememberSaveable { mutableStateOf("") }
     var precisionPairs by rememberSaveable { mutableIntStateOf(3) }
     var selectedCell by remember { mutableStateOf<MaidenheadCell?>(null) }
     var selectedWgs84 by remember { mutableStateOf<GeoCoordinate?>(null) }
     var error by remember { mutableStateOf("") }
     var fitBoundsRequest by remember { mutableIntStateOf(0) }
+    var locatingCurrent by remember { mutableStateOf(false) }
+    var defaultLocateAttempted by rememberSaveable { mutableStateOf(false) }
     val mapType = if (MaterialTheme.isDarkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL
 
     fun showCell(cell: MaidenheadCell, coordinate: GeoCoordinate = cell.center) {
@@ -84,6 +98,46 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
         runCatching { MaidenheadLocator.decode(input) }
             .onSuccess { showCell(it) }
             .onFailure { error = it.message ?: "网格格式不正确" }
+    }
+
+    fun locateCurrentGrid() {
+        if (locatingCurrent) return
+        locatingCurrent = true
+        scope.launch {
+            try {
+                val location = locationProvider.locate()
+                val coordinate = GeoCoordinate(location.latitude, location.longitude)
+                val locator = MaidenheadLocator.encode(coordinate.latitude, coordinate.longitude, precisionPairs)
+                showCell(MaidenheadLocator.decode(locator), coordinate)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (cause: Throwable) {
+                if (input.isBlank()) error = cause.message ?: "暂时无法获取当前位置"
+            } finally {
+                locatingCurrent = false
+            }
+        }
+    }
+
+    val locationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        if (result.values.any { it }) locateCurrentGrid()
+        else if (input.isBlank()) error = "需要定位权限才能显示当前设备所在网格"
+    }
+
+    LaunchedEffect(Unit) {
+        if (defaultLocateAttempted) return@LaunchedEffect
+        defaultLocateAttempted = true
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (fine || coarse) {
+            locateCurrentGrid()
+        } else {
+            locationPermission.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            )
+        }
     }
 
     val selectedGcj02 = selectedWgs84?.toGcj02LatLng()
@@ -175,7 +229,10 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                 tonalElevation = 6.dp,
             ) {
-                Text("输入网格定位，或点击地图正向计算", modifier = Modifier.padding(16.dp))
+                Text(
+                    if (locatingCurrent) "正在定位当前设备" else "输入网格定位，或点击地图正向计算",
+                    modifier = Modifier.padding(16.dp),
+                )
             }
         }
     }

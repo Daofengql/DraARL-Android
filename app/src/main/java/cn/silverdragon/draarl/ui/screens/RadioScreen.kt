@@ -86,6 +86,10 @@ fun RadioScreen(
     var contentMode by rememberSaveable { mutableStateOf(RadioContentMode.MAP) }
     var locating by remember { mutableStateOf(false) }
     var showLocationChoices by rememberSaveable { mutableStateOf(false) }
+    var showCwSheet by rememberSaveable { mutableStateOf(false) }
+    var cwText by rememberSaveable { mutableStateOf("") }
+    var cwWordsPerMinute by rememberSaveable { mutableStateOf(18) }
+    var cwToneHz by rememberSaveable { mutableStateOf(700) }
     var historyAnchorId by rememberSaveable(controller.selectedGroupId) { mutableStateOf("") }
     var historyAnchorOffset by rememberSaveable(controller.selectedGroupId) { mutableStateOf(0) }
     val dismissExtrasInteraction = remember { MutableInteractionSource() }
@@ -123,14 +127,20 @@ fun RadioScreen(
     }
     val canSendText = controller.canSendText()
 
-    BackHandler(enabled = extrasExpanded && !showLocationChoices) { onExtrasExpandedChange(false) }
+    BackHandler(enabled = extrasExpanded && !showLocationChoices && !showCwSheet) { onExtrasExpandedChange(false) }
 
     LaunchedEffect(extrasExpanded) {
-        if (!extrasExpanded) showLocationChoices = false
+        if (!extrasExpanded) {
+            showLocationChoices = false
+            showCwSheet = false
+        }
     }
 
     LaunchedEffect(userDragging, listState.isScrollInProgress) {
-        if (userDragging) userScrollPending = true
+        if (userDragging) {
+            userScrollPending = true
+            if (controller.voiceAutoPlayEnabled) controller.stopVoiceAutoPlay()
+        }
         if (userScrollPending && !listState.isScrollInProgress) {
             val layout = listState.layoutInfo
             val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -143,9 +153,15 @@ fun RadioScreen(
         if (!initialListPositioned) {
             listState.scrollToItem(messages.lastIndex)
             initialListPositioned = true
-        } else if (followLatest) {
+        } else if (followLatest && !controller.voiceAutoPlayEnabled) {
             listState.animateScrollToItem(messages.lastIndex)
         }
+    }
+    LaunchedEffect(controller.playingMessageId, controller.voiceAutoPlayEnabled, controller.selectedGroupId) {
+        if (!controller.voiceAutoPlayEnabled) return@LaunchedEffect
+        val playingId = controller.playingMessageId ?: return@LaunchedEffect
+        val playingIndex = messages.indexOfFirst { it.id == playingId }
+        if (playingIndex >= 0) listState.animateScrollToItem(playingIndex)
     }
     LaunchedEffect(messages.firstOrNull()?.id, messages.size, controller.radioHistoryLoading) {
         if (controller.radioHistoryLoading || historyAnchorId.isBlank()) return@LaunchedEffect
@@ -217,6 +233,7 @@ fun RadioScreen(
         RadioModeSwitcher(
             mapSelected = contentMode == RadioContentMode.MAP,
             onMap = {
+                controller.stopVoiceAutoPlay()
                 contentMode = RadioContentMode.MAP
                 onExtrasExpandedChange(false)
             },
@@ -260,46 +277,68 @@ fun RadioScreen(
                         }
                     }
                 } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        if (controller.radioHistoryLoading || controller.radioSyncError.isNotBlank()) {
-                            item(key = "radio-history-status") {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    if (controller.radioHistoryLoading) {
-                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                        Text(
-                                            "正在加载更早记录",
-                                            modifier = Modifier.padding(start = 8.dp),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    } else {
-                                        Text(
-                                            "记录同步暂时中断，稍后自动重试",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.error,
-                                        )
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                start = 12.dp,
+                                top = 12.dp,
+                                end = 12.dp,
+                                bottom = 112.dp,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (controller.radioHistoryLoading || controller.radioSyncError.isNotBlank()) {
+                                item(key = "radio-history-status") {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        if (controller.radioHistoryLoading) {
+                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                            Text(
+                                                "正在加载更早记录",
+                                                modifier = Modifier.padding(start = 8.dp),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        } else {
+                                            Text(
+                                                "记录同步暂时中断，稍后自动重试",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
                                     }
                                 }
                             }
+                            itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+                                MessageItem(
+                                    controller = controller,
+                                    message = message,
+                                    showTimeDivider = index == 0 ||
+                                        message.timestamp - messages[index - 1].timestamp >= RADIO_TIME_DIVIDER_MS,
+                                    onOpenLocation = onOpenLocation,
+                                )
+                            }
                         }
-                        itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
-                            MessageItem(
-                                controller = controller,
-                                message = message,
-                                showTimeDivider = index == 0 ||
-                                    message.timestamp - messages[index - 1].timestamp >= RADIO_TIME_DIVIDER_MS,
-                                onOpenLocation = onOpenLocation,
-                            )
-                        }
+                        MessageListFloatingActions(
+                            unplayedCount = controller.unplayedVoiceCount,
+                            autoPlaying = controller.voiceAutoPlayEnabled,
+                            canScrollToBottom = listState.canScrollForward,
+                            onToggleAutoPlay = {
+                                followLatest = false
+                                controller.toggleVoiceAutoPlay()
+                            },
+                            onClearUnplayed = controller::clearUnplayedVoiceMessages,
+                            onScrollToBottom = {
+                                followLatest = true
+                                scope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                            },
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp),
+                        )
                     }
                 }
             }
@@ -338,6 +377,7 @@ fun RadioScreen(
             },
             onMoreMessage = {
                 showLocationChoices = false
+                showCwSheet = false
                 onExtrasExpandedChange(!extrasExpanded)
             },
             onStartPtt = {
@@ -353,7 +393,18 @@ fun RadioScreen(
         ) {
             RadioExtraPanel(
                 locating = locating,
-                onLocationClick = { showLocationChoices = true },
+                cwEnabled = controller.radioStatus.connected &&
+                    !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
+                cwTransmitting = controller.cwTransmitting,
+                onLocationClick = {
+                    showCwSheet = false
+                    showLocationChoices = true
+                },
+                onCwClick = {
+                    showLocationChoices = false
+                    showCwSheet = true
+                },
+                onStopCw = controller::stopCw,
             )
         }
         }
@@ -392,6 +443,34 @@ fun RadioScreen(
                 onExtrasExpandedChange(false)
                 onPickLocation()
             },
+        )
+    }
+    if (showCwSheet) {
+        CwSendSheet(
+            text = cwText,
+            wordsPerMinute = cwWordsPerMinute,
+            toneHz = cwToneHz,
+            enabled = controller.radioStatus.connected &&
+                !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
+            previewEnabled = !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
+            transmitting = controller.cwTransmitting,
+            previewing = controller.cwPreviewing,
+            onDismiss = {
+                controller.stopCwPreview()
+                showCwSheet = false
+                onExtrasExpandedChange(false)
+            },
+            onTextChange = { value -> cwText = value.uppercase().take(80) },
+            onWordsPerMinuteChange = { cwWordsPerMinute = it.coerceIn(8, 40) },
+            onToneHzChange = { cwToneHz = it.coerceIn(400, 1_000) },
+            onPreview = {
+                controller.previewCw(cwText, cwWordsPerMinute, cwToneHz)
+            },
+            onStopPreview = controller::stopCwPreview,
+            onSend = {
+                controller.sendCw(cwText, cwWordsPerMinute, cwToneHz)
+            },
+            onStop = controller::stopCw,
         )
     }
 }

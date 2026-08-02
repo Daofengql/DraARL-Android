@@ -25,6 +25,8 @@ interface RadioServiceListener {
     fun onRadioMessage(message: RadioMessage)
     fun onPlaybackState(messageId: String?)
     fun onPlaybackLevel(level: Float)
+    fun onTransmitLevel(level: Float)
+    fun onCwPreviewState(active: Boolean)
 }
 
 class RadioConnectionService : Service(), UdpRadioListener {
@@ -105,6 +107,14 @@ class RadioConnectionService : Service(), UdpRadioListener {
 
     override fun onPlaybackLevel(level: Float) {
         listener?.onPlaybackLevel(level)
+    }
+
+    override fun onTransmitLevel(level: Float) {
+        listener?.onTransmitLevel(level)
+    }
+
+    override fun onCwPreviewState(active: Boolean) {
+        listener?.onCwPreviewState(active)
     }
 
     private fun connect(config: RadioConnectionConfig) {
@@ -266,6 +276,12 @@ class RadioConnectionService : Service(), UdpRadioListener {
         fun connect(config: RadioConnectionConfig) = this@RadioConnectionService.connect(config)
         fun disconnect() = this@RadioConnectionService.disconnect()
         fun sendText(text: String): Boolean = radioClient.sendText(text)
+        fun sendCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean =
+            radioClient.sendCw(text, wordsPerMinute, toneHz)
+        fun stopCw(): Boolean = radioClient.stopCw()
+        fun previewCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean =
+            radioClient.previewCw(text, wordsPerMinute, toneHz)
+        fun stopCwPreview(): Boolean = radioClient.stopCwPreview()
         fun startPtt(): Boolean = this@RadioConnectionService.startPtt()
         fun stopPtt() = radioClient.stopPtt()
         fun togglePlayback(message: RadioMessage): Boolean = radioClient.togglePlayback(message)
@@ -274,6 +290,10 @@ class RadioConnectionService : Service(), UdpRadioListener {
         fun setPlaybackDenoiseEnabled(enabled: Boolean) = radioClient.setPlaybackDenoiseEnabled(enabled)
         fun setPlaybackDenoiseWetMix(value: Float) = radioClient.setPlaybackDenoiseWetMix(value)
         fun setTransmitTimeoutSeconds(seconds: Int) = radioClient.setTransmitTimeoutSeconds(seconds)
+        fun setTransmitTailTone(tone: TransmitTailTone) = radioClient.setTransmitTailTone(tone)
+        fun setTransmitTailToneToRemoteEnabled(enabled: Boolean) =
+            radioClient.setTransmitTailToneToRemoteEnabled(enabled)
+        fun setReceiveTailToneEnabled(enabled: Boolean) = radioClient.setReceiveTailToneEnabled(enabled)
         fun transmitTimeoutSeconds(): Int = radioClient.transmitTimeoutSeconds()
         fun audioCacheSizeBytes(): Long = radioClient.audioCacheSizeBytes()
         fun hasAudioCacheKey(key: String): Boolean = radioClient.hasAudioCacheKey(key)

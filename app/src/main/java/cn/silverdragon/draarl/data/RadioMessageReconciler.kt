@@ -78,7 +78,10 @@ internal object RadioMessageReconciler {
             } else {
                 val existing = result[matchIndex]
                 val cached = if (existing.audioCacheKey.isNotBlank()) existing else message
-                result[matchIndex] = message.copy(audioCacheKey = cached.audioCacheKey)
+                result[matchIndex] = message.copy(
+                    audioCacheKey = cached.audioCacheKey,
+                    played = existing.played || message.played,
+                )
             }
         }
         return result.sortedBy(RadioMessage::timestamp)

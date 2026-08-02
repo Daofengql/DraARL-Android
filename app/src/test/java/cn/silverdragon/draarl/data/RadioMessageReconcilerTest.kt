@@ -64,7 +64,7 @@ class RadioMessageReconcilerTest {
             type = RadioMessageType.VOICE,
             content = "语音",
             timestamp = 2_000_000L,
-        ).copy(audioCacheKey = "message:local-1")
+        ).copy(audioCacheKey = "message:local-1", played = true)
         val remote = message(
             id = "record-9",
             type = RadioMessageType.VOICE,
@@ -79,6 +79,7 @@ class RadioMessageReconcilerTest {
         assertEquals(1, result.size)
         assertEquals("record-9", result.single().id)
         assertEquals("message:local-1", result.single().audioCacheKey)
+        assertTrue(result.single().played)
     }
 
     @Test

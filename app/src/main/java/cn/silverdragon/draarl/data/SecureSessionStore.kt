@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
+import cn.silverdragon.draarl.radio.TransmitTailTone
 import org.json.JSONObject
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -126,6 +127,28 @@ class SecureSessionStore(context: Context) {
         }
     }
 
+    fun transmitTailTone(): TransmitTailTone = runCatching {
+        TransmitTailTone.valueOf(preferences.getString(KEY_TRANSMIT_TAIL_TONE, null).orEmpty())
+    }.getOrDefault(TransmitTailTone.OFF)
+
+    fun setTransmitTailTone(tone: TransmitTailTone) {
+        preferences.edit { putString(KEY_TRANSMIT_TAIL_TONE, tone.name) }
+    }
+
+    fun isTransmitTailToneToRemoteEnabled(): Boolean =
+        preferences.getBoolean(KEY_TRANSMIT_TAIL_TONE_TO_REMOTE, true)
+
+    fun setTransmitTailToneToRemoteEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(KEY_TRANSMIT_TAIL_TONE_TO_REMOTE, enabled) }
+    }
+
+    fun isReceiveTailToneEnabled(): Boolean =
+        preferences.getBoolean(KEY_RECEIVE_TAIL_TONE, false)
+
+    fun setReceiveTailToneEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(KEY_RECEIVE_TAIL_TONE, enabled) }
+    }
+
     fun isAutoCheckAppUpdateEnabled(): Boolean = preferences.getBoolean(KEY_AUTO_CHECK_APP_UPDATE, true)
 
     fun setAutoCheckAppUpdateEnabled(enabled: Boolean) {
@@ -224,6 +247,9 @@ class SecureSessionStore(context: Context) {
         private const val KEY_DISPLAY_SCALE = "display_scale"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_TRANSMIT_TIMEOUT_SECONDS = "transmit_timeout_seconds"
+        private const val KEY_TRANSMIT_TAIL_TONE = "transmit_tail_tone"
+        private const val KEY_TRANSMIT_TAIL_TONE_TO_REMOTE = "transmit_tail_tone_to_remote"
+        private const val KEY_RECEIVE_TAIL_TONE = "receive_tail_tone"
         private const val KEY_AUTO_CHECK_APP_UPDATE = "auto_check_app_update"
         private const val MIN_PLAYBACK_DENOISE_STRENGTH_PERCENT = 0
         private const val DEFAULT_PLAYBACK_DENOISE_STRENGTH_PERCENT = 50

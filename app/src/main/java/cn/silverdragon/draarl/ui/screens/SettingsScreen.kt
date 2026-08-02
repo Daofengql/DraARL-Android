@@ -78,8 +78,8 @@ fun SettingsScreen(controller: AppController) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     SettingsMenuItem(
                         icon = Icons.Default.Settings,
-                        title = "系统设置",
-                        subtitle = "后台通信、悬浮窗与系统权限",
+                        title = "应用设置",
+                        subtitle = "外观、通联、音频、后台与更新",
                         onClick = { controller.navigate(AppPage.SYSTEM_SETTINGS) },
                     )
                     SettingsMenuItem(

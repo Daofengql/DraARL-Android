@@ -27,10 +27,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationSearching
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -62,6 +64,7 @@ import cn.silverdragon.draarl.maps.CoordinateConverter
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.LastMapLocationStore
+import cn.silverdragon.draarl.maps.MapDistance
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
@@ -97,6 +100,8 @@ internal fun AprsMapPanel(
     var recenterRequest by remember { mutableIntStateOf(0) }
     var zoomInRequest by remember { mutableIntStateOf(0) }
     var zoomOutRequest by remember { mutableIntStateOf(0) }
+    var measuring by rememberSaveable { mutableStateOf(false) }
+    var measurementPath by remember { mutableStateOf<List<LatLng>>(emptyList()) }
     val darkTheme = MaterialTheme.isDarkTheme
     var mapType by rememberSaveable {
         mutableIntStateOf(if (darkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL)
@@ -168,6 +173,20 @@ internal fun AprsMapPanel(
         if (!visible) mapTypeMenuExpanded = false
     }
 
+    val measurementMarkers = remember(measurementPath, coordinate) {
+        val current = coordinate
+        if (current != null && measurementPath.firstOrNull()?.isSamePoint(current) == true) {
+            measurementPath.drop(1)
+        } else {
+            measurementPath
+        }
+    }
+    val measurementDistance = remember(measurementPath) {
+        MapDistance.totalMeters(
+            measurementPath.map { point -> GeoCoordinate(point.latitude, point.longitude) },
+        )
+    }
+
     LaunchedEffect(darkTheme) {
         if (mapType == AMap.MAP_TYPE_NORMAL || mapType == AMap.MAP_TYPE_NIGHT) {
             mapType = if (darkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL
@@ -187,6 +206,11 @@ internal fun AprsMapPanel(
                 zoomOutRequest = zoomOutRequest,
                 mapType = mapType,
                 markerIcon = avatarMarker ?: fallbackMarker,
+                measurementPoints = if (measuring) measurementMarkers else emptyList(),
+                measurementPath = if (measuring) measurementPath else emptyList(),
+                onMapClick = { point ->
+                    if (measuring) measurementPath = measurementPath + point
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -229,6 +253,25 @@ internal fun AprsMapPanel(
                     icon = Icons.Default.Remove,
                     description = "缩小地图",
                 )
+                MapControlButton(
+                    onClick = {
+                        val enabling = !measuring
+                        if (enabling && measurementPath.isEmpty()) {
+                            coordinate?.let { measurementPath = listOf(it) }
+                        }
+                        measuring = enabling
+                    },
+                    icon = Icons.Default.Straighten,
+                    description = if (measuring) "退出测距" else "开始测距",
+                    selected = measuring,
+                )
+                if (measuring && measurementPath.isNotEmpty()) {
+                    MapControlButton(
+                        onClick = { measurementPath = emptyList() },
+                        icon = Icons.Default.Delete,
+                        description = "清除测距点",
+                    )
+                }
                 Box(Modifier.size(MAP_CONTROL_SIZE)) {
                     MapControlButton(
                         onClick = { mapTypeMenuExpanded = true },
@@ -257,7 +300,33 @@ internal fun AprsMapPanel(
                                 },
                             )
                         }
+                        DropdownMenuItem(
+                            text = { Text("等高线（暂不可用）", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            onClick = {
+                                mapTypeMenuExpanded = false
+                                controller.showNotice("当前高德 SDK 不提供等高线数据；外部地形瓦片在境内存在坐标偏移，暂未启用")
+                            },
+                        )
                     }
+                }
+            }
+        }
+
+        if (visible && measuring) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).padding(12.dp).zIndex(2f),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                tonalElevation = 4.dp,
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                    Text("测距 · ${measurementPath.size} 点", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        MapDistance.format(measurementDistance),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
         }
@@ -283,14 +352,19 @@ private fun MapControlButton(
     onClick: () -> Unit,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
+    selected: Boolean = false,
 ) {
     SmallFloatingActionButton(
         onClick = onClick,
         modifier = Modifier.size(MAP_CONTROL_SIZE),
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        containerColor = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
+        } else {
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+        },
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
     ) {
-        Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.onSurface)
+        Icon(icon, contentDescription = description)
     }
 }
 
@@ -427,3 +501,7 @@ private val MAP_TYPES = listOf(
     MapTypeOption("卫星地图", AMap.MAP_TYPE_SATELLITE),
     MapTypeOption("夜间地图", AMap.MAP_TYPE_NIGHT),
 )
+
+private fun LatLng.isSamePoint(other: LatLng): Boolean =
+    kotlin.math.abs(latitude - other.latitude) < 1e-7 &&
+        kotlin.math.abs(longitude - other.longitude) < 1e-7

@@ -15,28 +15,39 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.StopCircle
+import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageType
+import cn.silverdragon.draarl.data.VoicePlaybackQueue
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.decodeLocationMessage
 import cn.silverdragon.draarl.data.formatRadioIdentity
@@ -108,18 +119,29 @@ internal fun MessageItem(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Surface(
-                modifier = Modifier.widthIn(max = 300.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = if (message.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = if (message.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            ) {
-                if (message.type == RadioMessageType.VOICE) {
-                    VoiceMessageContent(controller, message)
-                } else if (location != null) {
-                    LocationMessageContent(location, onOpenLocation)
-                } else {
-                    Text(message.content, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    modifier = Modifier.widthIn(max = 300.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (message.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (message.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                ) {
+                    if (message.type == RadioMessageType.VOICE) {
+                        VoiceMessageContent(controller, message)
+                    } else if (location != null) {
+                        LocationMessageContent(location, onOpenLocation)
+                    } else {
+                        Text(message.content, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                    }
+                }
+                if (VoicePlaybackQueue.isUnplayed(message)) {
+                    Box(
+                        Modifier
+                            .padding(start = 6.dp)
+                            .size(8.dp)
+                            .background(MaterialTheme.colorScheme.error, CircleShape)
+                            .semantics { contentDescription = "未听语音" },
+                    )
                 }
             }
             Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -127,6 +149,53 @@ internal fun MessageItem(
         if (message.mine) {
             Spacer(Modifier.width(8.dp))
             UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
+        }
+    }
+}
+
+@Composable
+internal fun MessageListFloatingActions(
+    unplayedCount: Int,
+    autoPlaying: Boolean,
+    canScrollToBottom: Boolean,
+    onToggleAutoPlay: () -> Unit,
+    onClearUnplayed: () -> Unit,
+    onScrollToBottom: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (unplayedCount > 0 || autoPlaying) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FilledTonalButton(onClick = onToggleAutoPlay) {
+                    Icon(
+                        if (autoPlaying) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.PlaylistPlay,
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (autoPlaying) "停止连播" else "$unplayedCount 条未听")
+                }
+                if (unplayedCount > 0) {
+                    FilledTonalIconButton(onClick = onClearUnplayed) {
+                        Icon(Icons.Default.DoneAll, contentDescription = "清除全部未听标记")
+                    }
+                }
+            }
+        }
+        if (canScrollToBottom) {
+            SmallFloatingActionButton(
+                onClick = onScrollToBottom,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Icon(Icons.Default.VerticalAlignBottom, contentDescription = "滚动到最新记录")
+            }
         }
     }
 }
@@ -170,7 +239,7 @@ private fun LocationMessageContent(location: Wgs84LocationMessage, onOpen: (Wgs8
 
 @Composable
 private fun VoiceMessageContent(controller: AppController, message: RadioMessage) {
-    val playable = message.audioCacheKey.isNotBlank() || message.audioUrl.isNotBlank()
+    val playable = VoicePlaybackQueue.isPlayable(message)
     val playing = controller.playingMessageId == message.id
     val contentColor = LocalContentColor.current
     Row(

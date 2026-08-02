@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
@@ -120,11 +121,29 @@ internal fun ConnectionPanel(
                         )
                     }
                 }
-                PlaybackLevelMeter(
-                    level = controller.playbackLevel,
-                    active = status.speaker.isNotBlank() || controller.playingMessageId != null,
-                    modifier = Modifier.width(72.dp).height(28.dp),
-                )
+                val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null
+                Column(
+                    modifier = Modifier.widthIn(min = 72.dp, max = 96.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Text(
+                        when {
+                            status.transmitting -> "TX"
+                            receivingAudio -> "RX"
+                            else -> "RX / TX"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (status.transmitting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    AudioLevelMeter(
+                        receiveLevel = controller.playbackLevel,
+                        transmitLevel = controller.transmitLevel,
+                        receiving = receivingAudio,
+                        transmitting = status.transmitting,
+                        modifier = Modifier.fillMaxWidth().height(18.dp),
+                    )
+                }
                 FilledTonalIconButton(
                     onClick = controller::togglePlaybackDenoise,
                     colors = IconButtonDefaults.filledTonalIconButtonColors(
@@ -237,27 +256,35 @@ internal fun ConnectionPanel(
 }
 
 @Composable
-private fun PlaybackLevelMeter(
-    level: Float,
-    active: Boolean,
+private fun AudioLevelMeter(
+    receiveLevel: Float,
+    transmitLevel: Float,
+    receiving: Boolean,
+    transmitting: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val active = transmitting || receiving
+    val level = if (transmitting) transmitLevel else receiveLevel
     val animatedLevel by animateFloatAsState(
         targetValue = if (active) level.coerceIn(0f, 1f) else 0f,
         animationSpec = tween(durationMillis = 80),
-        label = "playbackLevel",
+        label = "audioLevel",
     )
-    val primary = MaterialTheme.colorScheme.primary
+    val primary = if (transmitting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     val warning = MaterialTheme.appColors.statusWarning
     val error = MaterialTheme.colorScheme.error
     val inactive = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
     Canvas(
         modifier = modifier.semantics {
-            contentDescription = if (active) "播放电平 ${(animatedLevel * 100).toInt()}%" else "当前没有音频播放"
+            contentDescription = when {
+                transmitting -> "发送电平 ${(animatedLevel * 100).toInt()}%"
+                receiving -> "接收电平 ${(animatedLevel * 100).toInt()}%"
+                else -> "当前没有收发音频"
+            }
         },
     ) {
-        val segments = 12
         val gap = 2.dp.toPx()
+        val segments = (size.width / 6.dp.toPx()).toInt().coerceIn(8, 18)
         val segmentWidth = (size.width - gap * (segments - 1)) / segments
         repeat(segments) { index ->
             val progress = (index + 1f) / segments

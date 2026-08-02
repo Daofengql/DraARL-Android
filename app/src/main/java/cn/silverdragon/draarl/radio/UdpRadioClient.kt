@@ -31,6 +31,8 @@ interface UdpRadioListener {
     fun onMessage(message: RadioMessage)
     fun onPlaybackState(messageId: String?)
     fun onPlaybackLevel(level: Float)
+    fun onTransmitLevel(level: Float)
+    fun onCwPreviewState(active: Boolean)
 }
 
 class UdpRadioClient(
@@ -38,9 +40,11 @@ class UdpRadioClient(
     private val listener: UdpRadioListener,
 ) {
     private val audioCache = RadioAudioCache(context.applicationContext.filesDir.resolve("radio_audio"))
-    private val audioEngine = OpusAudioEngine(audioCache) { level ->
-        listener.onPlaybackLevel(level)
-    }
+    private val audioEngine = OpusAudioEngine(
+        audioCache = audioCache,
+        onPlaybackLevel = listener::onPlaybackLevel,
+        onCaptureLevel = listener::onTransmitLevel,
+    )
     private val connectionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-udp-connect")
     }
@@ -49,6 +53,9 @@ class UdpRadioClient(
     }
     private val generation = AtomicInteger(0)
     private val reconnectPending = AtomicBoolean(false)
+    private val cwTransmitActive = AtomicBoolean(false)
+    private val cwPreviewActive = AtomicBoolean(false)
+    private val finishingPtt = AtomicBoolean(false)
     private val sendLock = Any()
     private val statusLock = Any()
     private val taskLock = Any()
@@ -64,6 +71,9 @@ class UdpRadioClient(
     @Volatile private var lastSpeakerKey = ""
     @Volatile private var pttStartedAt = 0L
     @Volatile private var transmitTimeoutSeconds = DEFAULT_TRANSMIT_TIMEOUT_SECONDS
+    @Volatile private var transmitTailTone = TransmitTailTone.OFF
+    @Volatile private var transmitTailToneToRemoteEnabled = true
+    @Volatile private var receiveTailToneEnabled = false
     @Volatile private var playingMessageId: String? = null
     @Volatile private var status = RadioStatus()
     private var incomingVoiceStartedAt = 0L
@@ -94,6 +104,11 @@ class UdpRadioClient(
         manualDisconnect = false
         cancelReconnectTask()
         reconnectPending.set(false)
+        cwTransmitActive.set(false)
+        cwPreviewActive.set(false)
+        listener.onCwPreviewState(false)
+        finishingPtt.set(false)
+        listener.onTransmitLevel(0f)
         val currentGeneration = generation.incrementAndGet()
         stopTasks()
         audioEngine.stopCapture()
@@ -112,6 +127,11 @@ class UdpRadioClient(
         desiredConfig = null
         cancelReconnectTask()
         reconnectPending.set(false)
+        cwTransmitActive.set(false)
+        cwPreviewActive.set(false)
+        listener.onCwPreviewState(false)
+        finishingPtt.set(false)
+        listener.onTransmitLevel(0f)
         generation.incrementAndGet()
         stopTasks()
         audioEngine.stopCapture()
@@ -149,6 +169,92 @@ class UdpRadioClient(
         }
     }
 
+    fun sendCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean {
+        if (!status.connected || status.transmitting || status.speaker.isNotBlank()) return false
+        stopCwPreview()
+        val tone = runCatching { CwToneGenerator.generate(text, wordsPerMinute, toneHz) }
+            .getOrElse { error ->
+                reportNonFatal(error.message ?: "CW 内容无效", generation.get())
+                return false
+            }
+        val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
+        val transmitDurationMs = (tone.samples.size + tailSamples.size) * 1_000L / OpusAudioFormat.SAMPLE_RATE
+        if (transmitDurationMs > transmitTimeoutSeconds * 1_000L) {
+            reportNonFatal("CW 音频超过当前发射限时，请缩短内容或提高速度", generation.get())
+            return false
+        }
+        if (!cwTransmitActive.compareAndSet(false, true)) return false
+
+        stopPlayback()
+        audioEngine.resetDecoder()
+        synchronized(outgoingVoiceLock) { outgoingVoiceBuffer = ByteArrayOutputStream() }
+        val currentGeneration = generation.get()
+        val startedAt = System.currentTimeMillis()
+        val statusUpdated = updateStatusIfActive(currentGeneration) { current ->
+            if (!current.connected) current else current.copy(transmitting = true, speaker = "", error = "")
+        }
+        if (!statusUpdated || !status.transmitting) {
+            cwTransmitActive.set(false)
+            return false
+        }
+        pttStartedAt = startedAt
+        return runCatching {
+            scheduler.execute {
+                transmitCw(
+                    text = tone.normalizedText,
+                    toneSamples = tone.samples,
+                    tailSamples = tailSamples,
+                    currentGeneration = currentGeneration,
+                    startedAt = startedAt,
+                )
+            }
+            true
+        }.getOrElse { error ->
+            cwTransmitActive.set(false)
+            updateStatusIfActive(currentGeneration) { it.copy(transmitting = false) }
+            reportNonFatal(error.message ?: "无法启动 CW 发送", currentGeneration)
+            false
+        }
+    }
+
+    fun stopCw(): Boolean {
+        if (!cwTransmitActive.compareAndSet(true, false)) return false
+        audioEngine.stopRecordingPlayback()
+        listener.onTransmitLevel(0f)
+        return true
+    }
+
+    fun previewCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean {
+        if (status.transmitting || status.speaker.isNotBlank()) return false
+        val tone = runCatching { CwToneGenerator.generate(text, wordsPerMinute, toneHz) }
+            .getOrElse { error ->
+                reportNonFatal(error.message ?: "CW 内容无效", generation.get())
+                return false
+            }
+        val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
+        if (!cwPreviewActive.compareAndSet(false, true)) return false
+        stopPlayback()
+        audioEngine.resetDecoder()
+        listener.onCwPreviewState(true)
+        val currentGeneration = generation.get()
+        return runCatching {
+            scheduler.execute { previewCwAudio(tone.samples, tailSamples, currentGeneration) }
+            true
+        }.getOrElse { error ->
+            cwPreviewActive.set(false)
+            listener.onCwPreviewState(false)
+            reportNonFatal(error.message ?: "无法试听 CW", currentGeneration)
+            false
+        }
+    }
+
+    fun stopCwPreview(): Boolean {
+        if (!cwPreviewActive.compareAndSet(true, false)) return false
+        audioEngine.stopRecordingPlayback()
+        listener.onCwPreviewState(false)
+        return true
+    }
+
     @Synchronized
     fun startPtt(): Boolean {
         if (!status.connected || status.transmitting || status.speaker.isNotBlank()) return false
@@ -179,17 +285,52 @@ class UdpRadioClient(
 
     @Synchronized
     fun stopPtt() {
-        if (!status.transmitting) return
+        if (!status.transmitting || cwTransmitActive.get()) return
+        if (!finishingPtt.compareAndSet(false, true)) return
         cancelPttTimeout()
         val currentGeneration = generation.get()
-        val statusUpdated = updateStatusIfActive(currentGeneration) { it.copy(transmitting = false) }
         audioEngine.stopCapture()
-        if (!statusUpdated) return
-        val duration = (System.currentTimeMillis() - pttStartedAt).coerceAtLeast(0L)
-        if (duration > 100L) {
-            val networkPayload = synchronized(outgoingVoiceLock) {
-                outgoingVoiceBuffer.toByteArray().also { outgoingVoiceBuffer = ByteArrayOutputStream() }
+        val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
+        if (tailSamples.isEmpty()) {
+            finishPttTransmission(currentGeneration)
+            return
+        }
+        audioEngine.resetDecoder()
+        runCatching {
+            scheduler.execute {
+                try {
+                    runCatching {
+                        streamPcmPackets(
+                            samples = tailSamples,
+                            currentGeneration = currentGeneration,
+                            shouldContinue = { finishingPtt.get() },
+                            sendToRemote = transmitTailToneToRemoteEnabled,
+                            monitorLocally = true,
+                            reportTransmitLevel = true,
+                            requireActive = true,
+                        )
+                    }.onFailure { error ->
+                        reportNonFatal(error.message ?: "发射尾音发送失败", currentGeneration)
+                    }
+                } finally {
+                    finishPttTransmission(currentGeneration)
+                }
             }
+        }.onFailure {
+            finishPttTransmission(currentGeneration)
+        }
+    }
+
+    @Synchronized
+    private fun finishPttTransmission(currentGeneration: Int) {
+        if (!finishingPtt.compareAndSet(true, false)) return
+        val statusUpdated = updateStatusIfActive(currentGeneration) { it.copy(transmitting = false) }
+        if (!statusUpdated) return
+        val networkPayload = synchronized(outgoingVoiceLock) {
+            outgoingVoiceBuffer.toByteArray().also { outgoingVoiceBuffer = ByteArrayOutputStream() }
+        }
+        val duration = networkPayloadDurationMs(networkPayload)
+        if (duration > 100L && networkPayload.isNotEmpty()) {
             val messageId = UUID.randomUUID().toString()
             listener.onMessage(
                 RadioMessage(
@@ -248,6 +389,18 @@ class UdpRadioClient(
     fun setTransmitTimeoutSeconds(seconds: Int) {
         transmitTimeoutSeconds = seconds.coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
         if (status.transmitting) schedulePttTimeout(generation.get())
+    }
+
+    fun setTransmitTailTone(tone: TransmitTailTone) {
+        transmitTailTone = tone
+    }
+
+    fun setTransmitTailToneToRemoteEnabled(enabled: Boolean) {
+        transmitTailToneToRemoteEnabled = enabled
+    }
+
+    fun setReceiveTailToneEnabled(enabled: Boolean) {
+        receiveTailToneEnabled = enabled
     }
 
     fun transmitTimeoutSeconds(): Int = transmitTimeoutSeconds
@@ -473,6 +626,142 @@ class UdpRadioClient(
         audioEngine.play(payload) { message -> reportNonFatal(message, currentGeneration) }
     }
 
+    private fun previewCwAudio(toneSamples: ShortArray, tailSamples: ShortArray, currentGeneration: Int) {
+        try {
+            streamPcmPackets(
+                samples = toneSamples,
+                currentGeneration = currentGeneration,
+                shouldContinue = { cwPreviewActive.get() },
+                sendToRemote = false,
+                monitorLocally = true,
+                reportTransmitLevel = false,
+                requireActive = false,
+            )
+            if (tailSamples.isNotEmpty() && cwPreviewActive.get()) {
+                streamPcmPackets(
+                    samples = tailSamples,
+                    currentGeneration = currentGeneration,
+                    shouldContinue = { cwPreviewActive.get() },
+                    sendToRemote = false,
+                    monitorLocally = true,
+                    reportTransmitLevel = false,
+                    requireActive = false,
+                )
+            }
+        } catch (error: Exception) {
+            reportNonFatal(error.message ?: "CW 试听失败", currentGeneration)
+        } finally {
+            cwPreviewActive.set(false)
+            listener.onCwPreviewState(false)
+            if (status.speaker.isBlank()) listener.onPlaybackLevel(0f)
+        }
+    }
+
+    private fun transmitCw(
+        text: String,
+        toneSamples: ShortArray,
+        tailSamples: ShortArray,
+        currentGeneration: Int,
+        startedAt: Long,
+    ) {
+        try {
+            streamPcmPackets(
+                samples = toneSamples,
+                currentGeneration = currentGeneration,
+                shouldContinue = { cwTransmitActive.get() },
+                sendToRemote = true,
+                monitorLocally = true,
+                reportTransmitLevel = true,
+                requireActive = true,
+            )
+            if (tailSamples.isNotEmpty() && cwTransmitActive.get()) {
+                streamPcmPackets(
+                    samples = tailSamples,
+                    currentGeneration = currentGeneration,
+                    shouldContinue = { cwTransmitActive.get() },
+                    sendToRemote = transmitTailToneToRemoteEnabled,
+                    monitorLocally = true,
+                    reportTransmitLevel = true,
+                    requireActive = true,
+                )
+            }
+        } catch (error: Exception) {
+            reportNonFatal(error.message ?: "CW 音频发送失败", currentGeneration)
+        } finally {
+            cwTransmitActive.set(false)
+            listener.onTransmitLevel(0f)
+            finishCwTransmission(text, currentGeneration, startedAt)
+        }
+    }
+
+    private fun streamPcmPackets(
+        samples: ShortArray,
+        currentGeneration: Int,
+        shouldContinue: () -> Boolean,
+        sendToRemote: Boolean,
+        monitorLocally: Boolean,
+        reportTransmitLevel: Boolean,
+        requireActive: Boolean,
+    ) {
+        val encoder = OpusFrameEncoder()
+        val packetSamples = OpusAudioFormat.FRAME_SAMPLES * OpusAudioFormat.FRAMES_PER_PACKET
+        var packetOffset = 0
+        while (
+            packetOffset < samples.size &&
+            shouldContinue() &&
+            (!requireActive || isActive(currentGeneration)) &&
+            (!sendToRemote || status.transmitting)
+        ) {
+            val encodedFrames = ArrayList<ByteArray>(OpusAudioFormat.FRAMES_PER_PACKET)
+            var packetLevel = 0f
+            repeat(OpusAudioFormat.FRAMES_PER_PACKET) { frameIndex ->
+                val offset = packetOffset + frameIndex * OpusAudioFormat.FRAME_SAMPLES
+                val frame = samples.copyOfRange(offset, offset + OpusAudioFormat.FRAME_SAMPLES)
+                packetLevel = maxOf(packetLevel, normalizedPcmLevel(frame))
+                encoder.encode(frame)?.let(encodedFrames::add)
+            }
+            if (encodedFrames.size != OpusAudioFormat.FRAMES_PER_PACKET) return
+            val payload = DraarlProtocol.mergeOpusFrames(encodedFrames)
+            if (reportTransmitLevel) listener.onTransmitLevel(packetLevel)
+            if (sendToRemote) {
+                if (!send(DraarlProtocol.voice(payload), currentGeneration)) return
+                synchronized(outgoingVoiceLock) { appendVoiceData(outgoingVoiceBuffer, payload) }
+            }
+            if (monitorLocally) {
+                audioEngine.play(payload) { message ->
+                    reportNonFatal("本地音频播放失败：$message", currentGeneration)
+                }
+            }
+            packetOffset += packetSamples
+            Thread.sleep(VOICE_PACKET_DURATION_MS)
+        }
+    }
+
+    @Synchronized
+    private fun finishCwTransmission(text: String, currentGeneration: Int, startedAt: Long) {
+        if (!isActive(currentGeneration) || !status.transmitting) return
+        updateStatusIfActive(currentGeneration) { it.copy(transmitting = false) }
+        val networkPayload = synchronized(outgoingVoiceLock) {
+            outgoingVoiceBuffer.toByteArray().also { outgoingVoiceBuffer = ByteArrayOutputStream() }
+        }
+        if (networkPayload.isEmpty()) return
+        val messageId = UUID.randomUUID().toString()
+        listener.onMessage(
+            RadioMessage(
+                id = messageId,
+                type = RadioMessageType.VOICE,
+                senderCallsign = status.callsign,
+                senderSsid = status.ssid,
+                content = "CW: $text",
+                timestamp = startedAt,
+                mine = true,
+                durationMs = networkPayloadDurationMs(networkPayload),
+                audioCacheKey = cacheNetworkRecording(messageId, networkPayload),
+                groupId = status.groupId,
+            ),
+        )
+    }
+
     private fun startTasks(currentGeneration: Int) {
         synchronized(taskLock) {
             if (!isActive(currentGeneration)) return
@@ -490,8 +779,10 @@ class UdpRadioClient(
                 {
                     val now = System.currentTimeMillis()
                     if (lastSpeakerKey.isNotBlank() && now - lastVoicePacketAt > VOICE_END_TIMEOUT_MS) {
-                        finishIncomingVoice()?.let(listener::onMessage)
+                        val completedMessage = finishIncomingVoice()
+                        completedMessage?.let(listener::onMessage)
                         updateStatusIfActive(currentGeneration) { it.copy(speaker = "") }
+                        if (completedMessage != null) playReceiveTailTone(currentGeneration)
                     }
                     if (status.connected && now - lastServerPacketAt > SERVER_SILENCE_TIMEOUT_MS) {
                         scheduleReconnect("服务器心跳超时", currentGeneration)
@@ -507,6 +798,11 @@ class UdpRadioClient(
     private fun scheduleReconnect(reason: String, expectedGeneration: Int = generation.get()) {
         if (!isActive(expectedGeneration) || !reconnectPending.compareAndSet(false, true)) return
         val reconnectGeneration = generation.incrementAndGet()
+        cwTransmitActive.set(false)
+        cwPreviewActive.set(false)
+        listener.onCwPreviewState(false)
+        finishingPtt.set(false)
+        listener.onTransmitLevel(0f)
         stopTasks()
         audioEngine.stopCapture()
         finishIncomingVoice()?.let(listener::onMessage)
@@ -663,6 +959,33 @@ class UdpRadioClient(
         updateStatusIfActive(expectedGeneration) { it.copy(error = message) }
     }
 
+    private fun playReceiveTailTone(currentGeneration: Int) {
+        if (!receiveTailToneEnabled || status.transmitting || status.speaker.isNotBlank()) return
+        val samples = TransmitTailToneGenerator.generate(transmitTailTone)
+        if (samples.isEmpty()) return
+        audioEngine.resetDecoder()
+        try {
+            streamPcmPackets(
+                samples = samples,
+                currentGeneration = currentGeneration,
+                shouldContinue = {
+                    receiveTailToneEnabled &&
+                        lastSpeakerKey.isBlank() &&
+                        !status.transmitting &&
+                        status.speaker.isBlank()
+                },
+                sendToRemote = false,
+                monitorLocally = true,
+                reportTransmitLevel = false,
+                requireActive = true,
+            )
+        } catch (error: Exception) {
+            reportNonFatal(error.message ?: "接收尾音播放失败", currentGeneration)
+        } finally {
+            if (status.speaker.isBlank()) listener.onPlaybackLevel(0f)
+        }
+    }
+
     private fun finishIncomingVoice(): RadioMessage? = synchronized(voiceSessionLock) {
         finishIncomingVoiceLocked()
     }
@@ -710,6 +1033,10 @@ class UdpRadioClient(
             reportNonFatal(it.message ?: "语音缓存失败", generation.get())
         }.getOrDefault("")
     }
+
+    private fun networkPayloadDurationMs(payload: ByteArray): Long =
+        DraarlProtocol.splitOpusFrames(payload).size.toLong() *
+            OpusAudioFormat.FRAME_SAMPLES * 1_000L / OpusAudioFormat.SAMPLE_RATE
 
     private fun completePlayback(messageId: String) {
         if (playingMessageId == messageId) {
