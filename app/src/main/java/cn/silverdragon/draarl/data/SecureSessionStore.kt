@@ -8,6 +8,7 @@ import androidx.core.content.edit
 import cn.silverdragon.draarl.radio.TransmitTailTone
 import org.json.JSONObject
 import java.security.KeyStore
+import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -56,6 +57,16 @@ class SecureSessionStore(context: Context) {
 
     fun setSelectedAccessPointId(id: String) {
         preferences.edit { putString(KEY_ACCESS_POINT, id) }
+    }
+
+    @Synchronized
+    fun clientInstanceId(): String {
+        val stored = preferences.getString(KEY_CLIENT_INSTANCE_ID, "").orEmpty()
+        val valid = runCatching { UUID.fromString(stored).toString() }.getOrNull()
+        if (valid != null && valid != ZERO_UUID) return valid
+        return UUID.randomUUID().toString().also { generated ->
+            preferences.edit(commit = true) { putString(KEY_CLIENT_INSTANCE_ID, generated) }
+        }
     }
 
     fun selectedGroupId(userId: Int, fallback: Int = 999): Int =
@@ -239,6 +250,7 @@ class SecureSessionStore(context: Context) {
         private const val KEY_SESSION = "session"
         private const val KEY_LAST_SERVER = "last_server"
         private const val KEY_ACCESS_POINT = "access_point"
+        private const val KEY_CLIENT_INSTANCE_ID = "client_instance_id"
         private const val KEY_GROUP_PREFIX = "android_group_"
         private const val KEY_MUTED = "muted"
         private const val KEY_PLAYBACK_DENOISE = "playback_denoise"
@@ -260,5 +272,6 @@ class SecureSessionStore(context: Context) {
         private const val KEY_ALIAS = "draarl_session_key"
         private const val ANDROID_KEY_STORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val ZERO_UUID = "00000000-0000-0000-0000-000000000000"
     }
 }

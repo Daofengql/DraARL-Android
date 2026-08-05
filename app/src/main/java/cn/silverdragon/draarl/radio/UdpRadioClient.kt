@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 data class RadioConnectionConfig(
     val accessPoint: AccessPoint,
     val accessToken: String,
+    val clientInstanceId: String,
     val groupId: Int,
 )
 
@@ -75,6 +76,9 @@ class UdpRadioClient(
     @Volatile private var transmitTailToneToRemoteEnabled = true
     @Volatile private var receiveTailToneEnabled = false
     @Volatile private var playingMessageId: String? = null
+    @Volatile private var sessionTag = 0L
+    @Volatile private var sessionUsername = ""
+    @Volatile private var sessionSsid = DraarlProtocol.SSID_ANDROID
     @Volatile private var status = RadioStatus()
     private var incomingVoiceStartedAt = 0L
     private var incomingVoiceUsername = ""
@@ -151,7 +155,7 @@ class UdpRadioClient(
             reportNonFatal("消息过长，UTF-8 编码后不能超过 710 字节", generation.get())
             return false
         }
-        return send(DraarlProtocol.text(normalized)).also { sent ->
+        return send(sessionText(normalized)).also { sent ->
             if (sent) {
                 listener.onMessage(
                     RadioMessage(
@@ -264,7 +268,7 @@ class UdpRadioClient(
         audioEngine.resetDecoder()
         val started = audioEngine.startCapture(
             onPacket = { opus ->
-                if (status.transmitting && send(DraarlProtocol.voice(opus), currentGeneration)) {
+                if (status.transmitting && send(sessionVoice(opus), currentGeneration)) {
                     synchronized(outgoingVoiceLock) { appendVoiceData(outgoingVoiceBuffer, opus) }
                 }
             },
@@ -463,7 +467,7 @@ class UdpRadioClient(
                 closeSocket(newSocket)
                 return
             }
-            sendRaw(newSocket, DraarlProtocol.jwtAuth(config.accessToken))
+            sendRaw(newSocket, DraarlProtocol.ghostAuth(config.accessToken, config.clientInstanceId))
             val authResponse = awaitAuthResponse(newSocket)
             if (!isActive(currentGeneration)) {
                 closeSocket(newSocket)
@@ -474,9 +478,16 @@ class UdpRadioClient(
             if (authStatus != 0) {
                 val detail = authResponse.data.copyOfRange(1, authResponse.data.size).toString(Charsets.UTF_8)
                 val message = DraarlProtocol.authError(authStatus, detail)
-                if (authStatus == 6) throw RetryableRadioException(message)
                 throw RadioAuthException(message)
             }
+            val session = runCatching { DraarlProtocol.parseGhostAuthSuccess(authResponse) }
+                .getOrElse { throw RadioAuthException("UDP 认证响应无效：${it.message.orEmpty()}") }
+            if (!session.clientInstanceId.equals(config.clientInstanceId, ignoreCase = true)) {
+                throw RadioAuthException("UDP 认证响应的客户端实例不匹配")
+            }
+            sessionTag = session.sessionTag
+            sessionUsername = authResponse.username
+            sessionSsid = authResponse.ssid.takeIf { it > 0 } ?: DraarlProtocol.SSID_ANDROID
             newSocket.soTimeout = RECEIVE_SOCKET_TIMEOUT_MS
             lastServerPacketAt = System.currentTimeMillis()
             reconnectPending.set(false)
@@ -484,7 +495,11 @@ class UdpRadioClient(
                 current.copy(
                     phase = RadioConnectionPhase.CONNECTED,
                     callsign = authResponse.callsign,
-                    ssid = authResponse.ssid.takeIf { it > 0 } ?: DraarlProtocol.SSID_ANDROID,
+                    ssid = sessionSsid,
+                    groupId = session.txGroupId,
+                    sessionId = session.sessionId,
+                    clientInstanceId = session.clientInstanceId,
+                    receiveGroupIds = session.rxGroupIds,
                     error = "",
                 )
             }) {
@@ -548,12 +563,14 @@ class UdpRadioClient(
                         packet.username,
                         packet.callsign,
                         packet.ssid,
+                        sourceGroupId(packet.reserved),
                         packet.data,
                     )
                     DraarlProtocol.TYPE_OPUS_16K -> handleVoice(
                         packet.username,
                         packet.callsign,
                         packet.ssid,
+                        sourceGroupId(packet.reserved),
                         packet.data,
                         currentGeneration,
                     )
@@ -569,7 +586,7 @@ class UdpRadioClient(
         }
     }
 
-    private fun handleText(username: String, callsign: String, ssid: Int, payload: ByteArray) {
+    private fun handleText(username: String, callsign: String, ssid: Int, groupId: Int, payload: ByteArray) {
         if (payload.isEmpty()) return
         listener.onMessage(
             RadioMessage(
@@ -581,7 +598,7 @@ class UdpRadioClient(
                 content = payload.toString(Charsets.UTF_8),
                 timestamp = System.currentTimeMillis(),
                 mine = false,
-                groupId = status.groupId,
+                groupId = groupId,
             ),
         )
     }
@@ -590,6 +607,7 @@ class UdpRadioClient(
         username: String,
         callsign: String,
         ssid: Int,
+        groupId: Int,
         payload: ByteArray,
         currentGeneration: Int,
     ) {
@@ -610,7 +628,7 @@ class UdpRadioClient(
                 incomingVoiceUsername = username
                 incomingVoiceCallsign = callsign
                 incomingVoiceSsid = ssid
-                incomingVoiceGroupId = status.groupId
+                incomingVoiceGroupId = groupId
                 incomingVoiceBuffer = ByteArrayOutputStream()
             }
             lastSpeakerKey = speakerKey
@@ -724,7 +742,7 @@ class UdpRadioClient(
             val payload = DraarlProtocol.mergeOpusFrames(encodedFrames)
             if (reportTransmitLevel) listener.onTransmitLevel(packetLevel)
             if (sendToRemote) {
-                if (!send(DraarlProtocol.voice(payload), currentGeneration)) return
+                if (!send(sessionVoice(payload), currentGeneration)) return
                 synchronized(outgoingVoiceLock) { appendVoiceData(outgoingVoiceBuffer, payload) }
             }
             if (monitorLocally) {
@@ -768,7 +786,7 @@ class UdpRadioClient(
             heartbeatTask = scheduler.scheduleWithFixedDelay(
                 {
                     if (!manualDisconnect && currentGeneration == generation.get() && status.connected) {
-                        send(DraarlProtocol.heartbeat(), currentGeneration)
+                        send(sessionHeartbeat(), currentGeneration)
                     }
                 },
                 0,
@@ -862,6 +880,29 @@ class UdpRadioClient(
         }
     }
 
+    private fun sessionHeartbeat(): ByteArray = DraarlProtocol.heartbeat(
+        username = sessionUsername,
+        ssid = sessionSsid,
+        sessionTag = sessionTag,
+    )
+
+    private fun sessionText(text: String): ByteArray = DraarlProtocol.text(
+        message = text,
+        username = sessionUsername,
+        ssid = sessionSsid,
+        sessionTag = sessionTag,
+    )
+
+    private fun sessionVoice(payload: ByteArray): ByteArray = DraarlProtocol.voice(
+        mergedOpusFrames = payload,
+        username = sessionUsername,
+        ssid = sessionSsid,
+        sessionTag = sessionTag,
+    )
+
+    private fun sourceGroupId(reserved: Long): Int =
+        reserved.takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt() ?: status.groupId
+
     private fun sendRaw(activeSocket: DatagramSocket, bytes: ByteArray) {
         activeSocket.send(DatagramPacket(bytes, bytes.size))
         lastPacketSentAt = System.currentTimeMillis()
@@ -934,6 +975,9 @@ class UdpRadioClient(
         }
         activeSocket?.localPort?.takeIf { it > 0 }?.let { preferredLocalPort = it }
         socket = null
+        sessionTag = 0
+        sessionUsername = ""
+        sessionSsid = DraarlProtocol.SSID_ANDROID
         runCatching { activeSocket?.close() }
     }
 

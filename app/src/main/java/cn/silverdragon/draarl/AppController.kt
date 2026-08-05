@@ -788,7 +788,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
         executor.execute {
             runCatching {
                 api.switchRadioGroup(selectedGroupId)
-                RadioConnectionConfig(point, api.freshAccessToken(), selectedGroupId)
+                RadioConnectionConfig(
+                    accessPoint = point,
+                    accessToken = api.freshAccessToken(),
+                    clientInstanceId = sessionStore.clientInstanceId(),
+                    groupId = selectedGroupId,
+                )
             }.onSuccess { config ->
                 mainHandler.post {
                     if (
