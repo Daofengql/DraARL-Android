@@ -16,7 +16,7 @@ class RadioRoutingTest {
     @Test
     fun `rejects more than sixteen receive groups`() {
         assertThrows(IllegalArgumentException::class.java) {
-            RadioRouting.normalize(1001, 1001..1017)
+            RadioRouting.normalize(1001, (1001..1017).toList())
         }
     }
 }
