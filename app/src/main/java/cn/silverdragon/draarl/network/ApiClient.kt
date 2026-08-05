@@ -27,6 +27,7 @@ import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.PlatformInfo
 import cn.silverdragon.draarl.data.RegistrationResult
 import cn.silverdragon.draarl.data.RadioSession
+import cn.silverdragon.draarl.data.RadioRouting
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
@@ -531,15 +532,13 @@ class ApiClient(
     }
 
     fun updateRadioSessionRouting(sessionId: String, txGroupId: Int, rxGroupIds: Collection<Int>): RadioSession {
-        val normalizedRx = rxGroupIds.filter { it > 0 }.distinct().toMutableList().apply {
-            if (txGroupId > 0 && txGroupId !in this) add(txGroupId)
-        }.sorted()
+        val routing = RadioRouting.normalize(txGroupId, rxGroupIds)
         val data = request(
             "PUT",
             "/api/radio/sessions/${urlEncode(sessionId)}/routing",
             JSONObject()
-                .put("tx_group_id", txGroupId)
-                .put("rx_group_ids", JSONArray(normalizedRx)),
+                .put("tx_group_id", routing.txGroupId)
+                .put("rx_group_ids", JSONArray(routing.rxGroupIds)),
         ).requireObject("data")
         return parseRadioSession(data)
     }

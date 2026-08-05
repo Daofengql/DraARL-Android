@@ -33,6 +33,7 @@ import cn.silverdragon.draarl.data.AppDataRefresher
 import cn.silverdragon.draarl.data.AppDisplayScale
 import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.data.ChannelMessage
+import cn.silverdragon.draarl.data.ChannelMessageMapper
 import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.DashboardCacheStore
 import cn.silverdragon.draarl.data.Device
@@ -44,8 +45,10 @@ import cn.silverdragon.draarl.data.RadioMessageReconciler
 import cn.silverdragon.draarl.data.RadioMessageStore
 import cn.silverdragon.draarl.data.RadioMessageSyncState
 import cn.silverdragon.draarl.data.RadioMessageType
+import cn.silverdragon.draarl.data.RadioRouting
 import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.SecureSessionStore
+import cn.silverdragon.draarl.data.ServerTimeParser
 import cn.silverdragon.draarl.data.StorageCategory
 import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.data.User
@@ -1359,10 +1362,15 @@ class AppController(application: Application) : AndroidViewModel(application), R
             return
         }
         if (radioRoutingUpdating) return
-        val normalizedRx = rxGroupIds.filter { it > 0 }.toMutableSet().apply { add(txGroupId) }
+        val routing = runCatching { RadioRouting.normalize(txGroupId, rxGroupIds) }.getOrElse { error ->
+            notice = error.message ?: "发送与收听频道无效"
+            return
+        }
         radioRoutingUpdating = true
         executor.execute {
-            val result = runCatching { api.updateRadioSessionRouting(sessionId, txGroupId, normalizedRx) }
+            val result = runCatching {
+                api.updateRadioSessionRouting(sessionId, routing.txGroupId, routing.rxGroupIds)
+            }
             mainHandler.post {
                 radioRoutingUpdating = false
                 if (disposed.get() || user?.id != userId || radioStatus.sessionId != sessionId) return@post
@@ -1914,26 +1922,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     private fun channelMessageToRadio(message: ChannelMessage, accountUser: User): RadioMessage? {
         val timestamp = parseServerTime(message.sentAt) ?: return null
-        val mine = message.sender.ghost && message.sender.ssid == ANDROID_CLIENT_SSID &&
-            message.sender.username.equals(accountUser.username, ignoreCase = true)
-        val voice = message.messageType.equals("voice", ignoreCase = true)
-        return RadioMessage(
-            id = "record-${message.id}",
-            type = if (voice) RadioMessageType.VOICE else RadioMessageType.TEXT,
-            senderCallsign = message.sender.callsign.ifBlank { message.sender.username },
-            senderSsid = message.sender.ssid,
-            senderUsername = message.sender.username,
-            senderNickname = message.sender.nickname,
-            content = if (voice) "历史语音 ${formatDuration(message.durationMs)}" else message.text,
-            timestamp = timestamp,
-            mine = mine,
-            durationMs = message.durationMs,
-            audioUrl = message.audioUrl,
-            serverRecordId = message.id,
-            syncState = RadioMessageSyncState.CONFIRMED,
-            groupId = message.sourceGroupId,
-            played = mine,
-        )
+        return ChannelMessageMapper.toRadioMessage(message, accountUser, timestamp)
     }
 
     private fun preloadPublicProfiles(usernames: Collection<String>) {
@@ -1979,11 +1968,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         selectingAccessPoint = false
     }
 
-    private fun parseServerTime(value: String): Long? = runCatching {
-        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.CHINA).apply {
-            isLenient = false
-        }.parse(value)?.time
-    }.getOrNull()
+    private fun parseServerTime(value: String): Long? = ServerTimeParser.parseMillis(value)
 
     private fun isClientUpdateUnsupported(error: Throwable): Boolean =
         error is ApiException && error.code in setOf(404, 405)

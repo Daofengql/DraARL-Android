@@ -7,6 +7,7 @@ import cn.silverdragon.draarl.protocol.DraarlProtocol
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.LinkedHashMap
 
 internal class OpusPlaybackController(
     private val onLevel: (Float) -> Unit = {},
@@ -15,21 +16,29 @@ internal class OpusPlaybackController(
         Thread(runnable, "draarl-opus-playback")
     }
     private val released = AtomicBoolean(false)
-    private val decoder = OpusFrameDecoder()
+    private val recordingDecoder = OpusFrameDecoder()
+    private val liveDecoders = LinkedHashMap<String, OpusFrameDecoder>(8, 0.75f, true)
     private val denoiser = RnnoisePlaybackDenoiser()
     private var audioTrack: AudioTrack? = null
+    private var lastLiveStreamKey = ""
     @Volatile private var muted = false
 
-    fun playLive(mergedFrames: ByteArray, onError: (String) -> Unit) {
+    fun playLive(streamKey: String, mergedFrames: ByteArray, onError: (String) -> Unit) {
         if (released.get() || muted) return
+        if (streamKey.isBlank()) return
         val frames = DraarlProtocol.splitOpusFrames(mergedFrames)
         if (frames.isEmpty()) return
         val submitted = executeIfActive(executor, { !released.get() }) {
             runCatching {
                 val track = obtainTrack()
+                val decoder = liveDecoder(streamKey)
+                if (lastLiveStreamKey != streamKey) {
+                    denoiser.reset()
+                    lastLiveStreamKey = streamKey
+                }
                 for (frame in frames) {
                     if (released.get()) break
-                    writeFrame(track, frame)
+                    writeFrame(track, frame, decoder)
                 }
             }.onFailure { error ->
                 onLevel(0f)
@@ -37,6 +46,14 @@ internal class OpusPlaybackController(
             }
         }
         if (!submitted && !released.get()) onError("语音播放线程不可用")
+    }
+
+    fun endLiveStream(streamKey: String) {
+        if (streamKey.isBlank()) return
+        executeIfActive(executor, { !released.get() }) {
+            liveDecoders.remove(streamKey)
+            if (lastLiveStreamKey == streamKey) lastLiveStreamKey = ""
+        }
     }
 
     fun playRecording(
@@ -53,12 +70,12 @@ internal class OpusPlaybackController(
             ) { "不支持的语音采样格式" }
             val frames = recording.splitFrames()
             require(frames.isNotEmpty()) { "语音记录没有可播放的数据" }
-            decoder.reset()
+            recordingDecoder.reset()
             denoiser.reset()
             val track = obtainTrack(reset = true)
             for (frame in frames) {
                 if (!isActive() || released.get()) break
-                writeFrame(track, frame)
+                writeFrame(track, frame, recordingDecoder)
             }
         }
         onLevel(0f)
@@ -101,7 +118,9 @@ internal class OpusPlaybackController(
     fun resetDecoder() {
         onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
-            decoder.reset()
+            recordingDecoder.reset()
+            liveDecoders.clear()
+            lastLiveStreamKey = ""
             denoiser.reset()
             runCatching { audioTrack?.flush() }
         }
@@ -161,12 +180,29 @@ internal class OpusPlaybackController(
             .build()
     }
 
-    private fun writeFrame(track: AudioTrack, frame: ByteArray) {
+    private fun liveDecoder(streamKey: String): OpusFrameDecoder {
+        liveDecoders[streamKey]?.let { return it }
+        if (liveDecoders.size >= MAX_LIVE_STREAMS) {
+            val oldest = liveDecoders.entries.iterator()
+            if (oldest.hasNext()) {
+                val removed = oldest.next().key
+                oldest.remove()
+                if (lastLiveStreamKey == removed) lastLiveStreamKey = ""
+            }
+        }
+        return OpusFrameDecoder().also { liveDecoders[streamKey] = it }
+    }
+
+    private fun writeFrame(track: AudioTrack, frame: ByteArray, decoder: OpusFrameDecoder) {
         val pcm = decoder.decode(frame)
         if (pcm.isNotEmpty()) {
             val playbackPcm = denoiser.process(pcm)
             onLevel(normalizedPcmLevel(playbackPcm))
             track.write(playbackPcm, 0, playbackPcm.size, AudioTrack.WRITE_BLOCKING)
         }
+    }
+
+    companion object {
+        private const val MAX_LIVE_STREAMS = 32
     }
 }

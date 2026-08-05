@@ -29,8 +29,16 @@ class OpusAudioEngine(
     }
 
     fun play(mergedFrames: ByteArray, onError: (String) -> Unit) {
+        play(DEFAULT_LIVE_STREAM, mergedFrames, onError)
+    }
+
+    fun play(streamKey: String, mergedFrames: ByteArray, onError: (String) -> Unit) {
         if (released.get() || capture.isCapturing) return
-        playback.playLive(mergedFrames, onError)
+        playback.playLive(streamKey, mergedFrames, onError)
+    }
+
+    fun endLiveStream(streamKey: String) {
+        if (!released.get()) playback.endLiveStream(streamKey)
     }
 
     fun playRecording(
@@ -116,4 +124,8 @@ class OpusAudioEngine(
 
     private fun isRecordingPlaybackActive(expectedGeneration: Int): Boolean =
         !released.get() && recordingPlaybackGeneration.get() == expectedGeneration
+
+    companion object {
+        private const val DEFAULT_LIVE_STREAM = "local-monitor"
+    }
 }
