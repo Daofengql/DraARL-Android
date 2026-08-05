@@ -1068,7 +1068,6 @@ class UdpRadioClient(
             }
             completed
         }
-    }
 
     private fun finishAllIncomingVoices(): List<RadioMessage> = synchronized(voiceSessionLock) {
         val messages = incomingVoiceStreams.keys.toList().mapNotNull(::finishIncomingVoiceLocked)
