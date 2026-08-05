@@ -78,6 +78,27 @@ class SecureSessionStore(context: Context) {
         }
     }
 
+    fun transmitGroupId(userId: Int, fallback: Int = 999): Int =
+        preferences.getInt("${KEY_TX_GROUP_PREFIX}$userId", fallback).takeIf { it > 0 } ?: fallback
+
+    fun receiveGroupIds(userId: Int, fallback: Int): Set<Int> {
+        val stored = preferences.getStringSet("${KEY_RX_GROUP_PREFIX}$userId", emptySet()).orEmpty()
+            .mapNotNull(String::toIntOrNull)
+            .filter { it > 0 }
+            .toMutableSet()
+        stored += fallback
+        return stored
+    }
+
+    fun setRadioRouting(userId: Int, txGroupId: Int, rxGroupIds: Collection<Int>) {
+        if (userId <= 0 || txGroupId <= 0) return
+        val normalized = rxGroupIds.filter { it > 0 }.toMutableSet().apply { add(txGroupId) }
+        preferences.edit {
+            putInt("${KEY_TX_GROUP_PREFIX}$userId", txGroupId)
+            putStringSet("${KEY_RX_GROUP_PREFIX}$userId", normalized.map(Int::toString).toSet())
+        }
+    }
+
     fun isMuted(): Boolean = preferences.getBoolean(KEY_MUTED, false)
 
     fun setMuted(muted: Boolean) {
@@ -252,6 +273,8 @@ class SecureSessionStore(context: Context) {
         private const val KEY_ACCESS_POINT = "access_point"
         private const val KEY_CLIENT_INSTANCE_ID = "client_instance_id"
         private const val KEY_GROUP_PREFIX = "android_group_"
+        private const val KEY_TX_GROUP_PREFIX = "android_tx_group_"
+        private const val KEY_RX_GROUP_PREFIX = "android_rx_groups_"
         private const val KEY_MUTED = "muted"
         private const val KEY_PLAYBACK_DENOISE = "playback_denoise"
         private const val KEY_PLAYBACK_DENOISE_STRENGTH_PERCENT = "playback_denoise_strength_percent"

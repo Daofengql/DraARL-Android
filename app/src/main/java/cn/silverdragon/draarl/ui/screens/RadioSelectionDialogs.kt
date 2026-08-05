@@ -18,12 +18,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Router
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -89,7 +97,7 @@ internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), tonalElevation = 6.dp) {
             Column(Modifier.padding(vertical = 12.dp)) {
-                DialogTitle("选择群组")
+                DialogTitle("查看消息频道")
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     items(availableGroups, key = Group::id) { group ->
                         val selected = group.id == controller.selectedGroupId
@@ -122,6 +130,75 @@ internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
                     }
                 }
                 CloseDialogButton(onDismiss)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
+    val availableGroups = controller.groups.filter { !it.isPrivate || it.joined || it.owner }
+    var txGroupId by remember(controller.radioStatus.sessionId) { mutableIntStateOf(controller.transmitGroupId) }
+    var rxGroupIds by remember(controller.radioStatus.sessionId) {
+        mutableStateOf(controller.receiveGroupIds + controller.transmitGroupId)
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), tonalElevation = 6.dp) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                DialogTitle("发送与收听频道")
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(availableGroups, key = Group::id) { group ->
+                        val transmitting = group.id == txGroupId
+                        val receiving = group.id in rxGroupIds
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = transmitting,
+                                onClick = {
+                                    txGroupId = group.id
+                                    rxGroupIds = rxGroupIds + group.id
+                                },
+                            )
+                            Checkbox(
+                                checked = receiving,
+                                enabled = !transmitting,
+                                onCheckedChange = { checked ->
+                                    rxGroupIds = if (checked) rxGroupIds + group.id else rxGroupIds - group.id
+                                },
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(group.name, fontWeight = if (transmitting) FontWeight.SemiBold else FontWeight.Normal)
+                                Text(
+                                    when {
+                                        transmitting -> "发送并收听"
+                                        receiving -> "收听"
+                                        else -> "未订阅"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                    Button(
+                        onClick = {
+                            controller.updateRadioRouting(txGroupId, rxGroupIds)
+                            onDismiss()
+                        },
+                        enabled = controller.radioStatus.connected && !controller.radioRoutingUpdating && txGroupId > 0,
+                    ) {
+                        Text("应用")
+                    }
+                }
             }
         }
     }

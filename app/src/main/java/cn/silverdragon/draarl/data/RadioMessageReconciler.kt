@@ -20,6 +20,7 @@ internal object RadioMessageReconciler {
 
     fun isLikelySameEvent(first: RadioMessage, second: RadioMessage): Boolean {
         if (first.type != second.type || first.mine != second.mine) return false
+        if (first.groupId > 0 && second.groupId > 0 && first.groupId != second.groupId) return false
         if (first.senderSsid != second.senderSsid) return false
         val sameSender = if (first.senderUsername.isNotBlank() && second.senderUsername.isNotBlank()) {
             first.senderUsername.equals(second.senderUsername, ignoreCase = true)

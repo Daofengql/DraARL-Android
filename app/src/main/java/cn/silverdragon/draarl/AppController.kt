@@ -32,7 +32,7 @@ import cn.silverdragon.draarl.data.AppDataFallback
 import cn.silverdragon.draarl.data.AppDataRefresher
 import cn.silverdragon.draarl.data.AppDisplayScale
 import cn.silverdragon.draarl.data.AppThemeMode
-import cn.silverdragon.draarl.data.CommunicationRecord
+import cn.silverdragon.draarl.data.ChannelMessage
 import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.DashboardCacheStore
 import cn.silverdragon.draarl.data.Device
@@ -79,9 +79,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 private data class RadioHistoryState(
-    val nextPage: Int = 1,
+    val nextCursor: String = "",
     val hasMore: Boolean = true,
-    val total: Int = 0,
     val dataGeneration: Int = 0,
 )
 
@@ -262,6 +261,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var selectedGroupId by mutableIntStateOf(999)
         private set
+    var transmitGroupId by mutableIntStateOf(999)
+        private set
+    var receiveGroupIds by mutableStateOf<Set<Int>>(setOf(999))
+        private set
+    var radioRoutingUpdating by mutableStateOf(false)
+        private set
 
     var radioStatus by mutableStateOf(RadioStatus())
         private set
@@ -395,6 +400,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
+                        transmitGroupId = sessionStore.transmitGroupId(session.user.id, selectedGroupId)
+                        receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, transmitGroupId)
                         page = AppPage.RADIO
                         manualRadioDisconnect = false
                         syncPttOverlay()
@@ -787,12 +794,11 @@ class AppController(application: Application) : AndroidViewModel(application), R
         }
         executor.execute {
             runCatching {
-                api.switchRadioGroup(selectedGroupId)
                 RadioConnectionConfig(
                     accessPoint = point,
                     accessToken = api.freshAccessToken(),
                     clientInstanceId = sessionStore.clientInstanceId(),
-                    groupId = selectedGroupId,
+                    groupId = transmitGroupId,
                 )
             }.onSuccess { config ->
                 mainHandler.post {
@@ -1018,13 +1024,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
             playVoiceMessage(message, fromAutoPlay)
             return
         }
+        val requestedGroupId = selectedGroupId
         val accountUser = user ?: run {
             playVoiceMessage(message, fromAutoPlay)
             return
         }
         executor.execute {
             val result = runCatching {
-                val refreshed = recordToMessage(api.getCommunicationRecord(recordId), accountUser)
+                val refreshed = channelMessageToRadio(api.getGroupMessage(requestedGroupId, recordId), accountUser)
                     ?: error("服务器没有返回可播放的语音记录")
                 withStableAudioCacheKey(
                     message.copy(
@@ -1326,55 +1333,50 @@ class AppController(application: Application) : AndroidViewModel(application), R
     fun switchGroup(group: Group) {
         if (group.id == selectedGroupId) return
         stopVoiceAutoPlay(stopCurrent = true)
-        val userId = user?.id ?: return
-        val switchGeneration = groupSwitchGeneration.incrementAndGet()
+        user?.id ?: return
+        groupSwitchGeneration.incrementAndGet()
         radioDataGeneration.incrementAndGet()
         radioCacheLoadGeneration.incrementAndGet()
         radioHistoryGeneration.incrementAndGet()
         pendingRadioDataSync.set(false)
-        val previousGroupId = selectedGroupId
         selectedGroupId = group.id
         user?.let { sessionStore.setSelectedGroupId(it.id, group.id) }
-        serviceBinder?.setGroup(group.id)
-        syncPttOverlay()
         radioMessages.clear()
         displayedRadioMessageGroupId = null
         radioHistoryLoading = false
         radioHistoryHasMore = true
         radioSyncError = ""
         loadCachedRadioMessages(group.id)
-        contentLoading = true
+        notice = "正在查看 ${group.name}"
+        refreshRadioData()
+    }
+
+    fun updateRadioRouting(txGroupId: Int, rxGroupIds: Collection<Int>) {
+        val sessionId = radioStatus.sessionId
+        val userId = user?.id ?: return
+        if (!radioStatus.connected || sessionId.isBlank()) {
+            notice = "请先连接电台，再修改发送与收听频道"
+            return
+        }
+        if (radioRoutingUpdating) return
+        val normalizedRx = rxGroupIds.filter { it > 0 }.toMutableSet().apply { add(txGroupId) }
+        radioRoutingUpdating = true
         executor.execute {
-            runCatching { api.switchRadioGroup(group.id) }
-                .onSuccess {
-                    mainHandler.post {
-                        if (
-                            disposed.get() || switchGeneration != groupSwitchGeneration.get() ||
-                            selectedGroupId != group.id || user?.id != userId || !authenticated
-                        ) return@post
-                        contentLoading = false
-                        notice = "已切换到 ${group.name}"
-                        refreshRadioData()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        if (
-                            disposed.get() || switchGeneration != groupSwitchGeneration.get() ||
-                            selectedGroupId != group.id || user?.id != userId || !authenticated
-                        ) return@post
-                        selectedGroupId = previousGroupId
-                        user?.let { sessionStore.setSelectedGroupId(it.id, previousGroupId) }
-                        serviceBinder?.setGroup(previousGroupId)
+            val result = runCatching { api.updateRadioSessionRouting(sessionId, txGroupId, normalizedRx) }
+            mainHandler.post {
+                radioRoutingUpdating = false
+                if (disposed.get() || user?.id != userId || radioStatus.sessionId != sessionId) return@post
+                result
+                    .onSuccess { session ->
+                        transmitGroupId = session.txGroupId
+                        receiveGroupIds = session.rxGroupIds.toSet()
+                        sessionStore.setRadioRouting(userId, transmitGroupId, receiveGroupIds)
+                        serviceBinder?.setRouting(transmitGroupId, receiveGroupIds)
                         syncPttOverlay()
-                        radioMessages.clear()
-                        displayedRadioMessageGroupId = null
-                        radioCacheLoadGeneration.incrementAndGet()
-                        loadCachedRadioMessages(previousGroupId)
-                        contentLoading = false
-                        notice = friendlyError(error)
+                        notice = "发送与收听频道已更新"
                     }
-                }
+                    .onFailure { error -> notice = friendlyError(error) }
+            }
         }
     }
 
@@ -1453,7 +1455,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
     override fun onRadioStatus(status: RadioStatus) {
         mainHandler.post {
             val wasConnected = radioStatus.connected
-            radioStatus = status.copy(groupId = selectedGroupId)
+            radioStatus = status
+            if (status.connected && status.sessionId.isNotBlank()) {
+                transmitGroupId = status.groupId
+                receiveGroupIds = status.receiveGroupIds.toSet().ifEmpty { setOf(status.groupId) }
+                user?.id?.let { sessionStore.setRadioRouting(it, transmitGroupId, receiveGroupIds) }
+            }
             if (status.speaker.isBlank() && playingMessageId == null) playbackLevel = 0f
             if (!status.transmitting) transmitLevel = 0f
             if (!status.transmitting) cwTransmitting = false
@@ -1646,6 +1653,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
+                        transmitGroupId = sessionStore.transmitGroupId(session.user.id, selectedGroupId)
+                        receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, transmitGroupId)
                         page = AppPage.RADIO
                         manualRadioDisconnect = false
                         syncPttOverlay()
@@ -1691,7 +1700,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         serviceBinder?.configurePttOverlay(
             enabled = enabled,
             visible = enabled && !appInForeground,
-            groupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "群组 $selectedGroupId",
+            groupName = groups.firstOrNull { it.id == transmitGroupId }?.name ?: "群组 $transmitGroupId",
         )
     }
 
@@ -1778,19 +1787,17 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 ) {
                     check(requestGeneration == radioHistoryGeneration.get())
                     check(dataGeneration == radioDataGeneration.get())
-                    val page = api.getCommunicationRecords(
-                        page = historyState.nextPage,
-                        pageSize = RADIO_HISTORY_PAGE_SIZE,
+                    val page = api.getGroupMessages(
                         groupId = groupId,
+                        limit = RADIO_HISTORY_PAGE_SIZE,
+                        cursor = historyState.nextCursor,
                     )
-                    val remoteMessages = RadioMessageReconciler.settledRemoteMessages(
-                        page.records.mapNotNull { recordToMessage(it, accountUser) },
-                    )
+                    val remoteMessages = page.messages.mapNotNull { channelMessageToRadio(it, accountUser) }
                     messageStore.reconcile(accountKey, groupId, remoteMessages)
+                    val nextCursor = page.nextCursor
                     historyState = RadioHistoryState(
-                        nextPage = page.page + 1,
-                        hasMore = page.hasMore,
-                        total = page.total,
+                        nextCursor = nextCursor,
+                        hasMore = page.hasMore && nextCursor.isNotBlank() && nextCursor != historyState.nextCursor,
                         dataGeneration = dataGeneration,
                     )
                     check(requestGeneration == radioHistoryGeneration.get())
@@ -1798,7 +1805,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     radioHistoryStates[stateKey] = historyState
                     pagesLoaded++
                     cachedMessages = messageStore.load(accountKey, groupId, requestedLimit)
-                    if (page.records.isEmpty()) break
+                    if (page.messages.isEmpty()) break
                 }
                 radioVisibleLimits[stateKey] = requestedLimit
                 OlderRadioHistoryResult(
@@ -1868,66 +1875,27 @@ class AppController(application: Application) : AndroidViewModel(application), R
         accountUser: User,
         expectedGeneration: Int,
     ): RadioSyncSnapshot {
-        val knownRecordIds = accountKey?.let { messageStore.confirmedServerRecordIds(it, groupId) }.orEmpty()
-        val fetchedRecords = mutableListOf<CommunicationRecord>()
-        val stableMessages = mutableListOf<RadioMessage>()
         val now = System.currentTimeMillis()
-        var pageNumber = 1
-        var nextPage = 1
-        var total = 0
-        var hasMore = true
-        var foundStableRecord = false
-        var foundKnownRecord = false
-        var allTimestampsValid = true
-
-        while (hasMore && pageNumber <= MAX_LATEST_SYNC_PAGES) {
-            check(expectedGeneration == radioDataGeneration.get())
-            val page = api.getCommunicationRecords(
-                page = pageNumber,
-                pageSize = RADIO_HISTORY_PAGE_SIZE,
-                groupId = groupId,
-            )
-            fetchedRecords += page.records
-            val pageMessages = page.records.mapNotNull { recordToMessage(it, accountUser) }
-            allTimestampsValid = allTimestampsValid && pageMessages.size == page.records.size
-            val settledMessages = RadioMessageReconciler.settledRemoteMessages(pageMessages, now)
-            stableMessages += settledMessages
-            foundStableRecord = foundStableRecord || settledMessages.isNotEmpty()
-            foundKnownRecord = foundKnownRecord || settledMessages.any { message ->
-                message.serverRecordId?.let(knownRecordIds::contains) == true
-            }
-            total = page.total
-            nextPage = page.page + 1
-            hasMore = page.hasMore
-
-            val enoughForInitialLoad = knownRecordIds.isEmpty() && stableMessages.size >= INITIAL_VISIBLE_MESSAGES
-            val caughtUpWithCache = knownRecordIds.isNotEmpty() && foundKnownRecord
-            val reachedCacheCapacity = stableMessages.size >= MAX_MESSAGES
-            if (foundStableRecord && (enoughForInitialLoad || caughtUpWithCache || reachedCacheCapacity)) break
-            if (page.records.isEmpty()) break
-            pageNumber = page.page + 1
-        }
-
-        val remoteMessages = stableMessages
+        check(expectedGeneration == radioDataGeneration.get())
+        val page = api.getGroupMessages(groupId = groupId, limit = RADIO_HISTORY_PAGE_SIZE)
+        val remoteMessages = page.messages
+            .mapNotNull { channelMessageToRadio(it, accountUser) }
             .distinctBy { it.serverRecordId ?: it.id }
             .sortedBy(RadioMessage::timestamp)
         if (accountKey != null) {
             check(expectedGeneration == radioDataGeneration.get())
             val stateKey = "$accountKey#$groupId"
-            val fetchedWithoutPaginationDrift = fetchedRecords.map(CommunicationRecord::id).distinct().size == fetchedRecords.size
             val settleCutoff = now - RadioMessageReconciler.REMOTE_SETTLE_DELAY_MS
             val authoritativeWindow = when {
-                !allTimestampsValid || !fetchedWithoutPaginationDrift -> null
                 remoteMessages.isNotEmpty() -> remoteMessages.first().timestamp..settleCutoff
-                !hasMore -> 0L..settleCutoff
+                !page.hasMore -> 0L..settleCutoff
                 else -> null
             }
             messageStore.reconcile(accountKey, groupId, remoteMessages, authoritativeWindow)
             check(expectedGeneration == radioDataGeneration.get())
             radioHistoryStates[stateKey] = RadioHistoryState(
-                nextPage = nextPage,
-                hasMore = hasMore,
-                total = total,
+                nextCursor = page.nextCursor,
+                hasMore = page.hasMore && page.nextCursor.isNotBlank(),
                 dataGeneration = expectedGeneration,
             )
             val visibleLimit = radioVisibleLimits.getOrDefault(stateKey, INITIAL_VISIBLE_MESSAGES)
@@ -1935,41 +1903,35 @@ class AppController(application: Application) : AndroidViewModel(application), R
             return RadioSyncSnapshot(
                 messages = cachedMessages.takeLast(visibleLimit),
                 hasMoreHistory = visibleLimit < MAX_MESSAGES &&
-                    (cachedMessages.size > visibleLimit || hasMore),
+                    (cachedMessages.size > visibleLimit || page.hasMore),
             )
         }
         return RadioSyncSnapshot(
             messages = remoteMessages.takeLast(INITIAL_VISIBLE_MESSAGES),
-            hasMoreHistory = hasMore || remoteMessages.size > INITIAL_VISIBLE_MESSAGES,
+            hasMoreHistory = page.hasMore || remoteMessages.size > INITIAL_VISIBLE_MESSAGES,
         )
     }
 
-    private fun recordToMessage(record: CommunicationRecord, accountUser: User): RadioMessage? {
-        val timestamp = parseServerTime(record.startedAt) ?: return null
-        val ssid = if (record.deviceId == 0 && record.model in 100..105) {
-            record.model
-        } else {
-            record.deviceName.substringAfterLast('-').toIntOrNull() ?: 0
-        }
-        val callsign = record.deviceName.removeSuffix(if (ssid > 0) "-$ssid" else "").ifBlank { record.username }
-        val mine = record.deviceId == 0 && ssid == ANDROID_CLIENT_SSID &&
-            record.username.equals(accountUser.username, ignoreCase = true) &&
-            (accountUser.callsign.isBlank() || callsign.equals(accountUser.callsign, ignoreCase = true))
+    private fun channelMessageToRadio(message: ChannelMessage, accountUser: User): RadioMessage? {
+        val timestamp = parseServerTime(message.sentAt) ?: return null
+        val mine = message.sender.ghost && message.sender.ssid == ANDROID_CLIENT_SSID &&
+            message.sender.username.equals(accountUser.username, ignoreCase = true)
+        val voice = message.messageType.equals("voice", ignoreCase = true)
         return RadioMessage(
-            id = "record-${record.id}",
-            type = if (record.messageType == 1) RadioMessageType.TEXT else RadioMessageType.VOICE,
-            senderCallsign = callsign,
-            senderSsid = ssid,
-            senderUsername = record.username,
-            senderNickname = record.nickname,
-            content = if (record.messageType == 1) record.text else "历史语音 ${formatDuration(record.durationMs)}",
+            id = "record-${message.id}",
+            type = if (voice) RadioMessageType.VOICE else RadioMessageType.TEXT,
+            senderCallsign = message.sender.callsign.ifBlank { message.sender.username },
+            senderSsid = message.sender.ssid,
+            senderUsername = message.sender.username,
+            senderNickname = message.sender.nickname,
+            content = if (voice) "历史语音 ${formatDuration(message.durationMs)}" else message.text,
             timestamp = timestamp,
             mine = mine,
-            durationMs = record.durationMs,
-            audioUrl = record.audioUrl,
-            serverRecordId = record.id,
+            durationMs = message.durationMs,
+            audioUrl = message.audioUrl,
+            serverRecordId = message.id,
             syncState = RadioMessageSyncState.CONFIRMED,
-            groupId = record.groupId ?: 0,
+            groupId = message.sourceGroupId,
             played = mine,
         )
     }
@@ -2040,7 +2002,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private const val INITIAL_VISIBLE_MESSAGES = 200
         private const val HISTORY_LOAD_BATCH = 100
         private const val MAX_HISTORY_PAGES_PER_LOAD = 5
-        private const val MAX_LATEST_SYNC_PAGES = 50
         private const val MAX_MESSAGES = 1_000
         private const val VOICE_AUTO_PLAY_ADVANCE_DELAY_MS = 300L
         private const val AUDIO_CACHE_DIRECTORY = "radio_audio"

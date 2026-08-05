@@ -418,9 +418,9 @@ class UdpRadioClient(
         audioCache.clear()
     }
 
-    fun setGroup(groupId: Int) {
+    fun setRouting(groupId: Int, receiveGroupIds: Collection<Int>) {
         desiredConfig = desiredConfig?.copy(groupId = groupId)
-        updateStatus(status.copy(groupId = groupId))
+        updateStatus(status.copy(groupId = groupId, receiveGroupIds = receiveGroupIds.distinct()))
     }
 
     fun snapshot(): RadioStatus = status

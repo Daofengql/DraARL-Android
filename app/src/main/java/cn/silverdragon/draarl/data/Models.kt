@@ -193,6 +193,53 @@ data class CommunicationRecordPage(
     val hasMore: Boolean get() = page * pageSize < total
 }
 
+data class RadioSession(
+    val sessionId: String,
+    val clientInstanceId: String,
+    val legacy: Boolean,
+    val model: Int,
+    val ssid: Int,
+    val transport: String,
+    val protocolVersion: Int,
+    val capabilities: List<String>,
+    val txGroupId: Int,
+    val rxGroupIds: List<Int>,
+    val disableSend: Boolean,
+    val disableReceive: Boolean,
+)
+
+data class ChannelMessageSender(
+    val userId: Int?,
+    val username: String,
+    val callsign: String,
+    val nickname: String,
+    val ssid: Int,
+    val model: Int,
+    val ghost: Boolean,
+)
+
+data class ChannelMessage(
+    val id: Int,
+    val messageType: String,
+    val sourceGroupId: Int,
+    val sourceGroupName: String,
+    val requestedGroupId: Int,
+    val sender: ChannelMessageSender,
+    val sentAt: String,
+    val endTime: String,
+    val durationMs: Long,
+    val text: String,
+    val audioUrl: String,
+    val status: Int,
+)
+
+data class ChannelMessagePage(
+    val messages: List<ChannelMessage>,
+    val nextCursor: String,
+    val hasMore: Boolean,
+    val serverTime: String,
+)
+
 data class PlatformInfo(
     val name: String = "DraARL 麟链",
     val version: String = "",

@@ -66,7 +66,9 @@ internal fun ConnectionPanel(
 ) {
     var accessMenu by remember { mutableStateOf(false) }
     var groupMenu by remember { mutableStateOf(false) }
+    var routingMenu by remember { mutableStateOf(false) }
     val selectedGroup = controller.groups.firstOrNull { it.id == controller.selectedGroupId }
+    val transmitGroup = controller.groups.firstOrNull { it.id == controller.transmitGroupId }
     val selectedProbe = controller.accessPointProbes.firstOrNull {
         it.accessPoint.id == controller.selectedAccessPoint?.id
     }
@@ -76,6 +78,7 @@ internal fun ConnectionPanel(
     val radioIdentifiers = formatRadioIdentifiers(user?.mdcId.orEmpty(), user?.dmrId ?: 0)
     if (accessMenu) AccessPointDialog(controller = controller, onDismiss = { accessMenu = false })
     if (groupMenu) GroupDialog(controller = controller, onDismiss = { groupMenu = false })
+    if (routingMenu) RoutingDialog(controller = controller, onDismiss = { routingMenu = false })
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -217,13 +220,26 @@ internal fun ConnectionPanel(
                     ) {
                         Icon(Icons.Default.Groups, contentDescription = null)
                         Text(
-                            selectedGroup?.name ?: "群组 ${controller.selectedGroupId}",
+                            "查看 ${selectedGroup?.name ?: "群组 ${controller.selectedGroupId}"}",
                             modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
                             maxLines = 1,
                         )
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
                     }
                 }
+            }
+            OutlinedButton(
+                onClick = { routingMenu = true },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                enabled = controller.groups.isNotEmpty() && status.connected && !controller.radioRoutingUpdating,
+            ) {
+                Icon(Icons.Default.Mic, contentDescription = null)
+                Text(
+                    "发送 ${transmitGroup?.name ?: "群组 ${controller.transmitGroupId}"} · 收听 ${controller.receiveGroupIds.size} 个频道",
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                    maxLines = 2,
+                )
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
             }
             if (status.speaker.isNotBlank()) {
                 Surface(

@@ -298,7 +298,8 @@ class RadioConnectionService : Service(), UdpRadioListener {
         fun audioCacheSizeBytes(): Long = radioClient.audioCacheSizeBytes()
         fun hasAudioCacheKey(key: String): Boolean = radioClient.hasAudioCacheKey(key)
         fun clearAudioCache() = radioClient.clearAudioCache()
-        fun setGroup(groupId: Int) = radioClient.setGroup(groupId)
+        fun setRouting(groupId: Int, receiveGroupIds: Collection<Int>) =
+            radioClient.setRouting(groupId, receiveGroupIds)
         fun configurePttOverlay(enabled: Boolean, visible: Boolean, groupName: String): Boolean =
             this@RadioConnectionService.configurePttOverlay(enabled, visible, groupName)
         fun updateAccessToken(token: String) = radioClient.updateAccessToken(token)

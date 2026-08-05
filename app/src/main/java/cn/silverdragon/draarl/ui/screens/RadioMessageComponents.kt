@@ -110,6 +110,14 @@ internal fun MessageItem(
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                val sourceGroup = controller.groups.firstOrNull { it.id == message.groupId }
+                if (message.groupId > 0) {
+                    Text(
+                        sourceGroup?.name ?: "频道 ${message.groupId}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 if (nickname.isNotBlank()) {
                     Text(nickname, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

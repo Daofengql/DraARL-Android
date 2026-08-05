@@ -29,6 +29,14 @@ class RadioMessageReconcilerTest {
     }
 
     @Test
+    fun `does not merge matching messages from different source groups`() {
+        val first = message(content = "相同内容", timestamp = 1_000_000L).copy(groupId = 1001)
+        val second = first.copy(id = "other", timestamp = 1_001_000L, groupId = 1002)
+
+        assertFalse(RadioMessageReconciler.isLikelySameEvent(first, second))
+    }
+
+    @Test
     fun `matches voice events without relying on presentation text`() {
         val local = message(
             type = RadioMessageType.VOICE,

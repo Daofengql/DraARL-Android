@@ -10,6 +10,9 @@ import cn.silverdragon.draarl.data.ClientResourceManifest
 import cn.silverdragon.draarl.data.ClientResourceManifestItem
 import cn.silverdragon.draarl.data.ClientResourceRelease
 import cn.silverdragon.draarl.data.ClientResourceSummary
+import cn.silverdragon.draarl.data.ChannelMessage
+import cn.silverdragon.draarl.data.ChannelMessagePage
+import cn.silverdragon.draarl.data.ChannelMessageSender
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.CommunicationRecordPage
 import cn.silverdragon.draarl.data.CommunicationStats
@@ -23,6 +26,7 @@ import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.PlatformInfo
 import cn.silverdragon.draarl.data.RegistrationResult
+import cn.silverdragon.draarl.data.RadioSession
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
@@ -520,6 +524,53 @@ class ApiClient(
             JSONObject().put("group_id", groupId).put("dev_model", ANDROID_DEVICE_MODEL),
         )
     }
+
+    fun getRadioSessions(): List<RadioSession> {
+        val data = request("GET", "/api/radio/sessions").optJSONArray("data") ?: JSONArray()
+        return data.objects().map(::parseRadioSession)
+    }
+
+    fun updateRadioSessionRouting(sessionId: String, txGroupId: Int, rxGroupIds: Collection<Int>): RadioSession {
+        val normalizedRx = rxGroupIds.filter { it > 0 }.distinct().toMutableList().apply {
+            if (txGroupId > 0 && txGroupId !in this) add(txGroupId)
+        }.sorted()
+        val data = request(
+            "PUT",
+            "/api/radio/sessions/${urlEncode(sessionId)}/routing",
+            JSONObject()
+                .put("tx_group_id", txGroupId)
+                .put("rx_group_ids", JSONArray(normalizedRx)),
+        ).requireObject("data")
+        return parseRadioSession(data)
+    }
+
+    fun getGroupMessages(
+        groupId: Int,
+        limit: Int = 50,
+        cursor: String = "",
+        messageType: String = "all",
+    ): ChannelMessagePage {
+        val path = buildString {
+            append("/api/groups/").append(groupId.coerceAtLeast(1)).append("/messages")
+            append("?limit=").append(limit.coerceIn(1, 100))
+            append("&message_type=").append(urlEncode(messageType))
+            if (cursor.isNotBlank()) append("&cursor=").append(urlEncode(cursor))
+        }
+        val data = request("GET", path).requireObject("data")
+        return ChannelMessagePage(
+            messages = (data.optJSONArray("messages") ?: JSONArray()).objects().map(::parseChannelMessage),
+            nextCursor = data.optStringClean("next_cursor"),
+            hasMore = data.optBoolean("has_more"),
+            serverTime = data.optStringClean("server_time"),
+        )
+    }
+
+    fun getGroupMessage(groupId: Int, messageId: Int): ChannelMessage = parseChannelMessage(
+        request(
+            "GET",
+            "/api/groups/${groupId.coerceAtLeast(1)}/messages/${messageId.coerceAtLeast(1)}",
+        ).requireObject("data"),
+    )
 
     fun joinGroup(groupId: Int, password: String) {
         request("POST", "/api/groups/$groupId/join", JSONObject().put("password", password))
@@ -1029,6 +1080,47 @@ class ApiClient(
         audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
     )
 
+    private fun parseRadioSession(item: JSONObject) = RadioSession(
+        sessionId = item.optStringClean("session_id"),
+        clientInstanceId = item.optStringClean("client_instance_id"),
+        legacy = item.optBoolean("legacy"),
+        model = item.optInt("dev_model"),
+        ssid = item.optInt("ssid"),
+        transport = item.optStringClean("transport"),
+        protocolVersion = item.optInt("protocol_version"),
+        capabilities = item.optJSONArray("capabilities")?.strings().orEmpty(),
+        txGroupId = item.optInt("tx_group_id"),
+        rxGroupIds = item.optJSONArray("rx_group_ids")?.ints().orEmpty(),
+        disableSend = item.optBoolean("disable_send"),
+        disableReceive = item.optBoolean("disable_recv"),
+    )
+
+    private fun parseChannelMessage(item: JSONObject): ChannelMessage {
+        val sender = item.optJSONObject("sender") ?: JSONObject()
+        return ChannelMessage(
+            id = item.optInt("id"),
+            messageType = item.optStringClean("message_type"),
+            sourceGroupId = item.optInt("source_group_id"),
+            sourceGroupName = item.optStringClean("source_group_name"),
+            requestedGroupId = item.optInt("requested_group_id"),
+            sender = ChannelMessageSender(
+                userId = sender.optNullableInt("user_id"),
+                username = sender.optStringClean("username"),
+                callsign = sender.optStringClean("callsign"),
+                nickname = sender.optStringClean("nickname"),
+                ssid = sender.optInt("ssid"),
+                model = sender.optInt("dev_model"),
+                ghost = sender.optBoolean("is_ghost"),
+            ),
+            sentAt = item.optStringClean("sent_at"),
+            endTime = item.optStringClean("end_time"),
+            durationMs = item.optLong("duration_ms"),
+            text = item.optStringClean("text_content"),
+            audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
+            status = item.optInt("status"),
+        )
+    }
+
     private fun parseClientResourceManifest(json: JSONObject) = ClientResourceManifest(
         schemaVersion = json.optInt("schema_version"),
         resources = (json.optJSONArray("resources") ?: JSONArray()).objects().map { item ->
@@ -1159,4 +1251,12 @@ private fun jsonStringMap(json: JSONObject): Map<String, String> = buildMap {
 
 private fun JSONArray.objects(): List<JSONObject> = buildList {
     for (index in 0 until length()) optJSONObject(index)?.let(::add)
+}
+
+private fun JSONArray.ints(): List<Int> = buildList {
+    for (index in 0 until length()) optInt(index).takeIf { it > 0 }?.let(::add)
+}
+
+private fun JSONArray.strings(): List<String> = buildList {
+    for (index in 0 until length()) optString(index).trim().takeIf(String::isNotBlank)?.let(::add)
 }
