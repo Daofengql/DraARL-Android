@@ -100,4 +100,16 @@ class DraarlProtocolTest {
         packet[5] = 90
         assertNull(DraarlProtocol.decode(packet))
     }
+
+    @Test
+    fun stableGhostPolicyErrorsAreActionable() {
+        assertEquals(
+            "当前账号或 Android 客户端尚未开放多端在线，请断开其他设备后重试",
+            DraarlProtocol.authError(1, "ghost_multi_session_disabled"),
+        )
+        assertEquals(
+            "当前账号的在线设备已达到上限，请先断开不使用的设备",
+            DraarlProtocol.authError(1, "ghost_session_limit active=8 limit=8"),
+        )
+    }
 }

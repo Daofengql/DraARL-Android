@@ -1797,7 +1797,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     check(dataGeneration == radioDataGeneration.get())
                     val page = api.getGroupMessages(
                         groupId = groupId,
-                        limit = RADIO_HISTORY_PAGE_SIZE,
                         cursor = historyState.nextCursor,
                     )
                     val remoteMessages = page.messages.mapNotNull { channelMessageToRadio(it, accountUser) }
@@ -1885,7 +1884,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
     ): RadioSyncSnapshot {
         val now = System.currentTimeMillis()
         check(expectedGeneration == radioDataGeneration.get())
-        val page = api.getGroupMessages(groupId = groupId, limit = RADIO_HISTORY_PAGE_SIZE)
+        val page = api.getGroupMessages(groupId = groupId)
         val remoteMessages = page.messages
             .mapNotNull { channelMessageToRadio(it, accountUser) }
             .distinctBy { it.serverRecordId ?: it.id }
@@ -1983,7 +1982,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private const val ANDROID_CLIENT_SSID = 101
         private const val RADIO_SYNC_INTERVAL_MS = 20_000L
         private const val ACCESS_POINT_PROBE_INTERVAL_MS = 10_000L
-        private const val RADIO_HISTORY_PAGE_SIZE = 100
         private const val INITIAL_VISIBLE_MESSAGES = 200
         private const val HISTORY_LOAD_BATCH = 100
         private const val MAX_HISTORY_PAGES_PER_LOAD = 5

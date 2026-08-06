@@ -183,13 +183,20 @@ object DraarlProtocol {
     }
 
     fun authError(status: Int, detail: String = ""): String {
+        val stableCode = detail.trim().substringBefore(' ').substringBefore(':')
+        when (stableCode) {
+            "ghost_multi_session_disabled" -> return "当前账号或 Android 客户端尚未开放多端在线，请断开其他设备后重试"
+            "ghost_session_limit" -> return "当前账号的在线设备已达到上限，请先断开不使用的设备"
+            "ghost_protocol_upgrade_required" -> return "服务端要求新版幽灵 Session 协议，请更新客户端"
+            "ghost_capabilities_required" -> return "服务端要求多收与来源频道能力，请更新客户端"
+            "invalid_client_instance_id" -> return "客户端实例标识无效，请清除应用数据后重新登录"
+        }
         val message = when (status) {
             1 -> "登录凭证无效或已过期"
             2 -> "用户不存在"
             3 -> "账号已被禁用"
             4 -> "账号尚未审核通过"
             5 -> "客户端型号不受支持"
-            6 -> "旧版单端会话冲突，请升级服务端或确认客户端已启用多端协议"
             else -> "UDP 认证失败 ($status)"
         }
         return if (detail.isBlank()) message else "$message：$detail"

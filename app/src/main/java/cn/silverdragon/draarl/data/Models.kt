@@ -196,7 +196,6 @@ data class CommunicationRecordPage(
 data class RadioSession(
     val sessionId: String,
     val clientInstanceId: String,
-    val legacy: Boolean,
     val model: Int,
     val ssid: Int,
     val transport: String,

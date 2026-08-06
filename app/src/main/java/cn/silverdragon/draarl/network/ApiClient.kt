@@ -47,7 +47,12 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.atomic.AtomicReference
 
-class ApiException(val code: Int, override val message: String) : Exception(message)
+class ApiException(
+    val code: Int,
+    override val message: String,
+    val errorCode: String = "",
+    val retryAfterSeconds: Int? = null,
+) : Exception(message)
 
 class ApiClient(
     private val sessionStore: SecureSessionStore,
@@ -518,14 +523,6 @@ class ApiClient(
         }
     }
 
-    fun switchRadioGroup(groupId: Int) {
-        request(
-            "PUT",
-            "/api/radio/group",
-            JSONObject().put("group_id", groupId).put("dev_model", ANDROID_DEVICE_MODEL),
-        )
-    }
-
     fun getRadioSessions(): List<RadioSession> {
         val data = request("GET", "/api/radio/sessions").optJSONArray("data") ?: JSONArray()
         return data.objects().map(::parseRadioSession)
@@ -545,16 +542,11 @@ class ApiClient(
 
     fun getGroupMessages(
         groupId: Int,
-        limit: Int = 50,
+        limit: Int? = null,
         cursor: String = "",
         messageType: String = "all",
     ): ChannelMessagePage {
-        val path = buildString {
-            append("/api/groups/").append(groupId.coerceAtLeast(1)).append("/messages")
-            append("?limit=").append(limit.coerceIn(1, 100))
-            append("&message_type=").append(urlEncode(messageType))
-            if (cursor.isNotBlank()) append("&cursor=").append(urlEncode(cursor))
-        }
+        val path = groupMessagesPath(groupId, limit, cursor, messageType)
         val data = request("GET", path).requireObject("data")
         return ChannelMessagePage(
             messages = (data.optJSONArray("messages") ?: JSONArray()).objects().map(::parseChannelMessage),
@@ -958,6 +950,9 @@ class ApiClient(
             val json = if (text.isBlank()) JSONObject() else runCatching { JSONObject(text) }.getOrElse {
                 throw ApiException(status, "服务器返回了无法识别的数据")
             }
+            connection.getHeaderField("Retry-After")?.trim()?.toIntOrNull()?.takeIf { it > 0 }?.let {
+                json.put(HTTP_RETRY_AFTER_SECONDS, it)
+            }
             if (!json.has("code")) json.put("code", status)
             if (status !in 200..299 && json.optInt("code") < 400) json.put("code", status)
             return json
@@ -1082,7 +1077,6 @@ class ApiClient(
     private fun parseRadioSession(item: JSONObject) = RadioSession(
         sessionId = item.optStringClean("session_id"),
         clientInstanceId = item.optStringClean("client_instance_id"),
-        legacy = item.optBoolean("legacy"),
         model = item.optInt("dev_model"),
         ssid = item.optInt("ssid"),
         transport = item.optStringClean("transport"),
@@ -1174,11 +1168,11 @@ class ApiClient(
     )
 
     companion object {
-        const val ANDROID_DEVICE_MODEL = 101
         private const val GROUP_PAGE_SIZE = 100
         private const val MAX_GROUP_PAGES = 100
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 15_000
+        private const val HTTP_RETRY_AFTER_SECONDS = "_http_retry_after_seconds"
 
         fun normalizeBaseUrl(value: String): String {
             val trimmed = value.trim().trimEnd('/')
@@ -1216,12 +1210,39 @@ class ApiClient(
 
 private fun urlEncode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 
+internal fun groupMessagesPath(groupId: Int, limit: Int?, cursor: String, messageType: String): String = buildString {
+    append("/api/groups/").append(groupId.coerceAtLeast(1)).append("/messages")
+    append("?message_type=").append(urlEncode(messageType))
+    limit?.let { append("&limit=").append(it.coerceAtLeast(1)) }
+    if (cursor.isNotBlank()) append("&cursor=").append(urlEncode(cursor))
+}
+
 private fun JSONObject.requireSuccess(): JSONObject {
     val code = optInt("code", 200)
     if (code !in 200..299) {
-        throw ApiException(code, optStringClean("message").ifBlank { "请求失败 ($code)" })
+        val errorCode = optStringClean("error")
+        val retryAfterSeconds = optInt("_http_retry_after_seconds").takeIf { it > 0 }
+        val serverMessage = optStringClean("message").ifBlank { "请求失败 ($code)" }
+        throw ApiException(
+            code = code,
+            message = friendlyApiErrorMessage(errorCode, serverMessage, retryAfterSeconds),
+            errorCode = errorCode,
+            retryAfterSeconds = retryAfterSeconds,
+        )
     }
     return this
+}
+
+internal fun friendlyApiErrorMessage(errorCode: String, serverMessage: String, retryAfterSeconds: Int?): String {
+    val retryText = retryAfterSeconds?.takeIf { it > 0 }?.let { "请在 $it 秒后重试" }
+    return when (errorCode) {
+        "ghost_multi_receive_disabled" -> "当前账号或 Android 客户端尚未开放多频道收听，请仅保留发送频道"
+        "message_api_user_rate_limited" -> retryText ?: "当前账号查询消息过于频繁，请稍后重试"
+        "message_api_ip_rate_limited" -> retryText ?: "当前网络查询消息过于频繁，请稍后重试"
+        "message_api_busy" -> retryText ?: "消息查询繁忙，请稍后重试"
+        "invalid_message_limit" -> "消息分页大小不符合服务端配置，请更新客户端后重试"
+        else -> serverMessage
+    }
 }
 
 private fun JSONObject.requireObject(key: String): JSONObject = optJSONObject(key)
