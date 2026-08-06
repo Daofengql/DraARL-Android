@@ -1116,6 +1116,9 @@ class ApiClient(
 
     private fun parseClientResourceManifest(json: JSONObject) = ClientResourceManifest(
         schemaVersion = json.optInt("schema_version"),
+        serverVersion = json.optStringClean("server_version"),
+        protocolVersion = json.optInt("protocol_version"),
+        capabilities = json.optJSONArray("capabilities")?.strings().orEmpty(),
         resources = (json.optJSONArray("resources") ?: JSONArray()).objects().map { item ->
             ClientResourceManifestItem(
                 resource = parseClientResourceSummary(item.requireObject("resource")),
@@ -1141,6 +1144,9 @@ class ApiClient(
         changelog = json.optStringClean("changelog"),
         forceUpdate = json.optBoolean("force_update"),
         minClientVersion = json.optStringClean("min_client_version"),
+        minServerVersion = json.optStringClean("min_server_version"),
+        requiredProtocolVersion = json.optInt("required_protocol_version"),
+        requiredCapabilities = json.optJSONArray("required_capabilities")?.strings().orEmpty(),
         publishedAt = json.optStringClean("published_at"),
     )
 

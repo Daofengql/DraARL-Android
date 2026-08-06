@@ -9,6 +9,8 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import cn.silverdragon.draarl.data.ClientResourceArtifact
 import cn.silverdragon.draarl.data.ClientResourceKeys
+import cn.silverdragon.draarl.data.ClientResourceManifest
+import cn.silverdragon.draarl.data.ClientResourceRelease
 import cn.silverdragon.draarl.network.ApiClient
 import java.io.File
 import java.io.FileOutputStream
@@ -41,6 +43,8 @@ data class AppUpdateInfo(
 
 class AppUpdateInstallPermissionException : Exception("需要允许本应用安装更新包")
 
+class AppUpdateServerContractException(message: String) : Exception(message)
+
 class AppUpdateManager(
     private val context: Context,
     private val api: ApiClient,
@@ -67,6 +71,7 @@ class AppUpdateManager(
                 resource.resource.category == "application"
         } ?: return null
         if (!item.release.forceUpdate && compareSemver(item.release.version, semver) <= 0) return null
+        requireCompatibleAppUpdateServerContract(manifest, item.release)
         val artifact = item.artifacts.firstOrNull { artifact ->
             artifact.format == "apk" && (artifact.runtime.isBlank() || artifact.runtime == "android")
         } ?: item.artifacts.firstOrNull { it.format == "apk" }
@@ -222,6 +227,47 @@ internal fun normalizeVersionForSemver(value: String): String {
 internal fun compatibleClientVersionForResourceQuery(version: String): String =
     normalizeVersionForSemver(version).substringBefore('-').substringBefore('+')
 
+internal fun requireCompatibleAppUpdateServerContract(
+    manifest: ClientResourceManifest,
+    release: ClientResourceRelease,
+) {
+    val minServerVersion = release.minServerVersion.trim()
+    if (minServerVersion.isNotEmpty()) {
+        val serverVersion = strictSemverOrNull(manifest.serverVersion)
+            ?: throw AppUpdateServerContractException("服务器资源清单未声明可比较的服务端版本")
+        if (strictSemverOrNull(minServerVersion) == null) {
+            throw AppUpdateServerContractException("客户端更新声明了无效的最低服务端版本")
+        }
+        if (compareSemver(serverVersion, minServerVersion) < 0) {
+            throw AppUpdateServerContractException("服务器版本 $serverVersion 低于更新要求 $minServerVersion")
+        }
+    }
+    if (release.requiredProtocolVersion < 0) {
+        throw AppUpdateServerContractException("客户端更新声明了无效的协议版本")
+    }
+    if (manifest.protocolVersion < release.requiredProtocolVersion) {
+        throw AppUpdateServerContractException(
+            "服务器幽灵协议版本 ${manifest.protocolVersion} 低于更新要求 ${release.requiredProtocolVersion}",
+        )
+    }
+    val requiredCapabilities = release.requiredCapabilities.map { it.trim() }.filter(String::isNotEmpty).toSet()
+    if (requiredCapabilities.isNotEmpty() && release.requiredProtocolVersion == 0) {
+        throw AppUpdateServerContractException("客户端更新的协议能力约束无效")
+    }
+    val availableCapabilities = manifest.capabilities.map { it.trim().lowercase() }.filter(String::isNotEmpty).toSet()
+    val missingCapabilities = requiredCapabilities.map { it.lowercase() }.filterNot(availableCapabilities::contains).sorted()
+    if (missingCapabilities.isNotEmpty()) {
+        throw AppUpdateServerContractException("服务器缺少更新所需能力：${missingCapabilities.joinToString()}")
+    }
+}
+
+private fun strictSemverOrNull(value: String): String? {
+    val trimmed = value.trim().let { version ->
+        if (version.startsWith("v", ignoreCase = true)) version.drop(1) else version
+    }
+    return trimmed.takeIf(STRICT_SEMVER_REGEX::matches)
+}
+
 internal fun compareSemver(left: String, right: String): Int {
     val leftVersion = ParsedSemver.parse(left)
     val rightVersion = ParsedSemver.parse(right)
@@ -301,3 +347,6 @@ private fun File.sha256(): String {
 }
 
 private val SEMVER_REGEX = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$""")
+private val STRICT_SEMVER_REGEX = Regex(
+    """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$""",
+)

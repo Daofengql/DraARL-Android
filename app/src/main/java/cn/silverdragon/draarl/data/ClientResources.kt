@@ -21,6 +21,9 @@ data class ClientResourceRelease(
     val changelog: String = "",
     val forceUpdate: Boolean = false,
     val minClientVersion: String = "",
+    val minServerVersion: String = "",
+    val requiredProtocolVersion: Int = 0,
+    val requiredCapabilities: List<String> = emptyList(),
     val publishedAt: String = "",
 )
 
@@ -55,6 +58,9 @@ data class ClientResourceManifestItem(
 
 data class ClientResourceManifest(
     val schemaVersion: Int,
+    val serverVersion: String = "",
+    val protocolVersion: Int = 0,
+    val capabilities: List<String> = emptyList(),
     val resources: List<ClientResourceManifestItem>,
 )
 

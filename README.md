@@ -12,6 +12,7 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 - 每个 Session 单一发送频道、多频道收听，路由通过 Session API 原子更新
 - 16 kHz Opus PTT 语音收发，按来源频道和发送者隔离接收流并串行播放
 - 按账号和群组隔离的本地 SQLite 消息缓存，并与频道消息游标 API 增量对账
+- 通过客户端资源 manifest 检查 APK 更新，并二次验证最低服务端版本、幽灵协议版本和能力集合
 - 前台通信服务，支持应用退到后台后保持 UDP 会话
 - 普通用户仪表盘、设备、群组、通信记录和个人资料页面
 
@@ -36,6 +37,7 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 5. 下行 `Type=4/5` 从 Reserved 读取真实 `source_group_id`，语音按来源频道和发送者隔离状态。
 6. `PUT /api/radio/sessions/:session_id/routing` 更新唯一发送频道和多个收听频道。
 7. `GET /api/groups/:id/messages` 按频道 ACL 和游标同步消息历史；通信记录接口不再作为聊天历史。
+8. `GET /api/public/client-resources/manifest` 获取 APK 更新，schema 1 清单携带当前服务端契约；客户端在展示更新前再次校验发布所需的最低服务端版本、协议版本和能力。
 
 生产服务端地址集中定义在 `AppConfig.BASE_URL`，固定为 `https://ptt.4l2.cn`，客户端不再提供地址输入框。
 
