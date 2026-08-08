@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.screenshot)
 }
 
 val releaseSigning = Properties().apply {
@@ -20,6 +21,7 @@ val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPas
     .all { !releaseSigning.getProperty(it).isNullOrBlank() }
 
 android {
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
     namespace = "cn.silverdragon.draarl"
     compileSdk {
         version = release(36) {
@@ -113,6 +115,8 @@ dependencies {
     implementation(libs.amap.search)
     testImplementation(libs.junit)
     testImplementation(libs.json)
+    screenshotTestImplementation(libs.screenshot.validation.api)
+    screenshotTestImplementation(libs.androidx.compose.ui.tooling)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

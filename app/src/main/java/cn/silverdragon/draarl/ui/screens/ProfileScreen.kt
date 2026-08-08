@@ -19,37 +19,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
+import cn.silverdragon.draarl.data.DashboardData
+import cn.silverdragon.draarl.data.User
 
 @Composable
 fun ProfileScreen(controller: AppController) {
     val user = controller.user ?: return
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    val listState = rememberLazyListState()
     val avatarLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         selectedImageUri = uri
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        item {
-            ProfileHeader(
-                user = user,
-                onAvatarClick = { avatarLauncher.launch("image/*") },
-                onEditClick = { controller.navigate(AppPage.EDIT_PROFILE) },
-                onSettingsClick = { controller.navigate(AppPage.SETTINGS) },
-                onPresetsClick = { controller.navigate(AppPage.RADIO_PRESETS) },
-            )
-        }
-        item {
-            ProfileInfoSection(user = user)
-        }
-        item { ProfileOverview(controller.dashboard) }
-        item { Spacer(Modifier.height(8.dp)) }
-    }
+    ProfileContent(
+        user = user,
+        dashboard = controller.dashboard,
+        onAvatarClick = { avatarLauncher.launch("image/*") },
+        onNavigate = controller::navigate
+    )
     selectedImageUri?.let { uri ->
         AvatarCropDialog(
             imageUri = uri,
@@ -57,7 +43,38 @@ fun ProfileScreen(controller: AppController) {
             onConfirm = { croppedBytes ->
                 selectedImageUri = null
                 controller.profile.uploadAvatar(croppedBytes, "avatar_${System.currentTimeMillis()}.jpg")
-            },
+            }
         )
+    }
+}
+
+@Composable
+internal fun ProfileContent(
+    user: User,
+    dashboard: DashboardData,
+    onAvatarClick: () -> Unit,
+    onNavigate: (AppPage) -> Unit
+) {
+    val listState = rememberLazyListState()
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        item {
+            ProfileHeader(
+                user = user,
+                onAvatarClick = onAvatarClick,
+                onEditClick = { onNavigate(AppPage.EDIT_PROFILE) },
+                onSettingsClick = { onNavigate(AppPage.SETTINGS) },
+                onPresetsClick = { onNavigate(AppPage.RADIO_PRESETS) }
+            )
+        }
+        item {
+            ProfileInfoSection(user = user)
+        }
+        item { ProfileOverview(dashboard) }
+        item { Spacer(Modifier.height(8.dp)) }
     }
 }

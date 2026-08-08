@@ -30,7 +30,8 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 - `app/src/main/java/cn/silverdragon/draarl/aprs`、`tools`、`maps`：APRS、原生工具和地图能力
 - `app/src/main/cpp`：RNNoise 的 JNI/CMake 接入及第三方源码
 
-当前规模、代码分布和维护重点见 [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)。
+当前规模、代码分布和维护重点见 [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)，自动截图范围与
+控件收敛规则见 [`docs/UI_VISUAL_BASELINE.md`](docs/UI_VISUAL_BASELINE.md)。
 
 ## 构建
 
@@ -40,10 +41,10 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 
 ```powershell
 .\gradlew.bat spotlessCheck detektDebug
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+.\gradlew.bat testDebugUnitTest validateDebugScreenshotTest lintDebug assembleDebug assembleDebugAndroidTest
 ```
 
-Spotless 只检查相对 `origin/main` 新增或修改的 Kotlin/Gradle 文件；Detekt 使用存量基线，并阻止新增的复杂方法、超长类、吞异常和无明确生命周期的通用线程池。GitHub Actions 对 `main` 和 Pull Request 执行同一组静态检查、构建门禁和 Markdown 链接检查。
+Spotless 只检查相对 `origin/main` 新增或修改的 Kotlin/Gradle 文件；Detekt 使用存量基线，并阻止新增的复杂方法、超长类、吞异常和无明确生命周期的通用线程池。GitHub Actions 对 `main` 和 Pull Request 执行同一组静态检查、截图验证、构建门禁和 Markdown 链接检查。
 
 调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
 

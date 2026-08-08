@@ -13,6 +13,7 @@ composeBom = "2026.02.01"
 detekt = "2.0.0-alpha.6"
 ktlint = "1.8.0"
 spotless = "8.9.0"
+screenshot = "0.0.1-alpha16"
 concentus = "1.0.2"
 coil = "3.3.0"
 amapMap = "10.0.600"
@@ -37,6 +38,7 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+screenshot-validation-api = { group = "com.android.tools.screenshot", name = "screenshot-validation-api", version.ref = "screenshot" }
 concentus = { group = "io.github.jaredmdobson", name = "concentus", version.ref = "concentus" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
@@ -48,3 +50,4 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 detekt = { id = "dev.detekt", version.ref = "detekt" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+screenshot = { id = "com.android.compose.screenshot", version.ref = "screenshot" }

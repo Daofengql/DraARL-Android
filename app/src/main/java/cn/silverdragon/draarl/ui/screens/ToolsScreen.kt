@@ -36,31 +36,40 @@ fun ToolsScreen(controller: AppController) {
     val tools = controller.tools
     BackHandler(enabled = tools.canGoBack, onBack = tools::back)
     when (tools.destination) {
-        ToolDestination.HOME -> ToolsHome(controller)
+        ToolDestination.HOME -> ToolsHome(
+            approved = controller.user?.isApproved == true,
+            error = tools.error,
+            onClearError = tools::clearError,
+            onOpen = { tools.open(it, controller.user) }
+        )
+
         ToolDestination.BLE -> BleProvisionScreen(tools = tools, onBack = tools::back)
+
         ToolDestination.RELAYS -> RelaySearchScreen(tools = tools, onBack = tools::back)
+
         ToolDestination.LOGBOOK -> LogbookScreen(controller = controller, tools = tools, onBack = tools::back)
+
         ToolDestination.LOGBOOK_EDITOR -> LogbookEditorScreen(tools = tools, onBack = tools::back)
+
         ToolDestination.MAIDENHEAD -> MaidenheadToolScreen(onBack = tools::back)
     }
 }
 
 @Composable
-private fun ToolsHome(controller: AppController) {
-    val tools = controller.tools
+internal fun ToolsHome(approved: Boolean, error: String, onClearError: () -> Unit, onOpen: (ToolDestination) -> Unit) {
     val listState = rememberLazyListState()
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 12.dp),
+        contentPadding = PaddingValues(vertical = 12.dp)
     ) {
-        if (tools.error.isNotBlank()) {
-            item { ToolError(tools.error, tools::clearError) }
+        if (error.isNotBlank()) {
+            item { ToolError(error, onClearError) }
         }
         items(TOOL_ENTRIES, key = ToolEntry::destination) { item ->
-            val enabled = !item.requiresApproval || controller.user?.isApproved == true
+            val enabled = !item.requiresApproval || approved
             ToolRow(item = item, enabled = enabled) {
-                tools.open(item.destination, controller.user)
+                onOpen(item.destination)
             }
             if (item != TOOL_ENTRIES.last()) HorizontalDivider(Modifier.padding(start = 68.dp))
         }
@@ -75,18 +84,22 @@ private fun ToolRow(item: ToolEntry, enabled: Boolean, onClick: () -> Unit) {
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Icon(
             item.icon,
             contentDescription = null,
             modifier = Modifier.size(28.dp),
-            tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
         )
         Column(Modifier.weight(1f)) {
             Text(item.label, style = MaterialTheme.typography.titleMedium)
             if (!enabled) {
-                Text("需要账号审核", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "需要账号审核",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
@@ -97,12 +110,12 @@ private data class ToolEntry(
     val label: String,
     val icon: ImageVector,
     val destination: ToolDestination,
-    val requiresApproval: Boolean = false,
+    val requiresApproval: Boolean = false
 )
 
 private val TOOL_ENTRIES = listOf(
     ToolEntry("蓝牙配置", Icons.AutoMirrored.Filled.BluetoothSearching, ToolDestination.BLE),
     ToolEntry("中继台查询", Icons.Default.SettingsInputAntenna, ToolDestination.RELAYS),
     ToolEntry("通联日志", Icons.AutoMirrored.Filled.MenuBook, ToolDestination.LOGBOOK, true),
-    ToolEntry("梅登海德网格", Icons.Default.GridOn, ToolDestination.MAIDENHEAD),
+    ToolEntry("梅登海德网格", Icons.Default.GridOn, ToolDestination.MAIDENHEAD)
 )

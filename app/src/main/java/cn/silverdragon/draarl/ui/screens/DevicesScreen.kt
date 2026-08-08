@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -70,9 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.window.Dialog
-import cn.silverdragon.draarl.ui.theme.appColors
 import androidx.compose.ui.window.DialogProperties
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.Device
@@ -85,13 +84,29 @@ import cn.silverdragon.draarl.ui.components.StatusPill
 import cn.silverdragon.draarl.ui.state.activeGroups
 import cn.silverdragon.draarl.ui.state.filterDevices
 import cn.silverdragon.draarl.ui.state.groupNamesById
+import cn.silverdragon.draarl.ui.theme.appColors
 import java.math.BigDecimal
 import java.math.RoundingMode
 
+internal data class DevicesContentState(
+    val devices: List<Device>,
+    val groups: List<Group>,
+    val defaultGroupId: Int?,
+    val loading: Boolean
+)
+
+internal sealed interface DevicesContentAction {
+    data class OpenDevice(val device: Device) : DevicesContentAction
+
+    data object OpenDefaultGroup : DevicesContentAction
+
+    data object BindDevice : DevicesContentAction
+
+    data object OpenPassword : DevicesContentAction
+}
+
 @Composable
 fun DevicesScreen(controller: AppController) {
-    var filter by rememberSaveable { mutableStateOf("") }
-    val listState = rememberLazyListState()
     var detailDeviceId by remember { mutableStateOf<Int?>(null) }
     var showDefaultGroup by remember { mutableStateOf(false) }
     var showPassword by remember { mutableStateOf(false) }
@@ -103,79 +118,34 @@ fun DevicesScreen(controller: AppController) {
 
     val devices = controller.devices
     val groups = controller.groups
-    val query = filter.trim()
-    val visibleDevices = remember(devices, query) { filterDevices(devices, query) }
     val devicesById = remember(devices) { devices.associateBy(Device::id) }
-    val groupsById = remember(groups) { groups.associateBy(Group::id) }
     val groupNames = remember(groups) { groupNamesById(groups) }
     val enabledGroups = remember(groups) { activeGroups(groups) }
-    val defaultGroup = controller.deviceManagement.defaultDeviceGroupId?.let(groupsById::get)
+    DevicesContent(
+        state = DevicesContentState(
+            devices = devices,
+            groups = groups,
+            defaultGroupId = controller.deviceManagement.defaultDeviceGroupId,
+            loading = controller.contentLoading
+        ),
+        onAction = { action ->
+            when (action) {
+                is DevicesContentAction.OpenDevice -> detailDeviceId = action.device.id
 
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            OutlinedTextField(
-                value = filter,
-                onValueChange = { filter = it },
-                placeholder = { Text("搜索设备名称、呼号或 SSID") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = {
-                controller.deviceManagement.resetBinding()
-                showBind = true
-            }) { Icon(Icons.Default.QrCodeScanner, contentDescription = "动态码绑定") }
-            IconButton(onClick = {
-                controller.deviceManagement.loadPassword()
-                showPassword = true
-            }) { Icon(Icons.Default.Key, contentDescription = "设备密码") }
-        }
+                DevicesContentAction.OpenDefaultGroup -> showDefaultGroup = true
 
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable { showDefaultGroup = true }.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("新设备默认群组", fontWeight = FontWeight.Medium)
-                Text(
-                    defaultGroup?.let { "${it.name}（${it.id}）" } ?: "未设置，新设备只登记不参与转发",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
-        }
-        HorizontalDivider()
+                DevicesContentAction.BindDevice -> {
+                    controller.deviceManagement.resetBinding()
+                    showBind = true
+                }
 
-        when {
-            devices.isEmpty() && !controller.contentLoading -> EmptyState(
-                Icons.Default.Devices,
-                "暂无设备",
-                "使用动态码绑定，或让设备首次接入后再查看",
-            )
-            visibleDevices.isEmpty() -> EmptyState(Icons.Default.Search, "没有匹配的设备", "换一个名称、呼号或 SSID 试试")
-            else -> LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp),
-            ) {
-                items(visibleDevices, key = Device::id) { device ->
-                    DeviceListRow(
-                        device = device,
-                        groupName = groupNames[device.groupId].orEmpty(),
-                        onClick = { detailDeviceId = device.id },
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(start = 76.dp))
+                DevicesContentAction.OpenPassword -> {
+                    controller.deviceManagement.loadPassword()
+                    showPassword = true
                 }
             }
         }
-    }
+    )
 
     val detailDevice = detailDeviceId?.let(devicesById::get)
     detailDevice?.let { device ->
@@ -192,7 +162,7 @@ fun DevicesScreen(controller: AppController) {
             },
             onSendChanged = { controller.deviceManagement.updateDevice(device, disableSend = it) },
             onReceiveChanged = { controller.deviceManagement.updateDevice(device, disableReceive = it) },
-            onDelete = { deleteTarget = device },
+            onDelete = { deleteTarget = device }
         )
     }
 
@@ -206,7 +176,7 @@ fun DevicesScreen(controller: AppController) {
             onSelect = {
                 controller.deviceManagement.setDefaultGroup(it?.id)
                 showDefaultGroup = false
-            },
+            }
         )
     }
 
@@ -215,7 +185,7 @@ fun DevicesScreen(controller: AppController) {
             device = device,
             busy = controller.deviceManagement.busy,
             onDismiss = { renameTarget = null },
-            onSave = { name -> controller.deviceManagement.updateDevice(device, name = name) { renameTarget = null } },
+            onSave = { name -> controller.deviceManagement.updateDevice(device, name = name) { renameTarget = null } }
         )
     }
 
@@ -228,7 +198,7 @@ fun DevicesScreen(controller: AppController) {
             onDismiss = { groupTarget = null },
             onSelect = { group ->
                 if (group != null) controller.deviceManagement.switchGroup(device, group) { groupTarget = null }
-            },
+            }
         )
     }
 
@@ -239,7 +209,7 @@ fun DevicesScreen(controller: AppController) {
             onClose = {
                 configTarget = null
                 controller.deviceManagement.closeConfig()
-            },
+            }
         )
     }
 
@@ -254,7 +224,7 @@ fun DevicesScreen(controller: AppController) {
                     deleteTarget = null
                     detailDeviceId = null
                 }
-            },
+            }
         )
     }
 
@@ -271,10 +241,92 @@ fun DevicesScreen(controller: AppController) {
 }
 
 @Composable
+internal fun DevicesContent(state: DevicesContentState, onAction: (DevicesContentAction) -> Unit) {
+    val devices = state.devices
+    val groups = state.groups
+    var filter by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val query = filter.trim()
+    val visibleDevices = remember(devices, query) { filterDevices(devices, query) }
+    val groupsById = remember(groups) { groups.associateBy(Group::id) }
+    val groupNames = remember(groups) { groupNamesById(groups) }
+    val defaultGroup = state.defaultGroupId?.let(groupsById::get)
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            OutlinedTextField(
+                value = filter,
+                onValueChange = { filter = it },
+                placeholder = { Text("搜索设备名称、呼号或 SSID") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { onAction(DevicesContentAction.BindDevice) }) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = "动态码绑定")
+            }
+            IconButton(onClick = { onAction(DevicesContentAction.OpenPassword) }) {
+                Icon(Icons.Default.Key, contentDescription = "设备密码")
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onAction(DevicesContentAction.OpenDefaultGroup) }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("新设备默认群组", fontWeight = FontWeight.Medium)
+                Text(
+                    defaultGroup?.let { "${it.name}（${it.id}）" } ?: "未设置，新设备只登记不参与转发",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+        }
+        HorizontalDivider()
+
+        when {
+            devices.isEmpty() && !state.loading -> EmptyState(
+                Icons.Default.Devices,
+                "暂无设备",
+                "使用动态码绑定，或让设备首次接入后再查看"
+            )
+
+            visibleDevices.isEmpty() -> EmptyState(Icons.Default.Search, "没有匹配的设备", "换一个名称、呼号或 SSID 试试")
+
+            else -> LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                items(visibleDevices, key = Device::id) { device ->
+                    DeviceListRow(
+                        device = device,
+                        groupName = groupNames[device.groupId].orEmpty(),
+                        onClick = { onAction(DevicesContentAction.OpenDevice(device)) }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(start = 76.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         DeviceAvatar(device)
         Spacer(Modifier.width(12.dp))
@@ -286,22 +338,26 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 StatusPill(
                     if (device.online) "在线" else "离线",
-                    if (device.online) MaterialTheme.appColors.statusConnected else MaterialTheme.appColors.statusOffline,
+                    if (device.online) {
+                        MaterialTheme.appColors.statusConnected
+                    } else {
+                        MaterialTheme.appColors.statusOffline
+                    }
                 )
             }
             Text(
                 "${device.callsign}-${device.ssid} · ${deviceModelName(device.model)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 groupName.ifBlank { if (device.groupId == 0) "未分组" else "群组 ${device.groupId}" },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.outline
             )
             val restrictions = buildList {
                 if (device.disableSend) add("禁发")
@@ -309,7 +365,11 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
                 if (!device.enabled) add("停用")
             }
             if (restrictions.isNotEmpty()) {
-                Text(restrictions.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                Text(
+                    restrictions.joinToString(" · "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
@@ -320,15 +380,23 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
 private fun DeviceAvatar(device: Device, size: Int = 48) {
     Surface(
         shape = CircleShape,
-        color = if (device.online) MaterialTheme.appColors.receiveContainer else MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.size(size.dp),
+        color = if (device.online) {
+            MaterialTheme.appColors.receiveContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        modifier = Modifier.size(size.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 Icons.Default.Devices,
                 contentDescription = null,
-                tint = if (device.online) MaterialTheme.appColors.onReceiveContainer else MaterialTheme.appColors.statusOffline,
-                modifier = Modifier.size((size * 0.5f).dp),
+                tint = if (device.online) {
+                    MaterialTheme.appColors.onReceiveContainer
+                } else {
+                    MaterialTheme.appColors.statusOffline
+                },
+                modifier = Modifier.size((size * 0.5f).dp)
             )
         }
     }
@@ -345,31 +413,35 @@ private fun DeviceDetailDialog(
     onConfig: () -> Unit,
     onSendChanged: (Boolean) -> Unit,
     onReceiveChanged: (Boolean) -> Unit,
-    onDelete: () -> Unit,
+    onDelete: () -> Unit
 ) {
     FullDeviceDialog(onClose) {
         Scaffold(
             topBar = {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     Text("设备资料", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
-            },
+            }
         ) { padding ->
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(Modifier.height(12.dp))
                 DeviceAvatar(device, 76)
                 Spacer(Modifier.height(12.dp))
-                Text(device.name.ifBlank { "设备 ${device.id}" }, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                Text(
+                    device.name.ifBlank { "设备 ${device.id}" },
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Text(
                     "${device.callsign}-${device.ssid} · ${if (device.online) "在线" else "离线"}",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(18.dp))
                 DeviceValueRow("设备型号", deviceModelName(device.model))
@@ -383,7 +455,12 @@ private fun DeviceDetailDialog(
 
                 HorizontalDivider(Modifier.padding(top = 10.dp))
                 DeviceActionRow(Icons.Default.Settings, "修改设备名称", "设置便于识别的名称", onRename)
-                DeviceActionRow(Icons.Default.Router, "切换群组", "当前：${groupName.ifBlank { device.groupId.toString() }}", onSwitchGroup)
+                DeviceActionRow(
+                    Icons.Default.Router,
+                    "切换群组",
+                    "当前：${groupName.ifBlank { device.groupId.toString() }}",
+                    onSwitchGroup
+                )
                 if (device.model in 1..2) {
                     DeviceActionRow(Icons.Default.Settings, "参数配置", "频率、功率、静噪与音频", onConfig)
                 }
@@ -407,10 +484,15 @@ private fun DeviceValueRow(label: String, value: String) {
 }
 
 @Composable
-private fun DeviceActionRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, detail: String, onClick: () -> Unit) {
+private fun DeviceActionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.width(14.dp))
@@ -428,9 +510,12 @@ private fun DeviceSwitchRow(
     detail: String,
     checked: Boolean,
     busy: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+    onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Medium)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -446,12 +531,16 @@ private fun GroupPickerDialog(
     selectedGroupId: Int?,
     allowNone: Boolean,
     onDismiss: () -> Unit,
-    onSelect: (Group?) -> Unit,
+    onSelect: (Group?) -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(vertical = 14.dp)) {
-                Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+                )
                 LazyColumn(modifier = Modifier.fillMaxWidth().height(360.dp)) {
                     if (allowNone) {
                         item(key = "none") {
@@ -462,11 +551,14 @@ private fun GroupPickerDialog(
                         PickerRow(
                             group.name,
                             "ID ${group.id} · ${if (group.isPrivate) "私有" else "公开"}",
-                            group.id == selectedGroupId,
+                            group.id == selectedGroupId
                         ) { onSelect(group) }
                     }
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(end = 8.dp)) { Text("取消") }
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.End).padding(end = 8.dp)
+                ) { Text("取消") }
             }
         }
     }
@@ -476,12 +568,12 @@ private fun GroupPickerDialog(
 private fun PickerRow(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             if (selected) Icons.Default.Router else Icons.Default.Devices,
             contentDescription = null,
-            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -499,10 +591,21 @@ private fun RenameDeviceDialog(device: Device, busy: Boolean, onDismiss: () -> U
         onDismissRequest = onDismiss,
         title = { Text("修改设备名称") },
         text = {
-            OutlinedTextField(name, { name = it }, label = { Text("设备名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                name,
+                { name = it },
+                label = { Text("设备名称") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
         },
-        confirmButton = { TextButton(onClick = { onSave(name.trim()) }, enabled = name.isNotBlank() && !busy) { Text("保存") } },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") } },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(name.trim()) },
+                enabled = name.isNotBlank() && !busy
+            ) { Text("保存") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") } }
     )
 }
 
@@ -525,7 +628,12 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
     var pttActiveHigh by remember(device.id) { mutableStateOf(false) }
 
     LaunchedEffect(controller.deviceManagement.config, controller.deviceManagement.configDeviceId) {
-        if (controller.deviceManagement.configDeviceId != device.id || controller.deviceManagement.config.isEmpty()) return@LaunchedEffect
+        if (
+            controller.deviceManagement.configDeviceId != device.id ||
+            controller.deviceManagement.config.isEmpty()
+        ) {
+            return@LaunchedEffect
+        }
         val config = controller.deviceManagement.config
         txFreq = hzToMhz(config["tx_freq"].orEmpty())
         rxFreq = hzToMhz(config["rx_freq"].orEmpty())
@@ -547,19 +655,28 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
     FullDeviceDialog(onClose) {
         Scaffold(
             topBar = {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                     Column(Modifier.weight(1f)) {
                         Text("参数配置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text(device.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            device.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    if (controller.deviceManagement.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    if (controller.deviceManagement.busy) {
+                        CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                    }
                 }
-            },
+            }
         ) { padding ->
             Column(
                 modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 if (!device.online) {
                     Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.small) {
@@ -573,7 +690,7 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                     label = { Text("发射频率 MHz") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth()
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("收发同频", modifier = Modifier.weight(1f))
@@ -586,7 +703,7 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                         label = { Text("接收频率 MHz") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
                 ValueSlider("静噪等级", squelch, 0f..8f, 7) { squelch = it }
@@ -599,7 +716,11 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("射频保护")
-                        Text("限制连续和窗口内发射时长", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "限制连续和窗口内发射时长",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Switch(rfGuard, { rfGuard = it })
                 }
@@ -635,8 +756,10 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                         }
                         controller.deviceManagement.saveConfig(device, updated, onClose)
                     },
-                    enabled = !controller.deviceManagement.busy && txFreq.isNotBlank() && (sameFrequency || rxFreq.isNotBlank()),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    enabled = !controller.deviceManagement.busy &&
+                        txFreq.isNotBlank() &&
+                        (sameFrequency || rxFreq.isNotBlank()),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                 ) {
                     Text(if (device.online) "保存并同步" else "保存配置")
                 }
@@ -646,7 +769,13 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
 }
 
 @Composable
-private fun ValueSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int, onChange: (Float) -> Unit) {
+private fun ValueSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onChange: (Float) -> Unit
+) {
     Column {
         Row(Modifier.fillMaxWidth()) {
             Text(label, modifier = Modifier.weight(1f))
@@ -664,7 +793,7 @@ private fun NumericConfigField(label: String, value: String, onChange: (String) 
         label = { Text(label) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth()
     )
 }
 
@@ -679,17 +808,28 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
                 Text("设备密码", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 Text("此密码只用于硬件设备接入，不是账号登录密码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (controller.deviceManagement.busy && controller.deviceManagement.passwordInfo == null) {
-                    Box(Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    Box(
+                        Modifier.fillMaxWidth().height(90.dp),
+                        contentAlignment = Alignment.Center
+                    ) { CircularProgressIndicator() }
                 } else {
-                    Text("账号", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "账号",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Text(controller.user?.username.orEmpty(), fontFamily = FontFamily.Monospace)
-                    Text("设备密码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "设备密码",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             if (visible) controller.deviceManagement.passwordInfo?.password.orEmpty() else "••••••••",
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f)
                         )
                         IconButton(onClick = { visible = !visible }) {
                             Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "显示或隐藏密码")
@@ -700,7 +840,10 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
                     }
                 }
                 Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { confirmRegenerate = true }, enabled = !controller.deviceManagement.busy) { Text("刷新密码") }
+                    OutlinedButton(
+                        onClick = { confirmRegenerate = true },
+                        enabled = !controller.deviceManagement.busy
+                    ) { Text("刷新密码") }
                     Button(onClick = onClose) { Text("关闭") }
                 }
             }
@@ -716,7 +859,7 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
                 confirmRegenerate = false
                 visible = true
                 controller.deviceManagement.regeneratePassword()
-            },
+            }
         )
     }
 }
@@ -742,11 +885,12 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
         Surface(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text("动态码绑定", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 when {
                     result != null -> BindingResultContent(result, context)
+
                     preview != null -> BindingPreviewContent(
                         preview = preview,
                         ssid = ssid,
@@ -758,8 +902,9 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
                         onReplacement = {
                             replacement = it
                             ssid = it.ssid.toString()
-                        },
+                        }
                     )
+
                     else -> {
                         Text("输入设备屏幕或串口显示的 6 位动态码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         OutlinedTextField(
@@ -768,7 +913,7 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
                             label = { Text("6 位动态码") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -776,13 +921,20 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
                     TextButton(onClick = onClose) { Text(if (result == null) "取消" else "完成") }
                     when {
                         result != null -> Unit
+
                         preview != null -> Button(
-                            onClick = { controller.deviceManagement.submitBinding(ssid.toIntOrNull(), replacement?.deviceId) },
-                            enabled = !controller.deviceManagement.busy && (ssid.isNotBlank() || replacement != null),
+                            onClick = {
+                                controller.deviceManagement.submitBinding(
+                                    ssid.toIntOrNull(),
+                                    replacement?.deviceId
+                                )
+                            },
+                            enabled = !controller.deviceManagement.busy && (ssid.isNotBlank() || replacement != null)
                         ) { Text("提交配置") }
+
                         else -> Button(
                             onClick = { controller.deviceManagement.lookupBindCode(code) },
-                            enabled = !controller.deviceManagement.busy && code.length == 6,
+                            enabled = !controller.deviceManagement.busy && code.length == 6
                         ) { Text("下一步") }
                     }
                 }
@@ -797,10 +949,18 @@ private fun BindingPreviewContent(
     ssid: String,
     onSsidChange: (String) -> Unit,
     replacement: ReplaceableDevice?,
-    onReplacement: (ReplaceableDevice) -> Unit,
+    onReplacement: (ReplaceableDevice) -> Unit
 ) {
-    Text(preview.callsign.ifBlank { "待绑定设备" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-    Text("MAC ${preview.deviceMac}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(
+        preview.callsign.ifBlank { "待绑定设备" },
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold
+    )
+    Text(
+        "MAC ${preview.deviceMac}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
     if (preview.availableSsids.isNotEmpty()) {
         OutlinedTextField(
             ssid,
@@ -809,7 +969,7 @@ private fun BindingPreviewContent(
             supportingText = { Text("可用：${preview.availableSsids.joinToString()}") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth()
         )
     }
     if (preview.replaceableDevices.isNotEmpty()) {
@@ -819,7 +979,7 @@ private fun BindingPreviewContent(
                 selected = replacement?.deviceId == device.deviceId,
                 onClick = { onReplacement(device) },
                 label = { Text("${device.name.ifBlank { device.callsign }} · ${device.callsign}-${device.ssid}") },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -830,19 +990,23 @@ private fun BindingResultContent(result: cn.silverdragon.draarl.data.DeviceBindR
     Text(
         result.message.ifBlank { "设备配置已提交" },
         color = MaterialTheme.appColors.statusConnected,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.SemiBold
     )
     Text("SSID", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Text(result.ssid?.toString().orEmpty(), fontFamily = FontFamily.Monospace)
     Text("UDP 账号", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(result.username, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-        IconButton(onClick = { copyText(context, "UDP 账号", result.username) }) { Icon(Icons.Default.ContentCopy, "复制账号") }
+        IconButton(onClick = { copyText(context, "UDP 账号", result.username) }) {
+            Icon(Icons.Default.ContentCopy, "复制账号")
+        }
     }
     Text("设备密码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(result.devicePassword, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-        IconButton(onClick = { copyText(context, "设备密码", result.devicePassword) }) { Icon(Icons.Default.ContentCopy, "复制密码") }
+        IconButton(onClick = { copyText(context, "设备密码", result.devicePassword) }) {
+            Icon(Icons.Default.ContentCopy, "复制密码")
+        }
     }
     if (result.dmrId > 0) Text("DMR ID ${result.dmrId}")
 }
@@ -871,14 +1035,18 @@ private fun ConfirmDeviceActionDialog(
     message: String,
     confirmText: String,
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
+    onConfirm: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(message) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(confirmText, color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirmText, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
     )
 }
 

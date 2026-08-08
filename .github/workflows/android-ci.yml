@@ -44,7 +44,7 @@ jobs:
         run: bash ./gradlew spotlessCheck detektDebug
 
       - name: Run Android build gates
-        run: bash ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+        run: bash ./gradlew testDebugUnitTest validateDebugScreenshotTest lintDebug assembleDebug assembleDebugAndroidTest
 
       - name: Upload reports
         if: always()

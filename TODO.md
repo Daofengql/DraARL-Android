@@ -18,10 +18,11 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 136 个文件，约 2.33 万有效代码行；JVM 测试 48 个文件、149 个用例。
+- 生产 Kotlin 136 个文件，约 2.36 万有效代码行；JVM 测试 48 个文件、149 个用例。
+- Compose 截图测试 2 个文件、12 张参考图，覆盖应用壳层和五个一级页面的浅色/深色状态。
 - 复杂度主要集中在 `AppController`、`ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
-- Spotless、Detekt、单元测试、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
+- Spotless、Detekt、单元测试、截图验证、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
 
 ## P1：代码边界与状态所有权
 
@@ -76,14 +77,6 @@
 ## P1：UI 去模板化
 
 目标是形成克制、清晰、偏专业通信设备的 DraARL 视觉语言，而不是重做交互或更换 UI 框架。
-
-- [ ] **建立视觉验收基线**
-
-- 为应用壳层、设备、群组、PTT、工具和个人页保存浅色/深色参考截图。
-- 同时覆盖 360 dp 窄屏、常规手机、横屏、长中文和 1.5 倍系统字体。
-- 记录当前 Card、Surface、圆角按钮、分段控件和状态色的使用位置，确定保留与替换规则。
-
-验收：后续每批视觉改造都有同尺寸前后对比，不凭印象判断是否改善。
 
 - [ ] **收敛 DraARL 设计令牌**
 
@@ -181,13 +174,12 @@
 
 ## 推荐执行顺序
 
-1. 为现有五个一级页面建立截图基线。
-2. 按域继续拆分 `AppController`，每次只迁移一个状态所有者。
-3. 分两到三个小批次改造壳层、列表/设置页和反馈容器。
-4. 拆分 `ApiClient` 并补 MockWebServer 测试。
-5. 显式化 `UdpRadioClient` 状态机并补确定性测试。
-6. 处理 Compose 重组、Release/R8 和 Baseline Profile。
-7. 每个批次同步规模数据与文档，最后执行完整真机回归。
+1. 按域继续拆分 `AppController`，每次只迁移一个状态所有者。
+2. 分两到三个小批次改造壳层、列表/设置页和反馈容器。
+3. 拆分 `ApiClient` 并补 MockWebServer 测试。
+4. 显式化 `UdpRadioClient` 状态机并补确定性测试。
+5. 处理 Compose 重组、Release/R8 和 Baseline Profile。
+6. 每个批次同步规模数据与文档，最后执行完整真机回归。
 
 ## 每批验证
 
@@ -200,7 +192,7 @@
 完整工程门禁：
 
 ```powershell
-.\gradlew.bat spotlessCheck detektDebug testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+.\gradlew.bat spotlessCheck detektDebug testDebugUnitTest validateDebugScreenshotTest lintDebug assembleDebug assembleDebugAndroidTest
 ```
 
 涉及 UI、音频、网络、服务或 Release 的批次还需完成对应截图、真机或性能验证，并在提交说明中记录环境与结果。
