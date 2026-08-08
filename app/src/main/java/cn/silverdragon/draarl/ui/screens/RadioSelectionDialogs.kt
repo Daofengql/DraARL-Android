@@ -36,10 +36,14 @@ import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.state.availableRadioGroups
 import cn.silverdragon.draarl.ui.theme.appColors
 
 @Composable
 internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit) {
+    val probesByAccessPointId = remember(controller.accessPointProbes) {
+        controller.accessPointProbes.associateBy { it.accessPoint.id }
+    }
     DraarlDialog(
         title = "选择边缘节点",
         onDismissRequest = onDismiss,
@@ -48,7 +52,7 @@ internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit)
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
             items(controller.accessPoints, key = AccessPoint::id) { point ->
                 val selected = point.id == controller.selectedAccessPoint?.id
-                val probe = controller.accessPointProbes.firstOrNull { it.accessPoint.id == point.id }
+                val probe = probesByAccessPointId[point.id]
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -86,7 +90,7 @@ internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit)
 
 @Composable
 internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
-    val availableGroups = controller.groups.filter { !it.isPrivate || it.joined || it.owner }
+    val availableGroups = remember(controller.groups) { availableRadioGroups(controller.groups) }
     DraarlDialog(
         title = "发送/日志频道",
         onDismissRequest = onDismiss,
@@ -128,7 +132,7 @@ internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
 
 @Composable
 internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
-    val availableGroups = controller.groups.filter { !it.isPrivate || it.joined || it.owner }
+    val availableGroups = remember(controller.groups) { availableRadioGroups(controller.groups) }
     val primaryGroupId = controller.selectedGroupId
     var rxGroupIds by remember(controller.radioStatus.sessionId, primaryGroupId) {
         mutableStateOf(controller.receiveGroupIds + primaryGroupId)

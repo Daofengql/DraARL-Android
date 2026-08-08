@@ -17,8 +17,8 @@
 ## 当前基线
 
 - 版本：`2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin：130 个文件，约 2.30 万行。
-- JVM 测试：140 个通过；Android 仪器测试 APK 已编译，尚未连接设备执行。
+- 生产 Kotlin：131 个文件，约 2.30 万行。
+- JVM 测试：144 个通过；Android 仪器测试 APK 已编译，尚未连接设备执行。
 - 复杂度集中在 `AppController`、`ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
 - UI 使用约 36 处 `Card`、59 处 `Surface`、15 处 `AlertDialog`；已有 7 个设计系统 Preview，尚无截图回归测试。
 
@@ -104,15 +104,6 @@
 验收：连接和重连状态转换可以用纯 JVM 测试覆盖，不依赖真实网络或 Android Service。
 
 ## P2：Compose 与数据处理性能
-
-### [ ] 缓存派生列表和索引
-
-- 设备、群组和频道过滤使用 `remember` / `derivedStateOf`，只在输入变化时重新计算。
-- 预先构建 `groupId -> groupName` 索引，避免列表项逐个执行 `firstOrNull`。
-- 评估 `unplayedVoiceCount` 等派生值，避免高频重组时重复扫描消息列表。
-- 保持 Lazy 列表 key 稳定，避免使用会随标题或状态变化的复合 key。
-
-验收：搜索输入之外的无关状态变化不会重新过滤或遍历完整列表。
 
 ### [ ] 减少高频 Compose 状态传播
 

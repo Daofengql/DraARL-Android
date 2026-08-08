@@ -32,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
+import cn.silverdragon.draarl.ui.state.groupNamesById
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -73,6 +75,8 @@ fun RadioScreen(
     val scope = rememberCoroutineScope()
     val locationProvider = remember(context) { CurrentLocationProvider(context) }
     val messages = controller.radioMessages
+    val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
+    val unplayedVoiceCount by remember { derivedStateOf { controller.unplayedVoiceCount } }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0),
     )
@@ -318,6 +322,7 @@ fun RadioScreen(
                                 MessageItem(
                                     controller = controller,
                                     message = message,
+                                    sourceGroupName = groupNames[message.groupId].orEmpty(),
                                     showTimeDivider = index == 0 ||
                                         message.timestamp - messages[index - 1].timestamp >= RADIO_TIME_DIVIDER_MS,
                                     onOpenLocation = onOpenLocation,
@@ -325,7 +330,7 @@ fun RadioScreen(
                             }
                         }
                         MessageListFloatingActions(
-                            unplayedCount = controller.unplayedVoiceCount,
+                            unplayedCount = unplayedVoiceCount,
                             autoPlaying = controller.voiceAutoPlayEnabled,
                             canScrollToBottom = listState.canScrollForward,
                             onToggleAutoPlay = {

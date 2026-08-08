@@ -82,6 +82,9 @@ import cn.silverdragon.draarl.data.ReplaceableDevice
 import cn.silverdragon.draarl.data.deviceModelName
 import cn.silverdragon.draarl.ui.components.EmptyState
 import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.ui.state.activeGroups
+import cn.silverdragon.draarl.ui.state.filterDevices
+import cn.silverdragon.draarl.ui.state.groupNamesById
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -98,14 +101,15 @@ fun DevicesScreen(controller: AppController) {
     var configTarget by remember { mutableStateOf<Device?>(null) }
     var deleteTarget by remember { mutableStateOf<Device?>(null) }
 
+    val devices = controller.devices
+    val groups = controller.groups
     val query = filter.trim()
-    val visibleDevices = controller.devices.filter { device ->
-        query.isBlank() ||
-            device.name.contains(query, ignoreCase = true) ||
-            device.callsign.contains(query, ignoreCase = true) ||
-            device.ssid.toString().contains(query)
-    }
-    val defaultGroup = controller.deviceManagement.defaultDeviceGroupId?.let { id -> controller.groups.firstOrNull { it.id == id } }
+    val visibleDevices = remember(devices, query) { filterDevices(devices, query) }
+    val devicesById = remember(devices) { devices.associateBy(Device::id) }
+    val groupsById = remember(groups) { groups.associateBy(Group::id) }
+    val groupNames = remember(groups) { groupNamesById(groups) }
+    val enabledGroups = remember(groups) { activeGroups(groups) }
+    val defaultGroup = controller.deviceManagement.defaultDeviceGroupId?.let(groupsById::get)
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -150,7 +154,7 @@ fun DevicesScreen(controller: AppController) {
         HorizontalDivider()
 
         when {
-            controller.devices.isEmpty() && !controller.contentLoading -> EmptyState(
+            devices.isEmpty() && !controller.contentLoading -> EmptyState(
                 Icons.Default.Devices,
                 "暂无设备",
                 "使用动态码绑定，或让设备首次接入后再查看",
@@ -164,7 +168,7 @@ fun DevicesScreen(controller: AppController) {
                 items(visibleDevices, key = Device::id) { device ->
                     DeviceListRow(
                         device = device,
-                        groupName = controller.groups.firstOrNull { it.id == device.groupId }?.name.orEmpty(),
+                        groupName = groupNames[device.groupId].orEmpty(),
                         onClick = { detailDeviceId = device.id },
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 76.dp))
@@ -173,11 +177,11 @@ fun DevicesScreen(controller: AppController) {
         }
     }
 
-    val detailDevice = detailDeviceId?.let { id -> controller.devices.firstOrNull { it.id == id } }
+    val detailDevice = detailDeviceId?.let(devicesById::get)
     detailDevice?.let { device ->
         DeviceDetailDialog(
             device = device,
-            groupName = controller.groups.firstOrNull { it.id == device.groupId }?.name.orEmpty(),
+            groupName = groupNames[device.groupId].orEmpty(),
             busy = controller.deviceManagement.busy,
             onClose = { detailDeviceId = null },
             onRename = { renameTarget = device },
@@ -195,7 +199,7 @@ fun DevicesScreen(controller: AppController) {
     if (showDefaultGroup) {
         GroupPickerDialog(
             title = "新设备默认群组",
-            groups = controller.groups.filter { it.status == 1 },
+            groups = enabledGroups,
             selectedGroupId = controller.deviceManagement.defaultDeviceGroupId,
             allowNone = true,
             onDismiss = { showDefaultGroup = false },
@@ -218,7 +222,7 @@ fun DevicesScreen(controller: AppController) {
     groupTarget?.let { device ->
         GroupPickerDialog(
             title = "切换设备群组",
-            groups = controller.groups.filter { it.status == 1 },
+            groups = enabledGroups,
             selectedGroupId = device.groupId,
             allowNone = false,
             onDismiss = { groupTarget = null },

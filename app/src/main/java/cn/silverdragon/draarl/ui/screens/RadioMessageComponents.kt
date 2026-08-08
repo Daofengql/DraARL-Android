@@ -63,7 +63,7 @@ internal fun OnlineDeviceStrip(devices: List<OnlineDevice>) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(devices, key = { "${it.id}-${it.ssid}-${it.username}" }) { device ->
+        items(devices, key = OnlineDevice::id) { device ->
             Card(shape = RoundedCornerShape(6.dp)) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                     Text(device.callsign.ifBlank { device.nickname.ifBlank { device.username } }, fontWeight = FontWeight.SemiBold)
@@ -78,6 +78,7 @@ internal fun OnlineDeviceStrip(devices: List<OnlineDevice>) {
 internal fun MessageItem(
     controller: AppController,
     message: RadioMessage,
+    sourceGroupName: String,
     showTimeDivider: Boolean,
     onOpenLocation: (Wgs84LocationMessage) -> Unit,
 ) {
@@ -110,10 +111,9 @@ internal fun MessageItem(
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                val sourceGroup = controller.groups.firstOrNull { it.id == message.groupId }
                 if (message.groupId > 0) {
                     Text(
-                        sourceGroup?.name ?: "频道 ${message.groupId}",
+                        sourceGroupName.ifBlank { "频道 ${message.groupId}" },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )

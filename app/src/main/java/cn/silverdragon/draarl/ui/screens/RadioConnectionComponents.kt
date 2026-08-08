@@ -17,6 +17,7 @@ import cn.silverdragon.draarl.ui.components.RadioStatusStrip
 import cn.silverdragon.draarl.ui.components.RadioStatusStripState
 import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.components.UserAvatar
+import cn.silverdragon.draarl.ui.state.groupNamesById
 
 @Composable
 internal fun ConnectionPanel(
@@ -27,7 +28,7 @@ internal fun ConnectionPanel(
     var accessMenu by remember { mutableStateOf(false) }
     var groupMenu by remember { mutableStateOf(false) }
     var routingMenu by remember { mutableStateOf(false) }
-    val selectedGroup = controller.groups.firstOrNull { it.id == controller.selectedGroupId }
+    val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
     val user = controller.user
     val callsign = user?.let { it.callsign.ifBlank { it.displayName } }.orEmpty().ifBlank { "DraARL" }
     val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null
@@ -50,7 +51,7 @@ internal fun ConnectionPanel(
             transmitting = status.transmitting,
             denoiseEnabled = controller.playbackDenoiseEnabled,
             muted = controller.muted,
-            sendChannel = selectedGroup?.name ?: "群组 ${controller.selectedGroupId}",
+            sendChannel = groupNames[controller.selectedGroupId] ?: "群组 ${controller.selectedGroupId}",
             sendChannelEnabled = controller.groups.isNotEmpty() && !controller.radioRoutingUpdating,
             receiveChannelCount = controller.receiveGroupIds.size,
             receiveChannelsEnabled = controller.groups.isNotEmpty() && status.connected && !controller.radioRoutingUpdating,

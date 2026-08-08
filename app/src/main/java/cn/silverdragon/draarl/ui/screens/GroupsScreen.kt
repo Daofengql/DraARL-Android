@@ -84,6 +84,7 @@ import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.deviceModelName
 import cn.silverdragon.draarl.ui.components.EmptyState
 import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.ui.state.visibleGroupSections
 
 @Composable
 fun GroupsScreen(controller: AppController) {
@@ -116,12 +117,10 @@ fun GroupsScreen(controller: AppController) {
         }
     }
 
+    val groups = controller.groups
     val query = filter.trim()
-    val visible = controller.groups.filter { group ->
-        query.isBlank() || group.name.contains(query, ignoreCase = true) || group.id.toString().contains(query)
-    }
-    val publicGroups = visible.filter { !it.isPrivate }
-    val privateGroups = visible.filter { it.isPrivate && it.joined }
+    val sections = remember(groups, query) { visibleGroupSections(groups, query) }
+    val groupsById = remember(groups) { groups.associateBy(Group::id) }
 
     Column(Modifier.fillMaxSize()) {
         AnimatedContent(
@@ -185,7 +184,7 @@ fun GroupsScreen(controller: AppController) {
             }
         }
 
-        if (controller.groups.isEmpty() && !controller.contentLoading) {
+        if (groups.isEmpty() && !controller.contentLoading) {
             EmptyState(Icons.Default.Groups, "暂无群组", "可搜索加入私有群组，或创建新群组")
         } else {
             LazyColumn(
@@ -195,13 +194,13 @@ fun GroupsScreen(controller: AppController) {
             ) {
                 groupSection(
                     title = "公开群组",
-                    groups = publicGroups,
+                    groups = sections.publicGroups,
                     emptyText = if (query.isBlank()) "暂无公开群组" else "没有匹配的公开群组",
                     onOpen = { detailGroupId = it.id },
                 )
                 groupSection(
                     title = "我的私有群组",
-                    groups = privateGroups,
+                    groups = sections.privateGroups,
                     emptyText = if (query.isBlank()) "尚未加入私有群组" else "没有匹配的私有群组",
                     onOpen = { detailGroupId = it.id },
                 )
@@ -209,7 +208,7 @@ fun GroupsScreen(controller: AppController) {
         }
     }
 
-    val detailGroup = detailGroupId?.let { id -> controller.groups.firstOrNull { it.id == id } }
+    val detailGroup = detailGroupId?.let(groupsById::get)
     detailGroup?.let { group ->
         GroupDetailDialog(
             group = group,
@@ -337,7 +336,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.groupSection(
             )
         }
     } else {
-        items(groups, key = { "$title-${it.id}" }) { group ->
+        items(groups, key = Group::id) { group ->
             GroupListRow(group, onClick = { onOpen(group) })
             HorizontalDivider(modifier = Modifier.padding(start = 76.dp))
         }

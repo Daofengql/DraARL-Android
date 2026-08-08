@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
@@ -48,12 +49,6 @@ fun ToolsScreen(controller: AppController) {
 private fun ToolsHome(controller: AppController) {
     val tools = controller.tools
     val listState = rememberLazyListState()
-    val items = listOf(
-        ToolEntry("蓝牙配置", Icons.AutoMirrored.Filled.BluetoothSearching, ToolDestination.BLE),
-        ToolEntry("中继台查询", Icons.Default.SettingsInputAntenna, ToolDestination.RELAYS),
-        ToolEntry("通联日志", Icons.AutoMirrored.Filled.MenuBook, ToolDestination.LOGBOOK, true),
-        ToolEntry("梅登海德网格", Icons.Default.GridOn, ToolDestination.MAIDENHEAD),
-    )
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -62,13 +57,12 @@ private fun ToolsHome(controller: AppController) {
         if (tools.error.isNotBlank()) {
             item { ToolError(tools.error, tools::clearError) }
         }
-        items(items.size) { index ->
-            val item = items[index]
+        items(TOOL_ENTRIES, key = ToolEntry::destination) { item ->
             val enabled = !item.requiresApproval || controller.user?.isApproved == true
             ToolRow(item = item, enabled = enabled) {
                 tools.open(item.destination, controller.user)
             }
-            if (index != items.lastIndex) HorizontalDivider(Modifier.padding(start = 68.dp))
+            if (item != TOOL_ENTRIES.last()) HorizontalDivider(Modifier.padding(start = 68.dp))
         }
     }
 }
@@ -104,4 +98,11 @@ private data class ToolEntry(
     val icon: ImageVector,
     val destination: ToolDestination,
     val requiresApproval: Boolean = false,
+)
+
+private val TOOL_ENTRIES = listOf(
+    ToolEntry("蓝牙配置", Icons.AutoMirrored.Filled.BluetoothSearching, ToolDestination.BLE),
+    ToolEntry("中继台查询", Icons.Default.SettingsInputAntenna, ToolDestination.RELAYS),
+    ToolEntry("通联日志", Icons.AutoMirrored.Filled.MenuBook, ToolDestination.LOGBOOK, true),
+    ToolEntry("梅登海德网格", Icons.Default.GridOn, ToolDestination.MAIDENHEAD),
 )
