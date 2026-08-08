@@ -60,6 +60,7 @@ import cn.silverdragon.draarl.network.ApiException
 import cn.silverdragon.draarl.profile.ProfileController
 import cn.silverdragon.draarl.radio.AccessPointProbe
 import cn.silverdragon.draarl.radio.AccessPointSelector
+import cn.silverdragon.draarl.radio.AudioLevelThrottler
 import cn.silverdragon.draarl.radio.PlaybackDenoiseState
 import cn.silverdragon.draarl.radio.PLAYBACK_DENOISE_MAX_STRENGTH_PERCENT
 import cn.silverdragon.draarl.radio.PLAYBACK_DENOISE_MIN_STRENGTH_PERCENT
@@ -136,6 +137,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val radioHistoryStates = ConcurrentHashMap<String, RadioHistoryState>()
     private val radioVisibleLimits = ConcurrentHashMap<String, Int>()
     private val voiceAutoPlaySkippedIds = mutableSetOf<String>()
+    private val playbackLevelThrottler = AudioLevelThrottler()
+    private val transmitLevelThrottler = AudioLevelThrottler()
     private var voiceAutoPlayPendingMessageId: String? = null
     private var displayedRadioMessageGroupId: Int? = null
     private val voiceAutoPlayAdvance = Runnable { advanceVoiceAutoPlay() }
@@ -176,10 +179,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
             }
         }
     }
-    val tools: ToolsController by lazy { ToolsController(appContext, api) }
+    private val toolsDelegate = lazy { ToolsController(appContext, api) }
+    val tools: ToolsController
+        get() = toolsDelegate.value
     private val appUpdateManager by lazy { AppUpdateManager(appContext, api) }
     private val appDataRefresher by lazy { AppDataRefresher(ApiAppDataSource(api), executor) }
-    val deviceManagement: DeviceManagementController by lazy {
+    private val deviceManagementDelegate = lazy {
         DeviceManagementController(
             api = api,
             executor = executor,
@@ -191,7 +196,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             friendlyError = ::friendlyError,
         )
     }
-    val groupManagement: GroupManagementController by lazy {
+    val deviceManagement: DeviceManagementController
+        get() = deviceManagementDelegate.value
+    private val groupManagementDelegate = lazy {
         GroupManagementController(
             api = api,
             executor = executor,
@@ -206,7 +213,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             friendlyError = ::friendlyError,
         )
     }
-    val profile: ProfileController by lazy {
+    val groupManagement: GroupManagementController
+        get() = groupManagementDelegate.value
+    private val profileDelegate = lazy {
         ProfileController(
             api = api,
             executor = executor,
@@ -217,7 +226,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             friendlyError = ::friendlyError,
         )
     }
-    val publicAuth: PublicAuthController by lazy {
+    val profile: ProfileController
+        get() = profileDelegate.value
+    private val publicAuthDelegate = lazy {
         PublicAuthController(
             api = api,
             executor = executor,
@@ -226,6 +237,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
             friendlyError = ::friendlyError,
         )
     }
+    val publicAuth: PublicAuthController
+        get() = publicAuthDelegate.value
 
     var initializing by mutableStateOf(true)
         private set
@@ -426,7 +439,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun logout() {
         stopVoiceAutoPlay(stopCurrent = false)
-        tools.reset()
+        if (toolsDelegate.isInitialized()) toolsDelegate.value.reset()
         refreshAllCoordinator.cancel()
         invalidateBackgroundRequests()
         contentLoading = false
@@ -445,10 +458,10 @@ class AppController(application: Application) : AndroidViewModel(application), R
         dashboard = DashboardData()
         devices = emptyList()
         groups = emptyList()
-        deviceManagement.reset()
-        groupManagement.reset()
-        profile.reset()
-        publicAuth.reset()
+        if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.reset()
+        if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.reset()
+        if (profileDelegate.isInitialized()) profileDelegate.value.reset()
+        if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.reset()
         onlineDevices = emptyList()
         radioMessages.clear()
         displayedRadioMessageGroupId = null
@@ -461,6 +474,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
         publicProfiles = emptyMap()
         loadingPublicProfiles.clear()
         playingMessageId = null
+        playbackLevelThrottler.reset()
+        transmitLevelThrottler.reset()
         playbackLevel = 0f
         transmitLevel = 0f
         cwTransmitting = false
@@ -1489,8 +1504,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 user?.id?.let { sessionStore.setRadioRouting(it, status.groupId, receiveGroupIds) }
                 applySelectedRadioGroup(status.groupId)
             }
-            if (status.speaker.isBlank() && playingMessageId == null) playbackLevel = 0f
-            if (!status.transmitting) transmitLevel = 0f
+            if (status.speaker.isBlank() && playingMessageId == null) {
+                playbackLevelThrottler.reset()
+                playbackLevel = 0f
+            }
+            if (!status.transmitting) {
+                transmitLevelThrottler.reset()
+                transmitLevel = 0f
+            }
             if (!status.transmitting) cwTransmitting = false
             if (status.transmitting || status.speaker.isNotBlank()) cwPreviewing = false
             if (
@@ -1620,11 +1641,17 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     override fun onPlaybackLevel(level: Float) {
-        mainHandler.post { playbackLevel = level.coerceIn(0f, 1f) }
+        val displayLevel = playbackLevelThrottler.update(level) ?: return
+        mainHandler.post {
+            if (!disposed.get()) playbackLevel = displayLevel
+        }
     }
 
     override fun onTransmitLevel(level: Float) {
-        mainHandler.post { transmitLevel = level.coerceIn(0f, 1f) }
+        val displayLevel = transmitLevelThrottler.update(level) ?: return
+        mainHandler.post {
+            if (!disposed.get()) transmitLevel = displayLevel
+        }
     }
 
     override fun onCwPreviewState(active: Boolean) {
@@ -1633,16 +1660,15 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     override fun onCleared() {
         if (!disposed.compareAndSet(false, true)) return
-        mainHandler.removeCallbacks(voiceAutoPlayAdvance)
+        mainHandler.removeCallbacksAndMessages(null)
         refreshAllCoordinator.cancel()
         invalidateBackgroundRequests()
-        tools.close()
-        deviceManagement.close()
-        groupManagement.close()
-        profile.close()
-        publicAuth.close()
+        if (toolsDelegate.isInitialized()) toolsDelegate.value.close()
+        if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.close()
+        if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.close()
+        if (profileDelegate.isInitialized()) profileDelegate.value.close()
+        if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.close()
         appContext.stopService(AprsService.stopIntent(appContext))
-        mainHandler.removeCallbacks(periodicRadioSync)
         radioConnectionGeneration.incrementAndGet()
         pendingConnection = null
         if (preparingRadioConnection.getAndSet(false)) {

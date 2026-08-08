@@ -199,6 +199,7 @@ internal fun AprsMapPanel(
                 coordinate = coordinate,
                 allowSelection = false,
                 gesturesEnabled = visible,
+                active = visible,
                 showCompass = true,
                 zoom = 15f,
                 recenterRequest = recenterRequest,

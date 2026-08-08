@@ -1,243 +1,254 @@
-# DraARL Android TODO
+# DraARL Android 优化 TODO
 
 更新时间：2026-08-08
 
-实施状态：代码与自动化门禁已完成，真机及真实 BLE/弱网场景待用户验收。
+## 范围
 
-当前基线：
+本轮只处理代码质量、运行效率、可测试性和 UI 视觉系统，不增加或改变业务功能。
 
-- 版本：`2.0.0-alpha1`（versionCode 8），minSdk 24、targetSdk 36、compileSdk 36.1。
-- 2026-08-08：`testDebugUnitTest` 共 132 个测试通过，0 失败、0 跳过。
-- 2026-08-08：`lintDebug`、`assembleDebug`、`assembleDebugAndroidTest` 通过；仪器测试尚未连接设备执行。
-- Release 构建与 APK 签名应在发布候选版本上重新验证，不沿用旧版结果。
+实施约束：
 
-## 目标
+- 保留 Kotlin、Jetpack Compose 和 Material 3；Material 3 只作为底层组件，不直接决定成品视觉。
+- 暂不拆 Gradle 多模块，先在现有 `app` 模块内明确边界。
+- UDP、录音和播放可以保留专用线程，不为统一写法强行迁移到协程。
+- 每项优化单独提交，避免把视觉改造、架构重构和行为修复混在一个大 PR。
+- 重构前先补关键测试，重构过程中保持现有服务端和本地数据契约不变。
 
-- 将主导航调整为“设备、群组、PTT、工具、我的”，保持 PTT 位于正中央。
-- 增加原生工具中心，承载蓝牙配置、中继台查询、通联日志等功能。
-- 拆分当前集中在 `AppController`、音频引擎和大页面文件中的职责。
-- 优先处理并发刷新、退出竞态和网络安全问题，再扩展功能。
+## 当前基线
 
-## P0：稳定性与安全
+- 版本：`2.0.0-alpha1`（versionCode 8）。
+- 生产 Kotlin：124 个文件，约 2.20 万行。
+- JVM 测试：140 个通过；Android 仪器测试 APK 已编译，尚未连接设备执行。
+- 复杂度集中在 `AppController`、`ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
+- UI 直接使用约 36 处 `Card`、55 处 `Surface`、17 处 `AlertDialog`，当前没有 Compose Preview 或截图回归测试。
 
-### [x] 修复 `OpusAudioEngine` 退出竞态
+## P1：DraARL UI 设计系统
 
-位置：`app/src/main/java/cn/silverdragon/draarl/radio/OpusAudioEngine.kt`
+### [ ] 完整定义视觉 Token
 
-问题：历史音频下载完成后，`release()` 可能已经关闭 `playbackExecutor`。此时继续提交播放任务会抛出 `RejectedExecutionException`，并可能在对象释放后继续触发完成或错误回调。
+位置：`ui/theme`
 
-实施项：
+- 补全浅色和深色的背景、surface container、边框、禁用态、反色和浮层颜色。
+- 将 TX、RX、在线、连接中、告警、错误、时延等级定义为语义颜色，移除页面内硬编码状态色。
+- 以中性灰白/炭黑作为主要表面，DraARL 蓝只用于品牌和关键操作，避免整页蓝色化。
+- 定义统一的间距、分隔线、控件高度、图标尺寸、圆角和动效时长。
+- 技术数据支持等宽数字；呼号、SSID、频率、时延和坐标建立专用文本样式。
+- 保证浅色、深色及所有状态色满足可读性和对比度要求。
 
-- 增加线程安全的 released 状态，所有下载、解码和回调在执行前检查生命周期。
-- 下载完成后提交播放任务时处理执行器已关闭的情况，不让异常逃逸到工作线程。
-- `release()` 取消待处理任务，停止录音和播放，并保证解码器、`AudioTrack`、`AudioRecord` 只释放一次。
-- 对正常播放、下载中退出、下载完成与退出同时发生、重复 `release()` 增加测试。
+验收：页面不再自行声明在线绿、分类背景和状态色；所有视觉决策可以追溯到 Token。
 
-验收标准：退出应用或断开服务时不崩溃；释放后不启动新播放、不回调旧页面。
+### [ ] 建立 DraARL 基础组件
 
-### [x] 修复 `refreshAll()` 重入和旧响应覆盖
+新增或收敛以下组件：
 
-位置：`app/src/main/java/cn/silverdragon/draarl/AppController.kt`
+- `DraarlBottomBar`
+- `RadioStatusStrip`
+- `CommandButton` / `CommandIconButton`
+- `DataRow` / `SectionHeader`
+- `StatusIndicator`
+- `InlineNotice`
+- `DraarlDialog` / `DraarlSheet`
 
-问题：连续切换页面会并行发起多组刷新请求，旧请求可能比新请求更晚完成并覆盖新状态，也会造成不必要的服务端压力。
+要求：
 
-实施项：
+- 内部可以复用 Material 3，页面层不直接设置默认 Material 配色和形状。
+- 控件保持紧凑、稳定尺寸和清晰状态，不使用多层 Card。
+- 通用动作继续使用熟悉的 Material/Lucide 类图标；底栏、PTT、链路和电台状态可使用品牌化图标。
+- 每个基础组件提供浅色、深色、长文本、大字体和禁用状态 Preview。
 
-- 为全量刷新增加在途状态和请求代次。
-- 刷新进行中再次收到请求时合并触发，只保留一次尾随刷新，避免丢失真正需要的更新。
-- 只有最新代次可以写入设备、群组、用户资料、统计和趋势状态。
-- `contentLoading` 只由当前有效代次结束，避免旧请求提前关闭加载状态。
-- 登出或 `onCleared()` 后禁止未完成请求继续更新 UI。
-- 使用可控延迟的假 API 测试重入、乱序返回、部分失败和登出场景。
+验收：新页面只组合 DraARL 组件和 Token，不复制颜色、间距或状态样式。
 
-验收标准：快速连续切页不会重复发起多组相同请求，旧响应不会覆盖新数据。
+### [ ] 重做应用壳层与底栏视觉
 
-### [x] 固定 HTTPS 并禁止 Release 明文 HTTP
+位置：`ui/DraarlApp.kt`
 
-现状：`AppConfig.BASE_URL` 已固定为 `https://ptt.4l2.cn`，但 `AndroidManifest.xml` 仍设置了 `android:usesCleartextTraffic="true"`。
+- 用自定义紧凑命令栏替代默认 `NavigationBar` 外观。
+- 使用细分隔线和稳定高度，减少 tonal elevation。
+- 普通入口采用轻量选中态；中央 PTT 使用独立通信控制造型，不再表现为 Material FAB。
+- 统一一级页面切换动效，降低默认 Material 页面滑动感。
+- 保持系统手势区、三键导航和横竖屏 Insets 正确。
 
-实施项：
+验收：底栏仍保持五入口和现有交互，但视觉上不再像 Material 示例应用。
 
-- Release 配置禁用 cleartext traffic，并通过 Network Security Config 明确只允许 HTTPS。
-- 所有 REST、头像、音频和接入点地址统一校验协议，不自动降级到 HTTP。
-- 不恢复服务器地址输入框，业务代码只读取统一的 `AppConfig.BASE_URL`。
-- 若本地调试仍需 HTTP，仅在 `src/debug` 中显式放行指定测试地址，Release 不继承该配置。
-- 验证登录、头像、历史语音下载和边缘接入点发现均能在 HTTPS 限制下工作。
+### [ ] 以通信页作为视觉基准
 
-验收标准：Release APK 无法建立普通 HTTP 请求，HTTPS 业务功能正常。
+位置：`ui/screens/Radio*`
 
-## P1：导航与工具中心
+- 将呼号、电台标识、连接状态、节点和时延整理为紧凑状态带。
+- TX/RX、收听、静音、降噪和频道控制使用统一命令组件。
+- 减少默认 `OutlinedButton`、`FilledTonalIconButton` 和 Card 的直接视觉特征。
+- 电平、状态和频道信息采用稳定网格，不因文本或状态变化移动布局。
+- 地图和消息模式切换使用 DraARL 分段控制样式。
 
-### [x] 调整一级导航结构
+验收：通信页形成可复用的 DraARL 视觉语言，并通过浅色、深色、大字体和窄屏截图检查。
 
-目标顺序：
+### [ ] 收敛其他页面的布局语言
 
-1. 设备
-2. 群组
-3. PTT
-4. 工具
-5. 我的
+- 设备、群组和工具页优先使用紧凑列表、分区标题和细分隔线。
+- 个人页取消作为整页容器的 Card，改为无框身份区、数据区和设置列表。
+- 统计 Card 仅保留在确实需要并列比较的独立数据项上。
+- 全屏详情、弹窗和 Bottom Sheet 统一标题、返回、确认和危险操作位置。
+- 空状态、错误、加载和权限状态统一组件，不在页面内重复实现。
 
-实施项：
+验收：不同一级页面具有一致的信息密度、层级和操作位置，同时保留通信工具的专业感。
 
-- 从底部导航移除“概览”，新增“工具”，PTT 固定为第 3 项。
-- 更新页面顺序和左右滑入滑出方向，避免导航顺序与动画方向不一致。
-- 保持底部系统手势区适配，不重新引入全面屏底部空隙或状态栏遮挡。
-- 各一级页面保留自己的列表位置、筛选条件和临时输入状态。
-- 未审核账号登录后默认进入“我的”，不再引用已移除的概览页面。
+### [ ] 增加 UI 回归基线
 
-验收标准：五个一级入口顺序稳定，PTT 居中，快速切换页面时状态不丢失、布局不跳动。
+- 为 Design Token 和基础组件添加 Compose Preview。
+- 为底栏、通信页、设备列表、群组列表、个人页建立截图测试。
+- 覆盖浅色、深色、窄屏、常规屏、长中文、大字体和空/错/加载状态。
+- 视觉修改必须附带基线对比，不依赖人工记忆判断是否回归。
 
-### [x] 将概览内容整合到“我的”
+验收：关键 UI 改动可以在没有真机的情况下发现尺寸、颜色和文本溢出问题。
 
-实施项：
+## P1：状态与并发模型
 
-- 顶部保留头像、昵称、用户名、呼号和审核状态。
-- 增加紧凑的数据摘要：设备在线数/总数、群组数、通信记录数、累计通信时长。
-- 保留近 30 天通信趋势折线图。
-- 编辑资料、账号安全和设置使用清晰的列表入口。
-- 统计数据先展示本地缓存，再后台刷新；进入“我的”不能等待整组 `refreshAll()` 才显示内容。
-- 待审核或审核未通过用户保留状态说明和审核备注。
+### [ ] 统一普通异步操作
 
-验收标准：“我的”同时承担个人中心和个人数据摘要，但首屏仍以身份信息和常用账号操作为主。
+- HTTP、SQLite、文件和普通 Controller 操作迁移到结构化并发。
+- 使用 `viewModelScope`、子 Job 和明确的取消边界替代重复的 Executor + Handler + generation 模板。
+- 抽取统一的 operation runner 或 `UiResult`，集中处理 loading、success、error 和取消。
+- 移除 Executor 线程中再调用 `runBlocking` 的混合写法。
+- UDP、AudioRecord、AudioTrack 和 BLE 回调仍保留适合其时序要求的执行模型。
 
-### [x] 新增“工具”一级页面
+验收：Device、Group、Profile、Tools Controller 不再各自复制相同的 launch/post/generation 代码。
 
-工具首页使用紧凑的功能列表或网格，首期包含：
+### [ ] 拆分 `AppController`
 
-- 蓝牙设备配置
-- 中继台查询
-- 通联日志
-- 电台预设管理（可与通联日志配套上线）
+建议按以下顺序迁移：
 
-交互约束：
+1. `SettingsController`：主题、显示缩放、音频偏好和存储。
+2. `AprsController`：配置、手动发送和后台服务协调。
+3. `RadioMessageController`：缓存加载、历史分页、同步、对账和公开资料预加载。
+4. `RadioSessionController`：节点发现、连接、路由和 Service Binder。
+5. `SessionController`：登录态恢复、刷新和退出清理。
 
-- “工具”是一级导航；打开具体工具时底部导航保持可见。
-- 工具详情维护独立返回栈，返回时回到工具首页，不跳到其他一级页面。
-- 不在进入工具首页时同时加载所有接口，各工具首次打开时再加载，并保留最近一次结果。
-- 蓝牙连接、查询条件、日志草稿分别保存状态，切换一级页面不应立即丢失。
-- 蓝牙和中继查询可独立使用；需要账号审核的通联日志应显示明确的权限状态。
+要求：
 
-验收标准：工具数量增加后无需继续修改底部导航，且不会让工具首页变成长表单。
+- 每个 Controller 公开不可变 `UiState` 和有限事件接口。
+- UI 不再接收完整 `AppController`，只接收页面所需状态和回调。
+- 共享数据只有一个所有者，不在多个 Controller 中复制用户、群组或连接状态。
+- 每迁移一块就删除旧字段和旧路径，不长期保留双重实现。
 
-### [x] 实现原生蓝牙配置工具
+验收：`AppController` 最终只负责应用级组合、导航和跨域协调，核心页面可独立 Preview 和测试。
 
-参考服务端 Web：`DraARL-Server/www/src/components/devices/preconfig/PreConfigToolCard.tsx`
+### [ ] 拆分 `ApiClient`
 
-实施项：
+- 抽取 `HttpTransport`，统一超时、HTTPS、Header、错误解析、重试和上传。
+- 将 Token 刷新与 Session 持久化放入独立认证层。
+- 按 auth、devices、groups、radio、profile、tools、updates 划分 API。
+- 将 `JSONObject` 映射移到独立 DTO/Mapper，逐步采用类型化序列化。
+- 为上传、401 并发刷新、错误体、空响应和异常 JSON 建立 Mock Web Server 测试。
 
-- 使用 Android BLE API 实现扫描、连接、动态码认证、配置读取和写入。
-- 支持设备类型选择、Wi-Fi DHCP/静态配置和 DraARL 账号/设备认证密码配置。
-- 正确处理 Android 版本对应的蓝牙和定位权限。
-- 蓝牙断开、系统关闭蓝牙、页面离开和超时均有可恢复状态。
-- 密码和动态码不写入普通日志，不以明文长期缓存。
+验收：领域 API 不直接创建 `HttpURLConnection`，解析错误能定位到具体 DTO/字段。
 
-### [x] 实现中继台查询
+### [ ] 收敛 UDP 状态机
 
-服务端接口：`GET /api/public/relays?location=...`
+位置：`radio/UdpRadioClient.kt`
 
-实施项：
+- 将连接/认证/在线/重连/断开建模为显式状态机。
+- 将 Socket 传输、心跳看门狗、PTT 发送和接收语音组装拆成独立对象。
+- 尽量在单一串行执行上下文修改会话状态，减少 Volatile、Atomic 和锁的组合。
+- 注入 Clock、Scheduler、Socket/Transport 和 Audio 接口，支持确定性测试。
+- 明确所有任务、Socket、音频流和重连计划的所有权与取消顺序。
 
-- 提供省、市地区选择，至少选择到市级后允许查询。
-- 展示名称、上下行频率、收发亚音、位置、状态和备注。
-- 缓存最近查询地区与结果，网络失败时可展示上次成功结果和缓存时间。
+验收：连接和重连状态转换可以用纯 JVM 测试覆盖，不依赖真实网络或 Android Service。
 
-### [x] 实现通联日志与电台预设
+## P2：Compose 与数据处理性能
 
-服务端接口：
+### [ ] 缓存派生列表和索引
 
-- `/api/logbooks`：列表、详情、新增、修改、删除和批量删除。
-- `/api/user/radio-presets`：预设增删改、排序。
+- 设备、群组和频道过滤使用 `remember` / `derivedStateOf`，只在输入变化时重新计算。
+- 预先构建 `groupId -> groupName` 索引，避免列表项逐个执行 `firstOrNull`。
+- 评估 `unplayedVoiceCount` 等派生值，避免高频重组时重复扫描消息列表。
+- 保持 Lazy 列表 key 稳定，避免使用会随标题或状态变化的复合 key。
 
-实施项：
+验收：搜索输入之外的无关状态变化不会重新过滤或遍历完整列表。
 
-- 通联日志支持呼号、UTC 时间、收发频率、模式、双方 RST、QTH、设备、天线、功率和备注。
-- 支持使用电台预设快速填充我方设备信息。
-- 日志列表分页加载，编辑草稿本地保存，防止切页或进程回收后丢失。
-- 区分“PTT 通信记录”和人工维护的“通联日志”，避免名称和数据含义混淆。
+### [ ] 减少高频 Compose 状态传播
 
-## P1：账号能力
+- 将音频电平、下载进度和连接瞬态限制在最小 Composable 范围。
+- 页面只订阅自身需要的 UiState，不因完整 Controller 的其他字段变化而重组。
+- 对高频 Canvas 数据使用绘制层状态或动画状态，避免整页重组。
+- 使用 Compose Layout Inspector 或 compiler metrics 验证改造前后差异。
 
-### [x] 实现修改邮箱
+验收：PTT、播放、下载和周期刷新时，非相关页面与列表项不发生持续重组。
 
-现状：`AccountSecurityScreen` 只有占位提示；服务端已提供 `PUT /api/me/email`。
+### [ ] 优化 Release 构建
 
-实施项：
+- 在 Release 启用 R8 和资源收缩，维护必要的高德、JNI、JSON/序列化 keep rules。
+- 比较优化前后的 APK 大小、冷启动、首帧和运行内存。
+- 增加 Baseline Profile，覆盖启动、登录态恢复、进入 PTT 和打开设备列表。
+- Release 验证必须包含 RNNoise、地图、更新安装和前台服务。
 
-- 当前账号已有已验证邮箱时，先向旧邮箱发送 `change_email` 验证码并完成验证。
-- 再向新邮箱发送 `change_email` 验证码，提交 `old_session_id`、`old_code`、`new_session_id`、`new_code`。
-- 当前账号没有已验证邮箱时，仅要求验证新邮箱。
-- 复用验证码、倒计时、格式检查和错误展示组件，防止重复发送。
-- 修改成功后同步更新 `AppController.user`、安全会话存储和页面显示，不要求重新登录才能看到新邮箱。
-- 覆盖验证码过期、邮箱重复、旧邮箱不匹配和网络重试场景。
+验收：优化后的 Release 行为一致，APK 体积和关键启动指标有可记录的改善。
 
-验收标准：设置邮箱和修改邮箱均可完成，重启应用后仍显示服务端最新邮箱。
+## P2：测试与工程质量
 
-## P1：组件拆分与解耦
+### [ ] 补核心边界测试
 
-### [x] 拆分 `AppController`
+- `AppController` 拆出的状态 reducer 和协调器。
+- `ApiClient` 传输、解析和并发 Token 刷新。
+- `UdpRadioClient` 状态机、超时、重连、乱序包和资源释放。
+- `RadioConnectionService` 缓冲、绑定/解绑和前台状态。
+- Controller 取消、旧响应丢弃和关闭后不回调。
+- `RadioMessageStore` 迁移、事务、分页和并发访问。
 
-原则：先在现有 `app` 模块内按功能拆包，不立即增加 Gradle 多模块复杂度。
+验收：核心类重构不再主要依赖真机回归发现问题。
 
-建议职责：
+### [ ] 建立静态质量门禁
 
-- `SessionRepository`：登录会话、安全存储、用户资料同步。
-- `DevicesViewModel` / `DevicesRepository`：设备列表和设备操作。
-- `GroupsViewModel` / `GroupsRepository`：群组列表、成员和在线数量刷新。
-- `RadioViewModel` / `RadioRepository`：PTT 状态、消息同步和本地消息缓存。
-- `ProfileViewModel`：个人资料、统计摘要、邮箱和账号安全。
-- `ToolsViewModel` 或各工具独立 ViewModel：蓝牙、中继、通联日志。
+- 引入并配置 ktlint 或 Spotless，先只格式化改动文件，避免一次性全仓库噪声。
+- 引入 Detekt 或等价规则，重点检查复杂函数、过长类、吞异常和线程资源。
+- CI 执行单元测试、Lint、Debug 构建、仪器测试 APK 编译和 Markdown 链接检查。
+- 对第三方 RNNoise 目录设置排除，避免格式化和静态分析模型源码。
 
-实施要求：
+验收：新增代码不能继续扩大已识别的重复异步模板、硬编码视觉值和超长核心类。
 
-- UI 不直接持有网络、SQLite、Service Binder 或线程池细节。
-- 跨功能共享的数据只有单一来源，避免多个 ViewModel 各自维护一份用户或群组状态。
-- 将页面状态建模为明确的 loading/content/error 状态，不继续增加零散布尔变量。
-- 每完成一个功能拆分就补测试，避免一次性重写整个应用。
+### [ ] 分批更新依赖
 
-### [x] 拆分音频职责
+- 对 AndroidX Core、Lifecycle、Activity、JUnit、Espresso 等依赖逐组升级。
+- 每组升级单独提交并运行完整门禁，不与 UI 或架构重构混合。
+- 删除不再使用的依赖，业务代码不得依赖 Coil 等库的传递依赖。
 
-- 从 `OpusAudioEngine` 分离录音采集、实时播放、历史音频下载/缓存和 Opus 编解码职责。
-- 下载器只返回本地缓存或字节流，播放器不直接感知网络。
-- 统一实时和历史播放的解码器复用规则，并明确所有权及释放顺序。
-- 保持媒体音频走扬声器的现有行为。
+验收：依赖版本组合明确、可复现，无一次性大版本升级造成的定位困难。
 
-### [x] 拆分大体积 Compose 页面
+## 每阶段验证
 
-- `RadioScreen`：拆分连接头部、发言状态、消息列表、消息气泡、发送控件和群组选择器。
-- `LoginScreen`：拆分登录、注册、邮箱验证和忘记密码流程。
-- `ProfileScreen` / `AccountSecurityScreen`：拆分资料头部、数据摘要、编辑资料、密码和邮箱组件。
-- 每个组件只接收所需状态和事件，避免把整个控制器继续向下传递。
-- 可复用输入框、验证码、加载/错误和确认弹窗放入公共组件，但不为一次性 UI 提前抽象。
+自动化：
 
-验收标准：核心页面文件和控制器明显缩小，功能边界可单独测试，新增工具不再继续扩大 `AppController`。
+```powershell
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
+```
 
-## P2：验证与交付
+UI 检查：
 
-### [x] 实现位置消息与地图选点
+- 浅色、深色。
+- 360 dp 窄屏、常规手机、横屏。
+- 系统字体 1.0、1.3、1.5、2.0。
+- 全面屏手势和传统三键导航。
+- 空数据、长文本、加载、错误、禁用和权限拒绝状态。
 
-- PTT 扩展面板使用两页图标网格，“当前位置”和“标点位置”可用，其余消息类型保留开发中反馈。
-- 当前定位优先使用近期 GPS 结果，退回网络定位，并以 WGS-84 经纬度和可选海拔发送。
-- 标点位置使用高德地图选择，GCJ-02 点位在发送前转换为 WGS-84；高德 Key 仅从本机 Gradle 属性或 `local.properties` 注入。
-- 位置消息使用固定元组协议并复用文本消息缓存、服务端同步和去重链路。
-- 消息列表解析位置元组为卡片，区分当前位置和标点位置，点击可进入地图预览。
+性能检查：
 
-### [x] 自动化验证
+- 隐藏地图是否暂停。
+- 音频电平主线程投递频率。
+- PTT/播放时 Compose 重组范围。
+- 冷启动、首帧、内存和 Release APK 大小。
 
-- 为并发刷新和音频退出竞态增加 JVM 测试。
-- 为导航权限、未审核用户落点和工具返回栈增加 Compose 测试。
-- 为邮箱双验证流程增加 ApiClient 和 ViewModel 测试。
-- 为工具接口解析、日志草稿恢复和中继缓存增加测试。
-- 每阶段运行 `test`、`lintDebug`、`assembleDebug`；发版前构建并验证签名 Release。
+真机检查：
 
-说明：Compose 仪器测试已加入并成功编译为 Android 测试 APK；按用户要求未安装应用或启动模拟器，设备执行归入下方手工验收。
+- 前后台切换与前台服务。
+- PTT 录音、实时播放和历史播放。
+- BLE 扫描/连接/断开。
+- 定位与地图生命周期。
+- 弱网、断网、自动重连和退出清理。
 
-### [ ] 手工验收重点
+## 完成定义
 
-- 全面屏、传统三键导航、浅色和深色模式。
-- 快速连续切换五个一级页面。
-- PTT 接收或播放语音时进入工具和“我的”，确认音频与连接状态正确。
-- 下载历史语音时退出应用，确认无崩溃和后台回调。
-- 弱网下重复刷新、断网恢复和旧响应乱序。
-- 蓝牙权限拒绝、蓝牙中途关闭、设备断开和重新连接。
-- 定位权限拒绝、GPS/网络定位回退、地图隐私确认、地图选点和位置卡片预览。
+- 所有现有业务行为保持不变。
+- 自动化门禁全部通过，真机关键链路完成记录。
+- UI 不再直接依赖默认 Material 视觉，核心页面具有一致的 DraARL 语言。
+- 系统字体缩放、浅深色、窄屏和长文本均可用。
+- 核心异步任务具备明确的所有者、取消边界和测试。
+- `AppController`、`ApiClient`、`UdpRadioClient` 的职责和体积均得到实质性下降。

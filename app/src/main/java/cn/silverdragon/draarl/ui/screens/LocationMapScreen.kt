@@ -50,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +71,7 @@ import cn.silverdragon.draarl.maps.CoordinateConverter
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.MapDistance
+import cn.silverdragon.draarl.maps.MapViewLifecycleController
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
@@ -400,6 +402,7 @@ internal fun ManagedAmapView(
     coordinate: LatLng?,
     allowSelection: Boolean,
     gesturesEnabled: Boolean,
+    active: Boolean = true,
     showCompass: Boolean,
     zoom: Float,
     modifier: Modifier = Modifier,
@@ -421,32 +424,34 @@ internal fun ManagedAmapView(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val mapView = remember(context) { MapView(context) }
+    val lifecycleController = remember(mapView) {
+        MapViewLifecycleController(
+            resumeView = mapView::onResume,
+            pauseView = mapView::onPause,
+        )
+    }
     var map by remember { mutableStateOf<AMap?>(null) }
 
-    DisposableEffect(mapView, lifecycle) {
-        var resumed = false
+    SideEffect {
+        lifecycleController.setActive(active)
+    }
+
+    DisposableEffect(mapView, lifecycle, lifecycleController) {
         mapView.onCreate(Bundle())
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            mapView.onResume()
-            resumed = true
+            lifecycleController.onHostResume()
         }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> if (!resumed) {
-                    mapView.onResume()
-                    resumed = true
-                }
-                Lifecycle.Event.ON_PAUSE -> if (resumed) {
-                    mapView.onPause()
-                    resumed = false
-                }
+                Lifecycle.Event.ON_RESUME -> lifecycleController.onHostResume()
+                Lifecycle.Event.ON_PAUSE -> lifecycleController.onHostPause()
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            if (resumed) mapView.onPause()
+            lifecycleController.close()
             mapView.onDestroy()
         }
     }

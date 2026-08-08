@@ -99,10 +99,11 @@ import cn.silverdragon.draarl.ui.screens.ToolsScreen
 fun DraarlApp(controller: AppController) {
     val windowSize = LocalWindowInfo.current.containerSize
     val shortestWindowPixels = minOf(windowSize.width, windowSize.height).toFloat()
-    val appDensity = remember(shortestWindowPixels, controller.appDisplayScale) {
+    val systemFontScale = LocalDensity.current.fontScale
+    val appDensity = remember(shortestWindowPixels, controller.appDisplayScale, systemFontScale) {
         Density(
             density = appDensityFor(shortestWindowPixels, controller.appDisplayScale),
-            fontScale = 1f,
+            fontScale = systemFontScale,
         )
     }
     CompositionLocalProvider(LocalDensity provides appDensity) {
