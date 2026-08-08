@@ -16,10 +16,13 @@ class VoiceStreamPlaybackQueueTest {
         assertTrue(queue.onStream(first))
         assertFalse(queue.onStream(second))
         assertFalse(queue.onStream(third))
+        assertEquals(null, queue.advance())
         queue.remove(first)
         assertEquals(second, queue.advance())
+        assertEquals(null, queue.advance())
         queue.remove(second)
         assertEquals(third, queue.advance())
+        assertEquals(null, queue.advance())
     }
 
     @Test

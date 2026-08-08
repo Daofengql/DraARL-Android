@@ -23,7 +23,8 @@ internal class VoiceStreamPlaybackQueue {
     }
 
     fun advance(): VoiceStreamKey? {
-        if (active == null) active = pending.pollFirst()
+        if (active != null) return null
+        active = pending.pollFirst()
         return active
     }
 
