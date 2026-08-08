@@ -6,6 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
@@ -30,7 +33,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         controller = ViewModelProvider(this)[AppController::class.java]
         setContent {
-            val darkTheme = controller.appThemeMode.isDark(isSystemInDarkTheme())
+            val themeMode by remember { derivedStateOf { controller.settings.uiState.appThemeMode } }
+            val darkTheme = themeMode.isDark(isSystemInDarkTheme())
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !darkTheme

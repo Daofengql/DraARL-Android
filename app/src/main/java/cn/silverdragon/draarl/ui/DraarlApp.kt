@@ -6,9 +6,9 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
@@ -46,6 +46,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,12 +57,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.MAIN_NAVIGATION_PAGES
@@ -69,35 +70,39 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
-import cn.silverdragon.draarl.update.AppUpdateInfo
-import cn.silverdragon.draarl.update.AppUpdateStatus
+import cn.silverdragon.draarl.ui.components.DraarlBottomBar
+import cn.silverdragon.draarl.ui.components.DraarlBottomBarItem
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.AprsSettingsScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
 import cn.silverdragon.draarl.ui.screens.EditProfileScreen
 import cn.silverdragon.draarl.ui.screens.GroupsScreen
-import cn.silverdragon.draarl.ui.screens.LoginScreen
 import cn.silverdragon.draarl.ui.screens.LocationMapScreen
+import cn.silverdragon.draarl.ui.screens.LoginScreen
 import cn.silverdragon.draarl.ui.screens.ProfileScreen
-import cn.silverdragon.draarl.ui.screens.RadioScreen
 import cn.silverdragon.draarl.ui.screens.RadioPresetsScreen
+import cn.silverdragon.draarl.ui.screens.RadioScreen
+import cn.silverdragon.draarl.ui.screens.SettingsMenuAction
 import cn.silverdragon.draarl.ui.screens.SettingsScreen
 import cn.silverdragon.draarl.ui.screens.StorageSettingsScreen
+import cn.silverdragon.draarl.ui.screens.SystemSettingsAction
 import cn.silverdragon.draarl.ui.screens.SystemSettingsScreen
+import cn.silverdragon.draarl.ui.screens.SystemSettingsUpdateState
 import cn.silverdragon.draarl.ui.screens.ToolsScreen
-import cn.silverdragon.draarl.ui.components.DraarlBottomBar
-import cn.silverdragon.draarl.ui.components.DraarlBottomBarItem
 import cn.silverdragon.draarl.ui.theme.appMotion
+import cn.silverdragon.draarl.update.AppUpdateInfo
+import cn.silverdragon.draarl.update.AppUpdateStatus
 
 @Composable
 fun DraarlApp(controller: AppController) {
     val windowSize = LocalWindowInfo.current.containerSize
     val shortestWindowPixels = minOf(windowSize.width, windowSize.height).toFloat()
     val systemFontScale = LocalDensity.current.fontScale
-    val appDensity = remember(shortestWindowPixels, controller.appDisplayScale, systemFontScale) {
+    val displayScale by remember { derivedStateOf { controller.settings.uiState.appDisplayScale } }
+    val appDensity = remember(shortestWindowPixels, displayScale, systemFontScale) {
         Density(
-            density = appDensityFor(shortestWindowPixels, controller.appDisplayScale),
-            fontScale = systemFontScale,
+            density = appDensityFor(shortestWindowPixels, displayScale),
+            fontScale = systemFontScale
         )
     }
     CompositionLocalProvider(LocalDensity provides appDensity) {
@@ -122,50 +127,50 @@ private fun LoadingScreen() {
         targetValue = 1.03f,
         animationSpec = infiniteRepeatable(
             animation = tween(900),
-            repeatMode = RepeatMode.Reverse,
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "logoScale",
+        label = "logoScale"
     )
     val glowAlpha = transition.animateFloat(
         initialValue = 0.14f,
         targetValue = 0.34f,
         animationSpec = infiniteRepeatable(
             animation = tween(900),
-            repeatMode = RepeatMode.Reverse,
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "glowAlpha",
+        label = "glowAlpha"
     )
     Box(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
                 .size(132.dp)
                 .scale(logoScale.value)
                 .alpha(glowAlpha.value)
-                .background(MaterialTheme.colorScheme.primaryContainer, androidx.compose.foundation.shape.CircleShape),
+                .background(MaterialTheme.colorScheme.primaryContainer, androidx.compose.foundation.shape.CircleShape)
         )
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Image(
                 painter = painterResource(R.drawable.draarl_splash_logo),
                 contentDescription = null,
-                modifier = Modifier.size(108.dp).scale(logoScale.value),
+                modifier = Modifier.size(108.dp).scale(logoScale.value)
             )
             Text(
                 text = "DraARL 麟链",
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Bold
             )
             Text(
                 text = "正在接入通信网络",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.alpha(0.65f + glowAlpha.value),
+                modifier = Modifier.alpha(0.65f + glowAlpha.value)
             )
         }
     }
@@ -200,7 +205,7 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.ACCOUNT_SECURITY,
         AppPage.STORAGE_SETTINGS,
         AppPage.APRS_SETTINGS,
-        AppPage.LOCATION_MAP,
+        AppPage.LOCATION_MAP
     )
 
     // 处理系统返回操作
@@ -213,8 +218,8 @@ private fun AuthenticatedApp(controller: AppController) {
             AppPage.ACCOUNT_SECURITY,
             AppPage.STORAGE_SETTINGS,
             AppPage.APRS_SETTINGS,
-            AppPage.LOCATION_MAP,
-        ),
+            AppPage.LOCATION_MAP
+        )
     ) {
         when (controller.page) {
             AppPage.LOCATION_MAP -> controller.navigate(AppPage.RADIO)
@@ -234,24 +239,24 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.ACCOUNT_SECURITY,
         AppPage.STORAGE_SETTINGS,
         AppPage.APRS_SETTINGS,
-        AppPage.LOCATION_MAP,
+        AppPage.LOCATION_MAP
     )
     val motion = MaterialTheme.appMotion
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal
         ),
         bottomBar = {
             androidx.compose.animation.AnimatedVisibility(
                 visible = showBottomBar,
                 enter = expandVertically(expandFrom = Alignment.Bottom),
-                exit = shrinkVertically(shrinkTowards = Alignment.Bottom),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom)
             ) {
                 MainBottomBar(selectedPage = controller.page, onNavigate = controller::navigate)
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize().padding(
@@ -268,7 +273,7 @@ private fun AuthenticatedApp(controller: AppController) {
                     fadeIn(animationSpec = tween(motion.medium)) togetherWith
                         fadeOut(animationSpec = tween(motion.short))
                 },
-                contentKey = { it },
+                contentKey = { it }
             ) { page ->
                 pageStateHolder.SaveableStateProvider(page.name) {
                     when (page) {
@@ -283,22 +288,80 @@ private fun AuthenticatedApp(controller: AppController) {
                             onOpenLocation = { location ->
                                 mapLocation = location
                                 controller.navigate(AppPage.LOCATION_MAP)
-                            },
+                            }
                         )
+
                         AppPage.DEVICES -> DevicesScreen(controller)
+
                         AppPage.GROUPS -> GroupsScreen(controller)
+
                         AppPage.TOOLS -> ToolsScreen(controller)
+
                         AppPage.PROFILE -> ProfileScreen(controller)
+
                         AppPage.EDIT_PROFILE -> EditProfileScreen(controller)
+
                         AppPage.RADIO_PRESETS -> RadioPresetsScreen(
                             tools = controller.tools,
-                            onBack = { controller.navigate(AppPage.PROFILE) },
+                            onBack = { controller.navigate(AppPage.PROFILE) }
                         )
-                        AppPage.SETTINGS -> SettingsScreen(controller)
-                        AppPage.SYSTEM_SETTINGS -> SystemSettingsScreen(controller)
+
+                        AppPage.SETTINGS -> SettingsScreen { action ->
+                            when (action) {
+                                SettingsMenuAction.Back -> controller.navigate(AppPage.PROFILE)
+
+                                SettingsMenuAction.OpenAccountSecurity -> {
+                                    controller.navigate(AppPage.ACCOUNT_SECURITY)
+                                }
+
+                                SettingsMenuAction.OpenSystemSettings -> {
+                                    controller.navigate(AppPage.SYSTEM_SETTINGS)
+                                }
+
+                                SettingsMenuAction.OpenStorageSettings -> {
+                                    controller.navigate(AppPage.STORAGE_SETTINGS)
+                                }
+
+                                SettingsMenuAction.OpenAprsSettings -> controller.navigate(AppPage.APRS_SETTINGS)
+
+                                SettingsMenuAction.Logout -> controller.logout()
+                            }
+                        }
+
+                        AppPage.SYSTEM_SETTINGS -> SystemSettingsScreen(
+                            settings = controller.settings,
+                            userApproved = controller.user?.isApproved == true,
+                            update = SystemSettingsUpdateState(
+                                currentVersionName = controller.currentAppVersionName,
+                                status = controller.appUpdateStatus,
+                                info = controller.appUpdateInfo,
+                                message = controller.appUpdateMessage,
+                                progress = { controller.appUpdateProgress }
+                            ),
+                            onAction = { action ->
+                                when (action) {
+                                    SystemSettingsAction.Back -> controller.navigate(AppPage.SETTINGS)
+
+                                    is SystemSettingsAction.ShowNotice -> controller.showNotice(action.message)
+
+                                    SystemSettingsAction.CheckAppUpdate -> controller.checkAppUpdate()
+
+                                    SystemSettingsAction.DownloadAndInstallUpdate -> {
+                                        controller.downloadAndInstallAppUpdate()
+                                    }
+                                }
+                            }
+                        )
+
                         AppPage.ACCOUNT_SECURITY -> AccountSecurityScreen(controller)
-                        AppPage.STORAGE_SETTINGS -> StorageSettingsScreen(controller)
+
+                        AppPage.STORAGE_SETTINGS -> StorageSettingsScreen(
+                            settings = controller.settings,
+                            onBack = { controller.navigate(AppPage.SETTINGS) }
+                        )
+
                         AppPage.APRS_SETTINGS -> AprsSettingsScreen(controller)
+
                         AppPage.LOCATION_MAP -> LocationMapScreen(
                             initialLocation = mapLocation,
                             onBack = { controller.navigate(AppPage.RADIO) },
@@ -306,7 +369,7 @@ private fun AuthenticatedApp(controller: AppController) {
                                 controller.sendText(encodeLocationMessage(location)).also { sent ->
                                     if (sent) controller.navigate(AppPage.RADIO)
                                 }
-                            },
+                            }
                         )
                     }
                 }
@@ -325,14 +388,14 @@ private fun AppUpdateHost(controller: AppController) {
         AppUpdateStatus.DOWNLOADING,
         AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
         AppUpdateStatus.READY_TO_INSTALL,
-        AppUpdateStatus.ERROR,
+        AppUpdateStatus.ERROR
     ) && (
         update.forceUpdate ||
             dismissedVersion != update.version ||
             status in setOf(
                 AppUpdateStatus.DOWNLOADING,
                 AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
-                AppUpdateStatus.READY_TO_INSTALL,
+                AppUpdateStatus.READY_TO_INSTALL
             )
         )
     if (visible) {
@@ -342,7 +405,7 @@ private fun AppUpdateHost(controller: AppController) {
             message = controller.appUpdateMessage,
             progress = controller.appUpdateProgress,
             onUpdate = controller::downloadAndInstallAppUpdate,
-            onDismiss = { dismissedVersion = update.version },
+            onDismiss = { dismissedVersion = update.version }
         )
     }
 }
@@ -354,7 +417,7 @@ private fun AppUpdateDialog(
     message: String,
     progress: Float,
     onUpdate: () -> Unit,
-    onDismiss: () -> Unit,
+    onDismiss: () -> Unit
 ) {
     val busy = status == AppUpdateStatus.DOWNLOADING
     val canDismiss = !update.forceUpdate && !busy
@@ -370,18 +433,18 @@ private fun AppUpdateDialog(
                 Text(
                     text = update.displayTitle,
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "当前版本 ${update.currentVersionName}，新版本 ${update.version}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (update.changelog.isNotBlank()) {
                     Text(
                         text = update.changelog,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 if (message.isNotBlank()) {
@@ -392,20 +455,20 @@ private fun AppUpdateDialog(
                             AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
                             AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> MaterialTheme.colorScheme.primary
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        }
                     )
                 }
                 if (status == AppUpdateStatus.INSTALL_PERMISSION_REQUIRED) {
                     Text(
                         text = "请在系统页面允许 DraARL 安装未知应用，返回后会继续更新。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 if (busy) {
                     LinearProgressIndicator(
                         progress = { progress },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -419,7 +482,7 @@ private fun AppUpdateDialog(
                         AppUpdateStatus.ERROR -> "重试"
                         AppUpdateStatus.DOWNLOADING -> "下载中"
                         else -> "立即更新"
-                    },
+                    }
                 )
             }
         },
@@ -431,7 +494,7 @@ private fun AppUpdateDialog(
             }
         } else {
             null
-        },
+        }
     )
 }
 
@@ -444,26 +507,31 @@ internal fun MainBottomBar(selectedPage: AppPage, onNavigate: (AppPage) -> Unit)
                 key = item.page.name,
                 label = item.label,
                 icon = item.icon,
-                prominent = item.page == AppPage.RADIO,
+                prominent = item.page == AppPage.RADIO
             )
         },
         selectedKey = selectedPage.name,
-        onSelect = { key -> items.firstOrNull { it.page.name == key }?.page?.let(onNavigate) },
+        onSelect = { key -> items.firstOrNull { it.page.name == key }?.page?.let(onNavigate) }
     )
 }
 
 private data class NavigationItem(
     val page: AppPage,
     val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
 private fun navigationItem(page: AppPage): NavigationItem = when (page) {
     AppPage.DEVICES -> NavigationItem(page, "设备", Icons.Default.Devices)
+
     AppPage.GROUPS -> NavigationItem(page, "群组", Icons.Default.Groups)
+
     AppPage.RADIO -> NavigationItem(page, "PTT", Icons.Default.Mic)
+
     AppPage.TOOLS -> NavigationItem(page, "工具", Icons.Default.Build)
+
     AppPage.PROFILE -> NavigationItem(page, "我的", Icons.Default.Person)
+
     AppPage.EDIT_PROFILE,
     AppPage.RADIO_PRESETS,
     AppPage.SETTINGS,
@@ -471,6 +539,6 @@ private fun navigationItem(page: AppPage): NavigationItem = when (page) {
     AppPage.ACCOUNT_SECURITY,
     AppPage.STORAGE_SETTINGS,
     AppPage.APRS_SETTINGS,
-    AppPage.LOCATION_MAP,
+    AppPage.LOCATION_MAP
     -> error("Secondary pages are not bottom navigation items")
 }

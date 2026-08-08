@@ -39,58 +39,66 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import cn.silverdragon.draarl.AppController
-import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.data.StorageCategory
 import cn.silverdragon.draarl.data.StorageUsage
+import cn.silverdragon.draarl.settings.SettingsController
 import java.util.Locale
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun StorageSettingsScreen(controller: AppController) {
+fun StorageSettingsScreen(settings: SettingsController, onBack: () -> Unit) {
     var pendingClear by remember { mutableStateOf<StorageCategory?>(null) }
-    LaunchedEffect(Unit) { controller.refreshStorageUsage() }
+    val state = settings.uiState
+    LaunchedEffect(settings) { settings.refreshStorageUsage() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("存储管理") },
                 navigationIcon = {
-                    IconButton(onClick = { controller.navigate(AppPage.SETTINGS) }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                },
+                }
             )
-        },
+        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(
+                                Icons.Default.Storage,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("缓存占用", style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    formatBytes(controller.storageUsage.totalBytes),
+                                    formatBytes(state.storageUsage.totalBytes),
                                     style = MaterialTheme.typography.headlineSmall,
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
-                            if (controller.storageBusy) CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            if (state.storageBusy) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
                         Text(
                             "缓存只保存在本机，清理不会影响服务器上的通联记录。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -100,9 +108,9 @@ fun StorageSettingsScreen(controller: AppController) {
                     icon = Icons.Default.GraphicEq,
                     title = "语音缓存",
                     description = "已下载的 raw 语音，用于离线回放",
-                    size = controller.storageUsage.audioBytes,
-                    enabled = !controller.storageBusy,
-                    onClear = { pendingClear = StorageCategory.AUDIO },
+                    size = state.storageUsage.audioBytes,
+                    enabled = !state.storageBusy,
+                    onClear = { pendingClear = StorageCategory.AUDIO }
                 )
             }
             item {
@@ -110,9 +118,9 @@ fun StorageSettingsScreen(controller: AppController) {
                     icon = Icons.Default.Image,
                     title = "头像缓存",
                     description = "用户头像的内存和磁盘缓存",
-                    size = controller.storageUsage.avatarBytes,
-                    enabled = !controller.storageBusy,
-                    onClear = { pendingClear = StorageCategory.AVATARS },
+                    size = state.storageUsage.avatarBytes,
+                    enabled = !state.storageBusy,
+                    onClear = { pendingClear = StorageCategory.AVATARS }
                 )
             }
             item {
@@ -120,16 +128,16 @@ fun StorageSettingsScreen(controller: AppController) {
                     icon = Icons.AutoMirrored.Filled.Message,
                     title = "消息记录缓存",
                     description = "本地保存的通联记录和同步索引",
-                    size = controller.storageUsage.messageBytes,
-                    enabled = !controller.storageBusy,
-                    onClear = { pendingClear = StorageCategory.MESSAGES },
+                    size = state.storageUsage.messageBytes,
+                    enabled = !state.storageBusy,
+                    onClear = { pendingClear = StorageCategory.MESSAGES }
                 )
             }
             item {
                 OutlinedButton(
                     onClick = { pendingClear = StorageCategory.ALL },
-                    enabled = !controller.storageBusy,
-                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.storageBusy,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.DeleteSweep, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -143,24 +151,37 @@ fun StorageSettingsScreen(controller: AppController) {
         val isDestructive = category == StorageCategory.MESSAGES || category == StorageCategory.ALL
         AlertDialog(
             onDismissRequest = { pendingClear = null },
-            title = { Text(if (category == StorageCategory.ALL) "清理全部缓存？" else "清理${category.displayName()}？") },
+            title = {
+                Text(
+                    if (category ==
+                        StorageCategory.ALL
+                    ) {
+                        "清理全部缓存？"
+                    } else {
+                        "清理${category.displayName()}？"
+                    }
+                )
+            },
             text = {
                 Text(
-                    if (isDestructive) "本地消息会被移除，之后进入 PTT 页面时会重新从服务器同步。登录信息不会被删除。"
-                    else "只会清理本机缓存，不会影响服务器数据。",
+                    if (isDestructive) {
+                        "本地消息会被移除，之后进入 PTT 页面时会重新从服务器同步。登录信息不会被删除。"
+                    } else {
+                        "只会清理本机缓存，不会影响服务器数据。"
+                    }
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
                         pendingClear = null
-                        controller.clearStorage(category)
-                    },
+                        settings.clearStorage(category)
+                    }
                 ) { Text("清理") }
             },
             dismissButton = {
                 OutlinedButton(onClick = { pendingClear = null }) { Text("取消") }
-            },
+            }
         )
     }
 }
@@ -172,20 +193,33 @@ private fun StorageCategoryCard(
     description: String,
     size: Long,
     enabled: Boolean,
-    onClear: () -> Unit,
+    onClear: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge)
-                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(4.dp))
-                Text(formatBytes(size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    formatBytes(size),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
             IconButton(onClick = onClear, enabled = enabled) {
                 Icon(Icons.Default.DeleteSweep, contentDescription = "清理$title")

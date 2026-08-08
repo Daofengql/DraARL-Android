@@ -9,16 +9,15 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
-import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
-import coil3.SingletonImageLoader
-import cn.silverdragon.draarl.auth.PublicAuthController
+import androidx.lifecycle.viewModelScope
 import cn.silverdragon.draarl.aprs.AprsConfig
 import cn.silverdragon.draarl.aprs.AprsConfigStore
 import cn.silverdragon.draarl.aprs.AprsConnectionState
@@ -26,16 +25,15 @@ import cn.silverdragon.draarl.aprs.AprsIsClient
 import cn.silverdragon.draarl.aprs.AprsPosition
 import cn.silverdragon.draarl.aprs.AprsService
 import cn.silverdragon.draarl.aprs.AprsStatus
+import cn.silverdragon.draarl.auth.PublicAuthController
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.ApiAppDataSource
 import cn.silverdragon.draarl.data.AppDataFallback
 import cn.silverdragon.draarl.data.AppDataRefresher
-import cn.silverdragon.draarl.data.AppDisplayScale
-import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.data.ChannelMessage
 import cn.silverdragon.draarl.data.ChannelMessageMapper
-import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.DashboardCacheStore
+import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
@@ -49,8 +47,6 @@ import cn.silverdragon.draarl.data.RadioRouting
 import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.ServerTimeParser
-import cn.silverdragon.draarl.data.StorageCategory
-import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.data.VoicePlaybackQueue
 import cn.silverdragon.draarl.devices.DeviceManagementController
@@ -61,44 +57,46 @@ import cn.silverdragon.draarl.profile.ProfileController
 import cn.silverdragon.draarl.radio.AccessPointProbe
 import cn.silverdragon.draarl.radio.AccessPointSelector
 import cn.silverdragon.draarl.radio.AudioLevelThrottler
-import cn.silverdragon.draarl.radio.PlaybackDenoiseState
-import cn.silverdragon.draarl.radio.PLAYBACK_DENOISE_MAX_STRENGTH_PERCENT
-import cn.silverdragon.draarl.radio.PLAYBACK_DENOISE_MIN_STRENGTH_PERCENT
 import cn.silverdragon.draarl.radio.RadioConnectionConfig
 import cn.silverdragon.draarl.radio.RadioConnectionService
 import cn.silverdragon.draarl.radio.RadioServiceListener
-import cn.silverdragon.draarl.radio.TransmitTailTone
 import cn.silverdragon.draarl.radio.denoiseStrengthPercentToWetMix
+import cn.silverdragon.draarl.settings.AndroidSettingsStorage
+import cn.silverdragon.draarl.settings.RadioAudioSettings
+import cn.silverdragon.draarl.settings.SecureSettingsStore
+import cn.silverdragon.draarl.settings.SettingsController
+import cn.silverdragon.draarl.settings.SettingsEffects
+import cn.silverdragon.draarl.settings.radioAudioSettings
 import cn.silverdragon.draarl.tools.ToolsController
 import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateInstallPermissionException
 import cn.silverdragon.draarl.update.AppUpdateManager
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import java.net.URI
-import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 
 private data class RadioHistoryState(
     val nextCursor: String = "",
     val hasMore: Boolean = true,
-    val dataGeneration: Int = 0,
+    val dataGeneration: Int = 0
 )
 
-private data class RadioSyncSnapshot(
-    val messages: List<RadioMessage>,
-    val hasMoreHistory: Boolean,
-)
+private data class RadioSyncSnapshot(val messages: List<RadioMessage>, val hasMoreHistory: Boolean)
 
-private data class OlderRadioHistoryResult(
-    val messages: List<RadioMessage>,
-    val hasMore: Boolean,
-)
+private data class OlderRadioHistoryResult(val messages: List<RadioMessage>, val hasMore: Boolean)
 
-class AppController(application: Application) : AndroidViewModel(application), RadioServiceListener {
+class AppController internal constructor(application: Application, settingsIoDispatcher: CoroutineDispatcher) :
+    AndroidViewModel(application),
+    RadioServiceListener {
+    @Suppress("InjectDispatcher")
+    constructor(application: Application) : this(application, Dispatchers.IO)
+
     private val appContext = application.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newFixedThreadPool(4) { runnable ->
@@ -128,7 +126,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
     private val preparingRadioConnection = AtomicBoolean(false)
     private val disposed = AtomicBoolean(false)
     private val sendingAprsPosition = AtomicBoolean(false)
-    private val storageOperation = AtomicBoolean(false)
     private val checkingAppUpdate = AtomicBoolean(false)
     private val downloadingAppUpdate = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
@@ -193,7 +190,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             updateDevices = { devices = it },
             refreshAll = ::refreshAll,
             showNotice = { notice = it },
-            friendlyError = ::friendlyError,
+            friendlyError = ::friendlyError
         )
     }
     val deviceManagement: DeviceManagementController
@@ -210,7 +207,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             },
             refreshAll = ::refreshAll,
             showNotice = { notice = it },
-            friendlyError = ::friendlyError,
+            friendlyError = ::friendlyError
         )
     }
     val groupManagement: GroupManagementController
@@ -223,7 +220,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             currentUser = { user },
             updateUser = { user = it },
             showNotice = { notice = it },
-            friendlyError = ::friendlyError,
+            friendlyError = ::friendlyError
         )
     }
     val profile: ProfileController
@@ -234,11 +231,54 @@ class AppController(application: Application) : AndroidViewModel(application), R
             executor = executor,
             mainHandler = mainHandler,
             showLoginError = { loginError = it },
-            friendlyError = ::friendlyError,
+            friendlyError = ::friendlyError
         )
     }
     val publicAuth: PublicAuthController
         get() = publicAuthDelegate.value
+    private val settingsEffects = object : SettingsEffects {
+        override fun isPttOverlayAllowed(): Boolean = user?.isApproved == true
+
+        override fun canDrawPttOverlay(): Boolean = Settings.canDrawOverlays(appContext)
+
+        override fun applyRadioAudioSettings(settings: RadioAudioSettings) {
+            this@AppController.applyRadioAudioSettings(settings)
+        }
+
+        override fun syncPttOverlay() = this@AppController.syncPttOverlay()
+
+        override fun requestAppUpdateCheck() = checkAppUpdate(manual = false)
+
+        override fun beforeMessageCacheClear() {
+            stopVoiceAutoPlay(stopCurrent = true)
+            radioDataGeneration.incrementAndGet()
+            radioHistoryGeneration.incrementAndGet()
+        }
+
+        override fun afterMessageCacheClear() = resetMessageCacheState()
+
+        override fun friendlyError(error: Throwable): String = this@AppController.friendlyError(error)
+
+        override fun showNotice(message: String) {
+            notice = message
+        }
+    }
+    val settings = SettingsController(
+        store = SecureSettingsStore(sessionStore),
+        storage = AndroidSettingsStorage(
+            context = appContext,
+            messageStore = messageStore,
+            clearBoundAudioCache = {
+                serviceBinder?.let { binder ->
+                    binder.clearAudioCache()
+                    true
+                } ?: false
+            }
+        ),
+        effects = settingsEffects,
+        scope = viewModelScope,
+        ioDispatcher = settingsIoDispatcher
+    )
 
     var initializing by mutableStateOf(true)
         private set
@@ -291,45 +331,11 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var radioSyncError by mutableStateOf("")
         private set
-    var muted by mutableStateOf(sessionStore.isMuted())
-        private set
-    var playbackDenoiseEnabled by mutableStateOf(sessionStore.isPlaybackDenoiseEnabled())
-        private set
-    var playbackDenoiseStrengthPercent by mutableIntStateOf(sessionStore.playbackDenoiseStrengthPercent())
-        private set
-    var playbackDenoiseState by mutableStateOf(
-        if (sessionStore.isPlaybackDenoiseEnabled()) PlaybackDenoiseState.READY else PlaybackDenoiseState.DISABLED,
-    )
-        private set
-    var playbackDenoiseMessage by mutableStateOf("")
-        private set
-    var pttOverlayEnabled by mutableStateOf(
-        sessionStore.isPttOverlayEnabled() && Settings.canDrawOverlays(appContext),
-    )
-        private set
-    var appDisplayScale by mutableStateOf(sessionStore.appDisplayScale())
-        private set
-    var appThemeMode by mutableStateOf(sessionStore.appThemeMode())
-        private set
-    var transmitTimeoutSeconds by mutableIntStateOf(sessionStore.transmitTimeoutSeconds())
-        private set
-    var transmitTailTone by mutableStateOf(sessionStore.transmitTailTone())
-        private set
-    var transmitTailToneToRemoteEnabled by mutableStateOf(sessionStore.isTransmitTailToneToRemoteEnabled())
-        private set
-    var receiveTailToneEnabled by mutableStateOf(sessionStore.isReceiveTailToneEnabled())
-        private set
     var aprsConfig by mutableStateOf(AprsConfig())
         private set
     var aprsStatus by mutableStateOf(AprsStatus())
         private set
-    var storageUsage by mutableStateOf(StorageUsage())
-        private set
-    var storageBusy by mutableStateOf(false)
-        private set
     val currentAppVersionName: String get() = appUpdateManager.currentVersionName
-    var autoCheckAppUpdate by mutableStateOf(sessionStore.isAutoCheckAppUpdateEnabled())
-        private set
     var appUpdateStatus by mutableStateOf(AppUpdateStatus.IDLE)
         private set
     var appUpdateInfo by mutableStateOf<AppUpdateInfo?>(null)
@@ -362,13 +368,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             serviceBinder = service as? RadioConnectionService.LocalBinder
             serviceBound = serviceBinder != null
             serviceBinder?.setListener(this@AppController)
-            serviceBinder?.setMuted(muted)
-            serviceBinder?.setPlaybackDenoiseWetMix(denoiseStrengthPercentToWetMix(playbackDenoiseStrengthPercent))
-            serviceBinder?.setPlaybackDenoiseEnabled(playbackDenoiseEnabled)
-            serviceBinder?.setTransmitTimeoutSeconds(transmitTimeoutSeconds)
-            serviceBinder?.setTransmitTailTone(transmitTailTone)
-            serviceBinder?.setTransmitTailToneToRemoteEnabled(transmitTailToneToRemoteEnabled)
-            serviceBinder?.setReceiveTailToneEnabled(receiveTailToneEnabled)
+            applyRadioAudioSettings(settings.uiState.radioAudioSettings())
             syncPttOverlay()
             pendingConnection?.let {
                 serviceBinder?.connect(it)
@@ -412,7 +412,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         loginBusy = false
                         selectedGroupId = sessionStore.selectedGroupId(
                             session.user.id,
-                            session.user.lastGroupId.takeIf { it > 0 } ?: 999,
+                            session.user.lastGroupId.takeIf { it > 0 } ?: 999
                         )
                         receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, selectedGroupId)
                         page = AppPage.RADIO
@@ -423,7 +423,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     mainHandler.post {
                         refreshAll()
                         discoverAccessPoints()
-                        if (autoCheckAppUpdate) checkAppUpdate(manual = false)
+                        if (settings.uiState.autoCheckAppUpdate) checkAppUpdate(manual = false)
                         if (session.user.isApproved) refreshRadioData()
                     }
                 }
@@ -495,10 +495,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
         page = target
         when (target) {
             AppPage.DEVICES, AppPage.GROUPS, AppPage.PROFILE -> refreshAll()
+
             AppPage.RADIO -> {
                 loadCachedRadioMessages()
                 refreshRadioData()
             }
+
             else -> Unit
         }
     }
@@ -512,7 +514,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
     }
 
     fun checkAppUpdate(manual: Boolean = true) {
-        if (!manual && !autoCheckAppUpdate) return
+        if (!manual && !settings.uiState.autoCheckAppUpdate) return
         if (api.currentSession() == null) {
             if (manual) notice = "请先登录后检查更新"
             return
@@ -631,13 +633,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         }
     }
 
-    fun setAutoCheckAppUpdateEnabled(enabled: Boolean) {
-        if (autoCheckAppUpdate == enabled) return
-        autoCheckAppUpdate = enabled
-        sessionStore.setAutoCheckAppUpdateEnabled(enabled)
-        if (enabled) checkAppUpdate(manual = false)
-    }
-
     fun refreshAll() {
         if (api.currentSession() == null) return
         val generation = refreshAllCoordinator.request() ?: return
@@ -655,54 +650,55 @@ class AppController(application: Application) : AndroidViewModel(application), R
             AppDataFallback(
                 devices = devices,
                 groups = groups,
-                trend = dashboard.communicationTrend,
-            ),
+                trend = dashboard.communicationTrend
+            )
         ).whenComplete { snapshot, error ->
-                mainHandler.post {
-                    if (disposed.get()) return@post
-                    val decision = refreshAllCoordinator.complete(generation)
-                    if (decision.applyResults && api.currentSession() != null && error == null && snapshot != null) {
-                        val previousGroupId = selectedGroupId
-                        devices = snapshot.devices
-                        groups = snapshot.groups
-                        if (snapshot.defaultDeviceGroup.isSuccess) {
-                            deviceManagement.applyDefaultGroup(snapshot.defaultDeviceGroup.getOrNull())
-                        }
-                        snapshot.user?.let {
-                            user = it
-                            api.acceptCurrentUser(it)
-                            selectedGroupId = selectedGroupId
-                                .takeIf { id -> snapshot.groups.any { group -> group.id == id } }
-                                ?: it.lastGroupId.takeIf { id -> snapshot.groups.any { group -> group.id == id } }
-                                ?: snapshot.groups.firstOrNull { group -> group.id == 999 }?.id
-                                ?: snapshot.groups.firstOrNull()?.id
-                                ?: 999
-                            receiveGroupIds = receiveGroupIds + selectedGroupId
-                            sessionStore.setRadioRouting(it.id, selectedGroupId, receiveGroupIds)
-                        }
-                        syncPttOverlay()
-                        dashboard = DashboardData(
-                            devices = snapshot.devices.size,
-                            onlineDevices = snapshot.devices.count(Device::online),
-                            groups = snapshot.groups.size,
-                            communications = snapshot.stats?.totalCount ?: dashboard.communications,
-                            communicationDurationMs = snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs,
-                            communicationTrend = snapshot.trend,
-                        )
-                        user?.id?.let { dashboardStore.save(it, dashboard) }
-                        if (selectedGroupId != previousGroupId && page == AppPage.RADIO) {
-                            loadCachedRadioMessages()
-                            refreshRadioData()
-                        }
+            mainHandler.post {
+                if (disposed.get()) return@post
+                val decision = refreshAllCoordinator.complete(generation)
+                if (decision.applyResults && api.currentSession() != null && error == null && snapshot != null) {
+                    val previousGroupId = selectedGroupId
+                    devices = snapshot.devices
+                    groups = snapshot.groups
+                    if (snapshot.defaultDeviceGroup.isSuccess) {
+                        deviceManagement.applyDefaultGroup(snapshot.defaultDeviceGroup.getOrNull())
                     }
-                    val nextGeneration = decision.nextGeneration
-                    if (nextGeneration != null && api.currentSession() != null) {
-                        startRefreshAll(nextGeneration)
-                    } else if (decision.isIdle || api.currentSession() == null) {
-                        contentLoading = false
+                    snapshot.user?.let {
+                        user = it
+                        api.acceptCurrentUser(it)
+                        selectedGroupId = selectedGroupId
+                            .takeIf { id -> snapshot.groups.any { group -> group.id == id } }
+                            ?: it.lastGroupId.takeIf { id -> snapshot.groups.any { group -> group.id == id } }
+                            ?: snapshot.groups.firstOrNull { group -> group.id == 999 }?.id
+                            ?: snapshot.groups.firstOrNull()?.id
+                            ?: 999
+                        receiveGroupIds = receiveGroupIds + selectedGroupId
+                        sessionStore.setRadioRouting(it.id, selectedGroupId, receiveGroupIds)
+                    }
+                    syncPttOverlay()
+                    dashboard = DashboardData(
+                        devices = snapshot.devices.size,
+                        onlineDevices = snapshot.devices.count(Device::online),
+                        groups = snapshot.groups.size,
+                        communications = snapshot.stats?.totalCount ?: dashboard.communications,
+                        communicationDurationMs =
+                            snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs,
+                        communicationTrend = snapshot.trend
+                    )
+                    user?.id?.let { dashboardStore.save(it, dashboard) }
+                    if (selectedGroupId != previousGroupId && page == AppPage.RADIO) {
+                        loadCachedRadioMessages()
+                        refreshRadioData()
                     }
                 }
+                val nextGeneration = decision.nextGeneration
+                if (nextGeneration != null && api.currentSession() != null) {
+                    startRefreshAll(nextGeneration)
+                } else if (decision.isIdle || api.currentSession() == null) {
+                    contentLoading = false
+                }
             }
+        }
     }
 
     fun refreshGroupOnlineCounts() {
@@ -717,7 +713,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     if (
                         disposed.get() || generation != groupCountsGeneration.get() ||
                         user?.id != userId || !authenticated
-                    ) return@post
+                    ) {
+                        return@post
+                    }
                     groups = groups.map { group ->
                         stats[group.id]?.let { (online, total) ->
                             group.copy(onlineCount = online, totalCount = total)
@@ -744,7 +742,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     if (
                         disposed.get() || generation != accessPointDiscoveryGeneration.get() ||
                         user?.id != userId || !authenticated
-                    ) return@post
+                    ) {
+                        return@post
+                    }
                     selectingAccessPoint = false
                     notice = "服务端没有发布可用的 UDP 入口"
                 }
@@ -761,7 +761,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 if (
                     disposed.get() || generation != accessPointDiscoveryGeneration.get() ||
                     user?.id != userId || !authenticated
-                ) return@post
+                ) {
+                    return@post
+                }
                 accessPoints = discovered
                 accessPointProbes = selection.probes
                 selectedAccessPoint = selected
@@ -802,7 +804,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         runCatching {
             ContextCompat.startForegroundService(
                 appContext,
-                RadioConnectionService.startIntent(appContext),
+                RadioConnectionService.startIntent(appContext)
             )
         }.onFailure { error ->
             preparingRadioConnection.set(false)
@@ -815,7 +817,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     accessPoint = point,
                     accessToken = api.freshAccessToken(),
                     clientInstanceId = sessionStore.clientInstanceId(),
-                    groupId = selectedGroupId,
+                    groupId = selectedGroupId
                 )
             }.onSuccess { config ->
                 mainHandler.post {
@@ -967,7 +969,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             messageStore.markAllPlayed(
                 accountKey = accountKey,
                 groupId = groupId,
-                expectedGeneration = cacheGeneration,
+                expectedGeneration = cacheGeneration
             )
         }
     }
@@ -990,7 +992,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
         if (
             playingMessageId != null || voiceAutoPlayPendingMessageId != null ||
             radioStatus.transmitting || radioStatus.speaker.isNotBlank()
-        ) return
+        ) {
+            return
+        }
         val next = VoicePlaybackQueue.nextUnplayed(radioMessages, voiceAutoPlaySkippedIds)
         if (next == null) {
             voiceAutoPlayEnabled = false
@@ -1054,15 +1058,15 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     message.copy(
                         audioUrl = refreshed.audioUrl,
                         durationMs = refreshed.durationMs.takeIf { it > 0 } ?: message.durationMs,
-                        content = refreshed.content.ifBlank { message.content },
-                    ),
+                        content = refreshed.content.ifBlank { message.content }
+                    )
                 )
             }
             mainHandler.post {
                 result
                     .onSuccess { refreshed ->
                         applyRefreshedRadioMessage(refreshed)
-                        if (!fromAutoPlay || voiceAutoPlayEnabled && voiceAutoPlayPendingMessageId == message.id) {
+                        if (!fromAutoPlay || (voiceAutoPlayEnabled && voiceAutoPlayPendingMessageId == message.id)) {
                             playVoiceMessage(refreshed, fromAutoPlay)
                         }
                     }
@@ -1092,7 +1096,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     accountKey,
                     groupId,
                     message,
-                    expectedGeneration = cacheGeneration,
+                    expectedGeneration = cacheGeneration
                 )
             }
         }
@@ -1126,101 +1130,12 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 groupId = groupId,
                 localId = message.id,
                 serverRecordId = message.serverRecordId,
-                expectedGeneration = cacheGeneration,
+                expectedGeneration = cacheGeneration
             )
         }
     }
 
     fun publicProfile(username: String): User? = publicProfiles[username.lowercase()]
-
-    fun toggleMuted() {
-        muted = !muted
-        sessionStore.setMuted(muted)
-        serviceBinder?.setMuted(muted)
-    }
-
-    fun togglePlaybackDenoise() {
-        playbackDenoiseEnabled = !playbackDenoiseEnabled
-        sessionStore.setPlaybackDenoiseEnabled(playbackDenoiseEnabled)
-        serviceBinder?.setPlaybackDenoiseWetMix(denoiseStrengthPercentToWetMix(playbackDenoiseStrengthPercent))
-        serviceBinder?.setPlaybackDenoiseEnabled(playbackDenoiseEnabled)
-        if (playbackDenoiseEnabled) {
-            playbackDenoiseState = PlaybackDenoiseState.READY
-            playbackDenoiseMessage = "神经网络降噪已开启"
-        } else {
-            playbackDenoiseState = PlaybackDenoiseState.DISABLED
-            playbackDenoiseMessage = ""
-        }
-    }
-
-    fun updatePlaybackDenoiseStrengthPercent(percent: Int) {
-        val normalized = percent.coerceIn(
-            PLAYBACK_DENOISE_MIN_STRENGTH_PERCENT,
-            PLAYBACK_DENOISE_MAX_STRENGTH_PERCENT,
-        )
-        if (playbackDenoiseStrengthPercent == normalized) return
-        playbackDenoiseStrengthPercent = normalized
-        sessionStore.setPlaybackDenoiseStrengthPercent(normalized)
-        serviceBinder?.setPlaybackDenoiseWetMix(denoiseStrengthPercentToWetMix(normalized))
-        if (playbackDenoiseEnabled) {
-            playbackDenoiseMessage = "神经网络降噪强度 $normalized%"
-        }
-    }
-
-    fun canDrawPttOverlay(): Boolean = Settings.canDrawOverlays(appContext)
-
-    fun setPttOverlayEnabled(enabled: Boolean): Boolean {
-        if (enabled && user?.isApproved != true) {
-            notice = "账号审核通过后才能开启悬浮 PTT"
-            return false
-        }
-        if (enabled && !canDrawPttOverlay()) return false
-        pttOverlayEnabled = enabled
-        sessionStore.setPttOverlayEnabled(enabled)
-        syncPttOverlay()
-        return true
-    }
-
-    fun updateAppDisplayScale(scale: AppDisplayScale) {
-        if (appDisplayScale == scale) return
-        appDisplayScale = scale
-        sessionStore.setAppDisplayScale(scale)
-    }
-
-    fun updateAppThemeMode(mode: AppThemeMode) {
-        if (appThemeMode == mode) return
-        appThemeMode = mode
-        sessionStore.setAppThemeMode(mode)
-    }
-
-    fun updateTransmitTimeoutSeconds(seconds: Int) {
-        val normalized = seconds.coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
-        if (transmitTimeoutSeconds == normalized) return
-        transmitTimeoutSeconds = normalized
-        sessionStore.setTransmitTimeoutSeconds(normalized)
-        serviceBinder?.setTransmitTimeoutSeconds(normalized)
-    }
-
-    fun updateTransmitTailTone(tone: TransmitTailTone) {
-        if (transmitTailTone == tone) return
-        transmitTailTone = tone
-        sessionStore.setTransmitTailTone(tone)
-        serviceBinder?.setTransmitTailTone(tone)
-    }
-
-    fun updateTransmitTailToneToRemoteEnabled(enabled: Boolean) {
-        if (transmitTailToneToRemoteEnabled == enabled) return
-        transmitTailToneToRemoteEnabled = enabled
-        sessionStore.setTransmitTailToneToRemoteEnabled(enabled)
-        serviceBinder?.setTransmitTailToneToRemoteEnabled(enabled)
-    }
-
-    fun updateReceiveTailToneEnabled(enabled: Boolean) {
-        if (receiveTailToneEnabled == enabled) return
-        receiveTailToneEnabled = enabled
-        sessionStore.setReceiveTailToneEnabled(enabled)
-        serviceBinder?.setReceiveTailToneEnabled(enabled)
-    }
 
     fun updateAprsConfig(config: AprsConfig) {
         val normalized = config.copy(
@@ -1228,7 +1143,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             port = config.port.coerceIn(1, 65_535),
             callsign = config.callsign.trim().uppercase(),
             movingIntervalSeconds = config.movingIntervalSeconds.coerceIn(60, 600),
-            stationaryIntervalSeconds = config.stationaryIntervalSeconds.coerceIn(60, 3_600),
+            stationaryIntervalSeconds = config.stationaryIntervalSeconds.coerceIn(60, 3_600)
         )
         aprsConfig = normalized
         user?.id?.let { aprsConfigStore.save(it, normalized) }
@@ -1237,7 +1152,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             runCatching {
                 ContextCompat.startForegroundService(
                     appContext,
-                    AprsService.startIntent(appContext, currentUserId),
+                    AprsService.startIntent(appContext, currentUserId)
                 )
             }.onFailure { notice = "无法启动 APRS 后台上报：${friendlyError(it)}" }
         } else {
@@ -1265,7 +1180,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     aprsStatus = AprsStatus(
                         state = AprsConnectionState.SENT,
                         message = "APRS 位置已发送",
-                        lastSentAt = System.currentTimeMillis(),
+                        lastSentAt = System.currentTimeMillis()
                     )
                 }
             }.onFailure { error ->
@@ -1277,68 +1192,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
             sendingAprsPosition.set(false)
         }
         return true
-    }
-
-    fun refreshStorageUsage() {
-        if (!storageOperation.compareAndSet(false, true)) return
-        storageBusy = true
-        executor.execute {
-            val usage = calculateStorageUsage()
-            mainHandler.post {
-                storageUsage = usage
-                storageBusy = false
-                storageOperation.set(false)
-            }
-        }
-    }
-
-    fun clearStorage(category: StorageCategory) {
-        if (!storageOperation.compareAndSet(false, true)) return
-        storageBusy = true
-        executor.execute {
-            runCatching {
-                if (category == StorageCategory.AUDIO || category == StorageCategory.ALL) {
-                    serviceBinder?.clearAudioCache()
-                        ?: clearDirectoryContents(File(appContext.filesDir, AUDIO_CACHE_DIRECTORY))
-                }
-                if (category == StorageCategory.AVATARS || category == StorageCategory.ALL) {
-                    val imageLoader = SingletonImageLoader.get(appContext)
-                    imageLoader.memoryCache?.clear()
-                    imageLoader.diskCache?.clear()
-                }
-                if (category == StorageCategory.MESSAGES || category == StorageCategory.ALL) {
-                    mainHandler.post { stopVoiceAutoPlay(stopCurrent = true) }
-                    radioDataGeneration.incrementAndGet()
-                    radioHistoryGeneration.incrementAndGet()
-                    messageStore.clearAll()
-                    mainHandler.post {
-                        radioMessages.clear()
-                        radioHistoryStates.clear()
-                        radioVisibleLimits.clear()
-                        displayedRadioMessageGroupId = null
-                        radioHistoryLoading = false
-                        radioHistoryHasMore = true
-                        radioSyncError = ""
-                    }
-                }
-            }.onFailure { error ->
-                mainHandler.post { notice = "清理缓存失败：${friendlyError(error)}" }
-            }
-            val usage = calculateStorageUsage()
-            mainHandler.post {
-                storageUsage = usage
-                storageBusy = false
-                storageOperation.set(false)
-            }
-        }
-    }
-
-    fun reconcilePttOverlayPermission() {
-        if (pttOverlayEnabled && !canDrawPttOverlay()) {
-            pttOverlayEnabled = false
-            sessionStore.setPttOverlayEnabled(false)
-        }
-        syncPttOverlay()
     }
 
     fun onAppForegroundChanged(inForeground: Boolean) {
@@ -1413,7 +1266,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         val primaryChanged = selectedGroupId != session.txGroupId
                         sessionStore.setRadioRouting(userId, session.txGroupId, receiveGroupIds)
                         serviceBinder?.setRouting(session.txGroupId, receiveGroupIds)
-                        val groupName = groups.firstOrNull { it.id == session.txGroupId }?.name ?: "群组 ${session.txGroupId}"
+                        val groupName =
+                            groups.firstOrNull { it.id == session.txGroupId }?.name ?: "群组 ${session.txGroupId}"
                         applySelectedRadioGroup(session.txGroupId, "已切换发送/日志频道：$groupName")
                         syncPttOverlay()
                         if (!primaryChanged) notice = "收听频道已更新"
@@ -1445,7 +1299,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     if (
                         disposed.get() || generation != radioDataGeneration.get() ||
                         groupId != selectedGroupId || user?.id != userId || !authenticated
-                    ) return@post
+                    ) {
+                        return@post
+                    }
                     historyResult
                         .onSuccess { snapshot ->
                             radioCacheLoadGeneration.incrementAndGet()
@@ -1537,7 +1393,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
                                     !disposed.get() &&
                                     failedGeneration == radioConnectionGeneration.get() &&
                                     radioStatus.phase == RadioConnectionPhase.ERROR
-                                ) connectRadio()
+                                ) {
+                                    connectRadio()
+                                }
                             }
                         }
                         .onFailure {
@@ -1556,30 +1414,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     override fun onRadioMessage(message: RadioMessage) {
         mainHandler.post {
-            val currentUser = user
-            val online = onlineDevices.firstOrNull { device ->
-                device.ssid == message.senderSsid && (
-                    message.senderUsername.isNotBlank() && device.username.equals(message.senderUsername, true) ||
-                        message.senderCallsign.isNotBlank() && device.callsign.equals(message.senderCallsign, true)
-                    )
-            }
-            val currentClientMessage = !message.mine && currentUser != null &&
-                message.senderUsername.equals(currentUser.username, ignoreCase = true) &&
-                message.senderSsid == radioStatus.ssid
-            val enriched = message.copy(
-                mine = message.mine || currentClientMessage,
-                played = message.played || message.mine || currentClientMessage ||
-                    (message.type == RadioMessageType.VOICE && !muted),
-                senderUsername = message.senderUsername.ifBlank {
-                    if (message.mine || currentClientMessage) currentUser?.username.orEmpty() else online?.username.orEmpty()
-                },
-                senderNickname = message.senderNickname.ifBlank {
-                    if (message.mine || currentClientMessage) currentUser?.nickname.orEmpty() else online?.nickname.orEmpty()
-                },
-                senderCallsign = message.senderCallsign.ifBlank {
-                    if (message.mine || currentClientMessage) currentUser?.callsign.orEmpty() else online?.callsign.orEmpty()
-                },
-            )
+            val enriched = enrichRadioMessage(message)
             // 只有当消息属于当前群组时才添加到列表
             val messageGroupId = if (enriched.groupId > 0) enriched.groupId else selectedGroupId
             var messageToStore = enriched
@@ -1595,7 +1430,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         senderNickname = existing.senderNickname.ifBlank { enriched.senderNickname },
                         senderCallsign = existing.senderCallsign.ifBlank { enriched.senderCallsign },
                         audioCacheKey = existing.audioCacheKey.ifBlank { enriched.audioCacheKey },
-                        durationMs = maxOf(existing.durationMs, enriched.durationMs),
+                        durationMs = maxOf(existing.durationMs, enriched.durationMs)
                     )
                     radioMessages[duplicateIndex] = messageToStore
                 } else {
@@ -1616,13 +1451,38 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             accountKey,
                             messageGroupId,
                             cachedMessage,
-                            expectedGeneration = cacheGeneration,
+                            expectedGeneration = cacheGeneration
                         )
                     }
                 }
             }
             preloadPublicProfiles(listOf(enriched.senderUsername))
         }
+    }
+
+    private fun enrichRadioMessage(message: RadioMessage): RadioMessage {
+        val currentUser = user
+        val online = onlineDevices.firstOrNull { device ->
+            device.ssid == message.senderSsid && (
+                (message.senderUsername.isNotBlank() && device.username.equals(message.senderUsername, true)) ||
+                    (message.senderCallsign.isNotBlank() && device.callsign.equals(message.senderCallsign, true))
+                )
+        }
+        val currentClientMessage = !message.mine && currentUser != null &&
+            message.senderUsername.equals(currentUser.username, ignoreCase = true) &&
+            message.senderSsid == radioStatus.ssid
+        val mine = message.mine || currentClientMessage
+        val fallbackUsername = if (mine) currentUser?.username.orEmpty() else online?.username.orEmpty()
+        val fallbackNickname = if (mine) currentUser?.nickname.orEmpty() else online?.nickname.orEmpty()
+        val fallbackCallsign = if (mine) currentUser?.callsign.orEmpty() else online?.callsign.orEmpty()
+
+        return message.copy(
+            mine = mine,
+            played = message.played || mine || (message.type == RadioMessageType.VOICE && !settings.uiState.muted),
+            senderUsername = message.senderUsername.ifBlank { fallbackUsername },
+            senderNickname = message.senderNickname.ifBlank { fallbackNickname },
+            senderCallsign = message.senderCallsign.ifBlank { fallbackCallsign }
+        )
     }
 
     override fun onPlaybackState(messageId: String?) {
@@ -1668,6 +1528,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.close()
         if (profileDelegate.isInitialized()) profileDelegate.value.close()
         if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.close()
+        settings.close()
         appContext.stopService(AprsService.stopIntent(appContext))
         radioConnectionGeneration.incrementAndGet()
         pendingConnection = null
@@ -1705,7 +1566,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                         initializing = false
                         selectedGroupId = sessionStore.selectedGroupId(
                             session.user.id,
-                            session.user.lastGroupId.takeIf { it > 0 } ?: 999,
+                            session.user.lastGroupId.takeIf { it > 0 } ?: 999
                         )
                         receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, selectedGroupId)
                         page = AppPage.RADIO
@@ -1716,7 +1577,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     mainHandler.post {
                         refreshAll()
                         discoverAccessPoints()
-                        if (autoCheckAppUpdate) checkAppUpdate(manual = false)
+                        if (settings.uiState.autoCheckAppUpdate) checkAppUpdate(manual = false)
                         if (session.user.isApproved) refreshRadioData()
                     }
                 }
@@ -1741,36 +1602,42 @@ class AppController(application: Application) : AndroidViewModel(application), R
         serviceBound = appContext.bindService(
             Intent(appContext, RadioConnectionService::class.java),
             serviceConnection,
-            Context.BIND_AUTO_CREATE,
+            Context.BIND_AUTO_CREATE
         )
     }
 
     private fun syncPttOverlay() {
-        val enabled = pttOverlayEnabled &&
+        val enabled = settings.uiState.pttOverlayEnabled &&
             authenticated &&
             user?.isApproved == true &&
-            canDrawPttOverlay()
+            Settings.canDrawOverlays(appContext)
         serviceBinder?.configurePttOverlay(
             enabled = enabled,
             visible = enabled && !appInForeground,
-            groupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "群组 $selectedGroupId",
+            groupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "群组 $selectedGroupId"
         )
     }
 
-    private fun calculateStorageUsage(): StorageUsage {
-        return StorageUsage(
-            audioBytes = File(appContext.filesDir, AUDIO_CACHE_DIRECTORY).directorySizeBytes(),
-            avatarBytes = File(appContext.cacheDir, AVATAR_CACHE_DIRECTORY).directorySizeBytes(),
-            messageBytes = messageStore.sizeBytes(),
+    private fun applyRadioAudioSettings(settings: RadioAudioSettings) {
+        serviceBinder?.setMuted(settings.muted)
+        serviceBinder?.setPlaybackDenoiseWetMix(
+            denoiseStrengthPercentToWetMix(settings.playbackDenoiseStrengthPercent)
         )
+        serviceBinder?.setPlaybackDenoiseEnabled(settings.playbackDenoiseEnabled)
+        serviceBinder?.setTransmitTimeoutSeconds(settings.transmitTimeoutSeconds)
+        serviceBinder?.setTransmitTailTone(settings.transmitTailTone)
+        serviceBinder?.setTransmitTailToneToRemoteEnabled(settings.transmitTailToneToRemoteEnabled)
+        serviceBinder?.setReceiveTailToneEnabled(settings.receiveTailToneEnabled)
     }
 
-    private fun File.directorySizeBytes(): Long = if (!exists()) 0L else walkTopDown()
-        .filter(File::isFile)
-        .sumOf(File::length)
-
-    private fun clearDirectoryContents(directory: File) {
-        directory.listFiles()?.forEach { it.deleteRecursively() }
+    private fun resetMessageCacheState() {
+        radioMessages.clear()
+        radioHistoryStates.clear()
+        radioVisibleLimits.clear()
+        displayedRadioMessageGroupId = null
+        radioHistoryLoading = false
+        radioHistoryHasMore = true
+        radioSyncError = ""
     }
 
     private fun derivedAccessPoint(): AccessPoint? {
@@ -1782,7 +1649,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
             displayName = "默认中心入口",
             host = host,
             port = DEFAULT_UDP_PORT,
-            priority = Int.MAX_VALUE,
+            priority = Int.MAX_VALUE
         )
     }
 
@@ -1794,7 +1661,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
         val cacheGeneration = radioCacheLoadGeneration.incrementAndGet()
         val visibleLimit = radioVisibleLimits.getOrDefault(loadKey, INITIAL_VISIBLE_MESSAGES)
         executor.execute {
-            val cachedMessages = runCatching { messageStore.load(accountKey, groupId, visibleLimit) }.getOrDefault(emptyList())
+            val cachedMessages = runCatching {
+                messageStore.load(accountKey, groupId, visibleLimit)
+            }.getOrDefault(emptyList())
             mainHandler.post {
                 loadingCachedRadioMessages.remove(loadKey)
                 if (
@@ -1842,7 +1711,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     check(dataGeneration == radioDataGeneration.get())
                     val page = api.getGroupMessages(
                         groupId = groupId,
-                        cursor = historyState.nextCursor,
+                        cursor = historyState.nextCursor
                     )
                     val remoteMessages = page.messages.mapNotNull { channelMessageToRadio(it, accountUser) }
                     messageStore.reconcile(accountKey, groupId, remoteMessages)
@@ -1850,7 +1719,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     historyState = RadioHistoryState(
                         nextCursor = nextCursor,
                         hasMore = page.hasMore && nextCursor.isNotBlank() && nextCursor != historyState.nextCursor,
-                        dataGeneration = dataGeneration,
+                        dataGeneration = dataGeneration
                     )
                     check(requestGeneration == radioHistoryGeneration.get())
                     check(dataGeneration == radioDataGeneration.get())
@@ -1863,7 +1732,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 OlderRadioHistoryResult(
                     messages = cachedMessages,
                     hasMore = requestedLimit < MAX_MESSAGES &&
-                        (cachedMessages.size >= requestedLimit || historyState.hasMore),
+                        (cachedMessages.size >= requestedLimit || historyState.hasMore)
                 )
             }
             mainHandler.post {
@@ -1896,7 +1765,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     RadioMessageReconciler.isStillSettling(
                         local.timestamp,
                         local.durationMs,
-                        localSettleCutoff,
+                        localSettleCutoff
                     ) &&
                     local.id !in cachedIds &&
                     messages.none { remote ->
@@ -1909,7 +1778,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             messages
         }
         val normalized = RadioMessageReconciler.deduplicate(merged).takeLast(MAX_MESSAGES)
-        if (radioMessages.size == normalized.size && radioMessages.indices.all { radioMessages[it] == normalized[it] }) {
+        if (radioMessages.size == normalized.size &&
+            radioMessages.indices.all { radioMessages[it] == normalized[it] }
+        ) {
             return
         }
         radioMessages.clear()
@@ -1925,7 +1796,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         groupId: Int,
         accountKey: String?,
         accountUser: User,
-        expectedGeneration: Int,
+        expectedGeneration: Int
     ): RadioSyncSnapshot {
         val now = System.currentTimeMillis()
         check(expectedGeneration == radioDataGeneration.get())
@@ -1948,19 +1819,19 @@ class AppController(application: Application) : AndroidViewModel(application), R
             radioHistoryStates[stateKey] = RadioHistoryState(
                 nextCursor = page.nextCursor,
                 hasMore = page.hasMore && page.nextCursor.isNotBlank(),
-                dataGeneration = expectedGeneration,
+                dataGeneration = expectedGeneration
             )
             val visibleLimit = radioVisibleLimits.getOrDefault(stateKey, INITIAL_VISIBLE_MESSAGES)
             val cachedMessages = messageStore.load(accountKey, groupId, visibleLimit + 1)
             return RadioSyncSnapshot(
                 messages = cachedMessages.takeLast(visibleLimit),
                 hasMoreHistory = visibleLimit < MAX_MESSAGES &&
-                    (cachedMessages.size > visibleLimit || page.hasMore),
+                    (cachedMessages.size > visibleLimit || page.hasMore)
             )
         }
         return RadioSyncSnapshot(
             messages = remoteMessages.takeLast(INITIAL_VISIBLE_MESSAGES),
-            hasMoreHistory = page.hasMore || remoteMessages.size > INITIAL_VISIBLE_MESSAGES,
+            hasMoreHistory = page.hasMore || remoteMessages.size > INITIAL_VISIBLE_MESSAGES
         )
     }
 
@@ -2032,10 +1903,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private const val MAX_HISTORY_PAGES_PER_LOAD = 5
         private const val MAX_MESSAGES = 1_000
         private const val VOICE_AUTO_PLAY_ADVANCE_DELAY_MS = 300L
-        private const val AUDIO_CACHE_DIRECTORY = "radio_audio"
-        private const val AVATAR_CACHE_DIRECTORY = "avatar_images"
-        private const val MIN_TRANSMIT_TIMEOUT_SECONDS = 10
-        private const val MAX_TRANSMIT_TIMEOUT_SECONDS = 600
         fun formatDuration(milliseconds: Long): String {
             val totalSeconds = milliseconds / 1_000
             val hours = totalSeconds / 3_600

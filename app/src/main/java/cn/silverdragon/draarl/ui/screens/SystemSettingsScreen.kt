@@ -61,87 +61,116 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-import cn.silverdragon.draarl.AppController
-import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.data.AppDisplayScale
 import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.radio.TransmitTailTone
+import cn.silverdragon.draarl.settings.SettingsController
+import cn.silverdragon.draarl.settings.SettingsEvent
+import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import kotlin.math.roundToInt
 
+data class SystemSettingsUpdateState(
+    val currentVersionName: String,
+    val status: AppUpdateStatus,
+    val info: AppUpdateInfo?,
+    val message: String,
+    val progress: () -> Float
+)
+
+sealed interface SystemSettingsAction {
+    data object Back : SystemSettingsAction
+    data class ShowNotice(val message: String) : SystemSettingsAction
+    data object CheckAppUpdate : SystemSettingsAction
+    data object DownloadAndInstallUpdate : SystemSettingsAction
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SystemSettingsScreen(controller: AppController) {
+fun SystemSettingsScreen(
+    settings: SettingsController,
+    userApproved: Boolean,
+    update: SystemSettingsUpdateState,
+    onAction: (SystemSettingsAction) -> Unit
+) {
     val context = LocalContext.current
-    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    val state = settings.uiState
+    val microphonePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
         if (granted) {
-            controller.setPttOverlayEnabled(true)
+            settings.setPttOverlayEnabled(true)
         } else {
-            controller.showNotice("需要麦克风权限才能使用悬浮 PTT")
+            onAction(SystemSettingsAction.ShowNotice("需要麦克风权限才能使用悬浮 PTT"))
         }
     }
     val overlayPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (!controller.canDrawPttOverlay()) {
-            controller.showNotice("需要悬浮窗权限才能显示 PTT 按钮")
+        if (!settings.canDrawPttOverlay()) {
+            onAction(SystemSettingsAction.ShowNotice("需要悬浮窗权限才能显示 PTT 按钮"))
         } else if (
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
             microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
         } else {
-            controller.setPttOverlayEnabled(true)
+            settings.setPttOverlayEnabled(true)
         }
     }
 
     fun requestOverlayEnabled() {
         when {
-            !controller.canDrawPttOverlay() -> overlayPermission.launch(
+            !settings.canDrawPttOverlay() -> overlayPermission.launch(
                 Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    "package:${context.packageName}".toUri(),
-                ),
+                    "package:${context.packageName}".toUri()
+                )
             )
+
             ContextCompat.checkSelfPermission(
                 context,
-                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.RECORD_AUDIO
             ) != PackageManager.PERMISSION_GRANTED -> microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
-            else -> controller.setPttOverlayEnabled(true)
+
+            else -> settings.setPttOverlayEnabled(true)
         }
     }
 
-    LaunchedEffect(Unit) { controller.reconcilePttOverlayPermission() }
+    LaunchedEffect(settings) { settings.reconcilePttOverlayPermission() }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("应用设置") },
                 navigationIcon = {
-                    IconButton(onClick = { controller.navigate(AppPage.SETTINGS) }) {
+                    IconButton(onClick = { onAction(SystemSettingsAction.Back) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                },
+                }
             )
-        },
+        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             item {
                 SettingsGroup("外观") {
                     SettingsControlHeader(
                         icon = Icons.Default.FormatSize,
                         title = "界面缩放",
-                        summary = "调整内容密度与控件尺寸",
+                        summary = "调整内容密度与控件尺寸"
                     )
                     SingleChoiceSegmentedButtonRow(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)
                     ) {
                         AppDisplayScale.entries.forEachIndexed { index, scale ->
                             SegmentedButton(
-                                selected = controller.appDisplayScale == scale,
-                                onClick = { controller.updateAppDisplayScale(scale) },
-                                shape = SegmentedButtonDefaults.itemShape(index, AppDisplayScale.entries.size),
+                                selected = state.appDisplayScale == scale,
+                                onClick = { settings.onEvent(SettingsEvent.DisplayScaleChanged(scale)) },
+                                shape = SegmentedButtonDefaults.itemShape(index, AppDisplayScale.entries.size)
                             ) {
                                 Text(scale.displayName())
                             }
@@ -151,16 +180,16 @@ fun SystemSettingsScreen(controller: AppController) {
                     SettingsControlHeader(
                         icon = Icons.Default.Palette,
                         title = "外观模式",
-                        summary = "界面、系统栏和地图使用相同明暗模式",
+                        summary = "界面、系统栏和地图使用相同明暗模式"
                     )
                     SingleChoiceSegmentedButtonRow(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)
                     ) {
                         AppThemeMode.entries.forEachIndexed { index, mode ->
                             SegmentedButton(
-                                selected = controller.appThemeMode == mode,
-                                onClick = { controller.updateAppThemeMode(mode) },
-                                shape = SegmentedButtonDefaults.itemShape(index, AppThemeMode.entries.size),
+                                selected = state.appThemeMode == mode,
+                                onClick = { settings.onEvent(SettingsEvent.ThemeModeChanged(mode)) },
+                                shape = SegmentedButtonDefaults.itemShape(index, AppThemeMode.entries.size)
                             ) {
                                 Text(mode.displayName())
                             }
@@ -175,39 +204,39 @@ fun SystemSettingsScreen(controller: AppController) {
                         icon = Icons.Default.Timer,
                         title = "发射超时",
                         summary = "达到设定时长后自动结束发射",
-                        value = "${controller.transmitTimeoutSeconds} 秒",
+                        value = "${state.transmitTimeoutSeconds} 秒"
                     )
                     Slider(
-                        value = controller.transmitTimeoutSeconds.toFloat(),
+                        value = state.transmitTimeoutSeconds.toFloat(),
                         onValueChange = {
-                            controller.updateTransmitTimeoutSeconds((it / 10f).roundToInt() * 10)
+                            settings.onEvent(SettingsEvent.TransmitTimeoutChanged((it / 10f).roundToInt() * 10))
                         },
                         valueRange = 10f..600f,
                         steps = 58,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)
                     )
                 }
             }
 
             item {
-                val tailToneEnabled = controller.transmitTailTone != TransmitTailTone.OFF
+                val tailToneEnabled = state.transmitTailTone != TransmitTailTone.OFF
                 SettingsGroup("音频") {
                     SettingsControlHeader(
                         icon = Icons.Default.MusicNote,
                         title = "结束尾音",
                         summary = "发射结束时在本机播放所选设备风格尾音",
-                        value = controller.transmitTailTone.displayName(),
+                        value = state.transmitTailTone.displayName()
                     )
                     FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         TransmitTailTone.entries.forEach { tone ->
                             FilterChip(
-                                selected = controller.transmitTailTone == tone,
-                                onClick = { controller.updateTransmitTailTone(tone) },
-                                label = { Text(tone.displayName()) },
+                                selected = state.transmitTailTone == tone,
+                                onClick = { settings.onEvent(SettingsEvent.TransmitTailToneChanged(tone)) },
+                                label = { Text(tone.displayName()) }
                             )
                         }
                     }
@@ -220,9 +249,11 @@ fun SystemSettingsScreen(controller: AppController) {
                         } else {
                             "选择尾音样式后可用"
                         },
-                        checked = controller.transmitTailToneToRemoteEnabled,
+                        checked = state.transmitTailToneToRemoteEnabled,
                         enabled = tailToneEnabled,
-                        onCheckedChange = controller::updateTransmitTailToneToRemoteEnabled,
+                        onCheckedChange = {
+                            settings.onEvent(SettingsEvent.TransmitTailToneToRemoteChanged(it))
+                        }
                     )
                     SettingsDivider()
                     SettingsToggleRow(
@@ -233,25 +264,27 @@ fun SystemSettingsScreen(controller: AppController) {
                         } else {
                             "选择尾音样式后可用"
                         },
-                        checked = controller.receiveTailToneEnabled,
+                        checked = state.receiveTailToneEnabled,
                         enabled = tailToneEnabled,
-                        onCheckedChange = controller::updateReceiveTailToneEnabled,
+                        onCheckedChange = { settings.onEvent(SettingsEvent.ReceiveTailToneChanged(it)) }
                     )
                     SettingsDivider()
                     SettingsControlHeader(
                         icon = Icons.Default.GraphicEq,
                         title = "接收降噪强度",
                         summary = "PTT 页面开启播放降噪时生效",
-                        value = "${controller.playbackDenoiseStrengthPercent}%",
+                        value = "${state.playbackDenoiseStrengthPercent}%"
                     )
                     Slider(
-                        value = controller.playbackDenoiseStrengthPercent.toFloat(),
+                        value = state.playbackDenoiseStrengthPercent.toFloat(),
                         onValueChange = {
-                            controller.updatePlaybackDenoiseStrengthPercent((it / 5f).roundToInt() * 5)
+                            settings.onEvent(
+                                SettingsEvent.PlaybackDenoiseStrengthChanged((it / 5f).roundToInt() * 5)
+                            )
                         },
                         valueRange = 0f..100f,
                         steps = 19,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)
                     )
                 }
             }
@@ -261,16 +294,16 @@ fun SystemSettingsScreen(controller: AppController) {
                     SettingsToggleRow(
                         icon = Icons.Default.PictureInPictureAlt,
                         title = "悬浮 PTT",
-                        summary = if (controller.user?.isApproved == true) {
+                        summary = if (userApproved) {
                             "切到后台后显示可拖动的 PTT 按钮"
                         } else {
                             "账号审核通过后可用"
                         },
-                        checked = controller.pttOverlayEnabled,
-                        enabled = controller.user?.isApproved == true,
+                        checked = state.pttOverlayEnabled,
+                        enabled = userApproved,
                         onCheckedChange = { enabled ->
-                            if (enabled) requestOverlayEnabled() else controller.setPttOverlayEnabled(false)
-                        },
+                            if (enabled) requestOverlayEnabled() else settings.setPttOverlayEnabled(false)
+                        }
                     )
                 }
             }
@@ -281,79 +314,81 @@ fun SystemSettingsScreen(controller: AppController) {
                         icon = Icons.Default.SystemUpdate,
                         title = "DraARL Android",
                         summary = "当前安装版本",
-                        value = controller.currentAppVersionName,
+                        value = update.currentVersionName
                     )
                     SettingsDivider()
                     SettingsToggleRow(
                         icon = Icons.Default.Refresh,
                         title = "自动检查更新",
                         summary = "登录或启动后检查可用的新版本",
-                        checked = controller.autoCheckAppUpdate,
-                        onCheckedChange = controller::setAutoCheckAppUpdateEnabled,
+                        checked = state.autoCheckAppUpdate,
+                        onCheckedChange = { settings.onEvent(SettingsEvent.AutoCheckAppUpdateChanged(it)) }
                     )
-                    if (controller.appUpdateMessage.isNotBlank() || controller.appUpdateInfo != null) {
+                    if (update.message.isNotBlank() || update.info != null) {
                         SettingsDivider()
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            if (controller.appUpdateMessage.isNotBlank()) {
+                            if (update.message.isNotBlank()) {
                                 Text(
-                                    controller.appUpdateMessage,
+                                    update.message,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = when (controller.appUpdateStatus) {
+                                    color = when (update.status) {
                                         AppUpdateStatus.AVAILABLE,
                                         AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
                                         -> MaterialTheme.colorScheme.primary
+
                                         AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
+
                                         else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
+                                    }
                                 )
                             }
-                            controller.appUpdateInfo?.changelog?.takeIf(String::isNotBlank)?.let { changelog ->
+                            update.info?.changelog?.takeIf(String::isNotBlank)?.let { changelog ->
                                 Text(
                                     changelog,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            if (controller.appUpdateStatus == AppUpdateStatus.DOWNLOADING) {
+                            if (update.status == AppUpdateStatus.DOWNLOADING) {
                                 LinearProgressIndicator(
-                                    progress = { controller.appUpdateProgress },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    progress = update.progress,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val busy = controller.appUpdateStatus == AppUpdateStatus.CHECKING ||
-                            controller.appUpdateStatus == AppUpdateStatus.DOWNLOADING
+                        val busy = update.status == AppUpdateStatus.CHECKING ||
+                            update.status == AppUpdateStatus.DOWNLOADING
                         OutlinedButton(
-                            onClick = { controller.checkAppUpdate() },
+                            onClick = { onAction(SystemSettingsAction.CheckAppUpdate) },
                             enabled = !busy,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text(if (controller.appUpdateStatus == AppUpdateStatus.CHECKING) "检查中" else "检查更新")
+                            Text(if (update.status == AppUpdateStatus.CHECKING) "检查中" else "检查更新")
                         }
-                        if (controller.appUpdateInfo != null) {
+                        if (update.info != null) {
                             Button(
-                                onClick = { controller.downloadAndInstallAppUpdate() },
+                                onClick = { onAction(SystemSettingsAction.DownloadAndInstallUpdate) },
                                 enabled = !busy,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.Download, contentDescription = null)
                                 Spacer(Modifier.width(8.dp))
                                 Text(
-                                    if (controller.appUpdateStatus == AppUpdateStatus.READY_TO_INSTALL) {
+                                    if (update.status == AppUpdateStatus.READY_TO_INSTALL) {
                                         "重新安装"
                                     } else {
                                         "安装更新"
-                                    },
+                                    }
                                 )
                             }
                         }
@@ -365,10 +400,7 @@ fun SystemSettingsScreen(controller: AppController) {
 }
 
 @Composable
-private fun SettingsGroup(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit,
-) {
+private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column {
         SettingsSectionHeader(title)
         Surface(
@@ -376,21 +408,16 @@ private fun SettingsGroup(
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 1.dp,
-            content = { Column(content = content) },
+            content = { Column(content = content) }
         )
     }
 }
 
 @Composable
-private fun SettingsControlHeader(
-    icon: ImageVector,
-    title: String,
-    summary: String,
-    value: String? = null,
-) {
+private fun SettingsControlHeader(icon: ImageVector, title: String, summary: String, value: String? = null) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         SettingsIcon(icon)
         Spacer(Modifier.width(16.dp))
@@ -399,7 +426,7 @@ private fun SettingsControlHeader(
             Text(
                 summary,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         value?.let {
@@ -407,7 +434,7 @@ private fun SettingsControlHeader(
             Text(
                 it,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -420,14 +447,14 @@ private fun SettingsToggleRow(
     summary: String,
     checked: Boolean,
     enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit,
+    onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         SettingsIcon(icon, enabled)
         Spacer(Modifier.width(16.dp))
@@ -435,18 +462,18 @@ private fun SettingsToggleRow(
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
             )
             Text(
                 summary,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
-            onCheckedChange = if (enabled) onCheckedChange else null,
+            onCheckedChange = if (enabled) onCheckedChange else null
         )
     }
 }
@@ -465,12 +492,12 @@ private fun SettingsIcon(icon: ImageVector, enabled: Boolean = true) {
             MaterialTheme.colorScheme.onSecondaryContainer
         } else {
             MaterialTheme.colorScheme.outline
-        },
+        }
     ) {
         Icon(
             icon,
             contentDescription = null,
-            modifier = Modifier.padding(7.dp),
+            modifier = Modifier.padding(7.dp)
         )
     }
 }

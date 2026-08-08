@@ -13,7 +13,11 @@ spotless {
         target("app/src/**/*.kt")
         targetExclude("app/src/main/cpp/third_party/rnnoise/**", "**/build/**")
         ktlint(libs.versions.ktlint.get()).editorConfigOverride(
-            mapOf("ktlint_code_style" to "android_studio")
+            mapOf(
+                "ktlint_code_style" to "android_studio",
+                "ktlint_function_naming_ignore_when_annotated_with" to "Composable",
+                "max_line_length" to "120"
+            )
         )
         trimTrailingWhitespace()
         endWithNewline()

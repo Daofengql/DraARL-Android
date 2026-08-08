@@ -18,26 +18,10 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 131 个文件，约 2.31 万有效代码行；JVM 测试 47 个文件、144 个用例。
+- 生产 Kotlin 136 个文件，约 2.33 万有效代码行；JVM 测试 48 个文件、149 个用例。
 - 复杂度主要集中在 `AppController`、`ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
 - Spotless、Detekt、单元测试、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
-- 当前工作区正在拆分 `SettingsController`，该批次完成前不得与后续重构混合提交。
-
-## P0：收口当前 Settings 重构
-
-- [ ] **完成 `SettingsController` 提取**
-
-范围：`settings/`、`AppController.kt`、设置页面和应用组合入口。
-
-- 使用单一不可变 `SettingsUiState` 和有限 `SettingsEvent`，移除旧设置字段的双重来源。
-- 完成系统设置页更新状态与 Action 的迁移，UI 不再依赖完整 `AppController`。
-- 将主题、显示缩放、音频、PTT 悬浮窗、自动更新和存储清理的持久化集中到设置域。
-- 注入 IO dispatcher；清理或刷新任务必须绑定 `viewModelScope`，正确传播取消。
-- 提取 `AppController.onRadioMessage` 中独立的消息补全逻辑，清除本批次新增的 Detekt 告警。
-- 为状态更新、音频设置同步、悬浮窗权限和存储清理补齐 JVM 测试。
-
-验收：不存在旧设置代理或双写路径，Settings 测试和完整工程门禁通过，提交中不扩充 Detekt 基线。
 
 ## P1：代码边界与状态所有权
 
@@ -197,14 +181,13 @@
 
 ## 推荐执行顺序
 
-1. 完成并提交 `SettingsController`，恢复干净且通过门禁的工作区。
-2. 为现有五个一级页面建立截图基线。
-3. 按域继续拆分 `AppController`，每次只迁移一个状态所有者。
-4. 分两到三个小批次改造壳层、列表/设置页和反馈容器。
-5. 拆分 `ApiClient` 并补 MockWebServer 测试。
-6. 显式化 `UdpRadioClient` 状态机并补确定性测试。
-7. 处理 Compose 重组、Release/R8 和 Baseline Profile。
-8. 每个批次同步规模数据与文档，最后执行完整真机回归。
+1. 为现有五个一级页面建立截图基线。
+2. 按域继续拆分 `AppController`，每次只迁移一个状态所有者。
+3. 分两到三个小批次改造壳层、列表/设置页和反馈容器。
+4. 拆分 `ApiClient` 并补 MockWebServer 测试。
+5. 显式化 `UdpRadioClient` 状态机并补确定性测试。
+6. 处理 Compose 重组、Release/R8 和 Baseline Profile。
+7. 每个批次同步规模数据与文档，最后执行完整真机回归。
 
 ## 每批验证
 

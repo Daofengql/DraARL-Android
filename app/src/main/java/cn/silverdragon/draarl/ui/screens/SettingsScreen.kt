@@ -16,16 +16,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,24 +33,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import cn.silverdragon.draarl.AppController
-import cn.silverdragon.draarl.AppPage
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(controller: AppController) {
+fun SettingsScreen(onAction: (SettingsMenuAction) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("设置") },
                 navigationIcon = {
-                    IconButton(onClick = { controller.navigate(AppPage.PROFILE) }) {
+                    IconButton(onClick = { onAction(SettingsMenuAction.Back) }) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = "返回"
                         )
                     }
-                },
+                }
             )
         }
     ) { innerPadding ->
@@ -59,7 +57,7 @@ fun SettingsScreen(controller: AppController) {
                 .fillMaxSize()
                 .padding(innerPadding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
                 SettingsSectionHeader("账户")
@@ -68,7 +66,7 @@ fun SettingsScreen(controller: AppController) {
                         icon = Icons.Default.Lock,
                         title = "账号与安全",
                         subtitle = "密码、邮箱、登录信息",
-                        onClick = { controller.navigate(AppPage.ACCOUNT_SECURITY) },
+                        onClick = { onAction(SettingsMenuAction.OpenAccountSecurity) }
                     )
                 }
             }
@@ -80,19 +78,19 @@ fun SettingsScreen(controller: AppController) {
                         icon = Icons.Default.Settings,
                         title = "应用设置",
                         subtitle = "外观、通联、音频、后台与更新",
-                        onClick = { controller.navigate(AppPage.SYSTEM_SETTINGS) },
+                        onClick = { onAction(SettingsMenuAction.OpenSystemSettings) }
                     )
                     SettingsMenuItem(
                         icon = Icons.Default.Storage,
                         title = "存储管理",
                         subtitle = "查看并清理语音、头像和消息缓存",
-                        onClick = { controller.navigate(AppPage.STORAGE_SETTINGS) },
+                        onClick = { onAction(SettingsMenuAction.OpenStorageSettings) }
                     )
                     SettingsMenuItem(
                         icon = Icons.Default.MyLocation,
                         title = "APRS 设置",
                         subtitle = "APRS-IS 位置上报与自动上报",
-                        onClick = { controller.navigate(AppPage.APRS_SETTINGS) },
+                        onClick = { onAction(SettingsMenuAction.OpenAprsSettings) }
                     )
                 }
             }
@@ -104,7 +102,7 @@ fun SettingsScreen(controller: AppController) {
                         icon = Icons.AutoMirrored.Filled.ExitToApp,
                         title = "退出登录",
                         titleColor = MaterialTheme.colorScheme.error,
-                        onClick = { controller.logout() },
+                        onClick = { onAction(SettingsMenuAction.Logout) }
                     )
                 }
             }
@@ -119,7 +117,7 @@ internal fun SettingsSectionHeader(title: String) {
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
+        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
     )
 }
 
@@ -129,40 +127,40 @@ private fun SettingsMenuItem(
     title: String,
     subtitle: String? = null,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
-    onClick: () -> Unit,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             icon,
             contentDescription = null,
             modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = titleColor,
+                color = titleColor
             )
             if (subtitle != null) {
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
