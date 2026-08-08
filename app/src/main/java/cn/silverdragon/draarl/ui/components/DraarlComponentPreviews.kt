@@ -38,8 +38,6 @@ private val PreviewRadioStatus = RadioStatusStripState(
     connectionTone = StatusTone.CONNECTED,
     nodeSelectionEnabled = true,
     onlineCount = 18,
-    receiveLevel = 0.62f,
-    transmitLevel = 0f,
     receiving = true,
     transmitting = false,
     denoiseEnabled = true,
@@ -181,6 +179,15 @@ private fun RadioStatusPreviewContent(state: RadioStatusStripState) {
                     Text("BH", style = MaterialTheme.typography.labelMedium)
                 }
             }
+        },
+        audioLevel = { modifier ->
+            RadioAudioLevelMeter(
+                receiveLevel = 0.62f,
+                transmitLevel = 0f,
+                receiving = state.receiving,
+                transmitting = state.transmitting,
+                modifier = modifier,
+            )
         },
         onSelectNode = {},
         onShowOnlineDevices = {},

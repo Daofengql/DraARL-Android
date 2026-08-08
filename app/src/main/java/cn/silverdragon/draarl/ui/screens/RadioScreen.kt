@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -92,10 +93,10 @@ fun RadioScreen(
     var showLocationChoices by rememberSaveable { mutableStateOf(false) }
     var showCwSheet by rememberSaveable { mutableStateOf(false) }
     var cwText by rememberSaveable { mutableStateOf("") }
-    var cwWordsPerMinute by rememberSaveable { mutableStateOf(18) }
-    var cwToneHz by rememberSaveable { mutableStateOf(700) }
+    var cwWordsPerMinute by rememberSaveable { mutableIntStateOf(18) }
+    var cwToneHz by rememberSaveable { mutableIntStateOf(700) }
     var historyAnchorId by rememberSaveable(controller.selectedGroupId) { mutableStateOf("") }
-    var historyAnchorOffset by rememberSaveable(controller.selectedGroupId) { mutableStateOf(0) }
+    var historyAnchorOffset by rememberSaveable(controller.selectedGroupId) { mutableIntStateOf(0) }
     val dismissExtrasInteraction = remember { MutableInteractionSource() }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         controller.connectRadio()

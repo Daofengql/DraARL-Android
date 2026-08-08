@@ -52,8 +52,6 @@ data class RadioStatusStripState(
     val connectionTone: StatusTone,
     val nodeSelectionEnabled: Boolean,
     val onlineCount: Int,
-    val receiveLevel: Float,
-    val transmitLevel: Float,
     val receiving: Boolean,
     val transmitting: Boolean,
     val denoiseEnabled: Boolean,
@@ -70,6 +68,7 @@ data class RadioStatusStripState(
 fun RadioStatusStrip(
     state: RadioStatusStripState,
     avatar: @Composable () -> Unit,
+    audioLevel: @Composable (Modifier) -> Unit,
     onSelectNode: () -> Unit,
     onShowOnlineDevices: () -> Unit,
     onToggleDenoise: () -> Unit,
@@ -167,13 +166,7 @@ fun RadioStatusStrip(
                     },
                 )
                 Spacer(Modifier.width(8.dp))
-                AudioLevelMeter(
-                    receiveLevel = state.receiveLevel,
-                    transmitLevel = state.transmitLevel,
-                    receiving = state.receiving,
-                    transmitting = state.transmitting,
-                    modifier = Modifier.widthIn(min = 96.dp, max = 144.dp).height(18.dp),
-                )
+                audioLevel(Modifier.widthIn(min = 96.dp, max = 144.dp).height(18.dp))
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -218,7 +211,7 @@ fun RadioStatusStrip(
 }
 
 @Composable
-private fun AudioLevelMeter(
+internal fun RadioAudioLevelMeter(
     receiveLevel: Float,
     transmitLevel: Float,
     receiving: Boolean,

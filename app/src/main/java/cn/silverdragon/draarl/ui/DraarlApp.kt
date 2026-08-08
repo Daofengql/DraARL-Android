@@ -189,37 +189,7 @@ private fun AuthenticatedApp(controller: AppController) {
         if (controller.page != AppPage.RADIO) radioExtrasExpanded = false
     }
 
-    var dismissedAppUpdateVersion by rememberSaveable { mutableStateOf("") }
-    val appUpdateInfo = controller.appUpdateInfo
-    val appUpdateStatus = controller.appUpdateStatus
-    val updateDialogStickyStatuses = setOf(
-        AppUpdateStatus.DOWNLOADING,
-        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
-        AppUpdateStatus.READY_TO_INSTALL,
-    )
-    val showAppUpdateDialog = appUpdateInfo != null &&
-        appUpdateStatus in setOf(
-            AppUpdateStatus.AVAILABLE,
-            AppUpdateStatus.DOWNLOADING,
-            AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
-            AppUpdateStatus.READY_TO_INSTALL,
-            AppUpdateStatus.ERROR,
-        ) &&
-        (
-            appUpdateInfo.forceUpdate ||
-                dismissedAppUpdateVersion != appUpdateInfo.version ||
-                appUpdateStatus in updateDialogStickyStatuses
-            )
-    appUpdateInfo?.takeIf { showAppUpdateDialog }?.let { update ->
-        AppUpdateDialog(
-            update = update,
-            status = appUpdateStatus,
-            message = controller.appUpdateMessage,
-            progress = controller.appUpdateProgress,
-            onUpdate = controller::downloadAndInstallAppUpdate,
-            onDismiss = { dismissedAppUpdateVersion = update.version },
-        )
-    }
+    AppUpdateHost(controller)
 
     val imeVisible = WindowInsets.isImeVisible
     val showBottomBar = !imeVisible && !radioExtrasExpanded && controller.page !in setOf(
@@ -342,6 +312,38 @@ private fun AuthenticatedApp(controller: AppController) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AppUpdateHost(controller: AppController) {
+    var dismissedVersion by rememberSaveable { mutableStateOf("") }
+    val update = controller.appUpdateInfo ?: return
+    val status = controller.appUpdateStatus
+    val visible = status in setOf(
+        AppUpdateStatus.AVAILABLE,
+        AppUpdateStatus.DOWNLOADING,
+        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
+        AppUpdateStatus.READY_TO_INSTALL,
+        AppUpdateStatus.ERROR,
+    ) && (
+        update.forceUpdate ||
+            dismissedVersion != update.version ||
+            status in setOf(
+                AppUpdateStatus.DOWNLOADING,
+                AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
+                AppUpdateStatus.READY_TO_INSTALL,
+            )
+        )
+    if (visible) {
+        AppUpdateDialog(
+            update = update,
+            status = status,
+            message = controller.appUpdateMessage,
+            progress = controller.appUpdateProgress,
+            onUpdate = controller::downloadAndInstallAppUpdate,
+            onDismiss = { dismissedVersion = update.version },
+        )
     }
 }
 

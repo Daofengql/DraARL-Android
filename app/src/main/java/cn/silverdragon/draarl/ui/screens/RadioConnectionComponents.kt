@@ -13,6 +13,7 @@ import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.formatRadioIdentifiers
 import cn.silverdragon.draarl.data.formatRadioIdentity
+import cn.silverdragon.draarl.ui.components.RadioAudioLevelMeter
 import cn.silverdragon.draarl.ui.components.RadioStatusStrip
 import cn.silverdragon.draarl.ui.components.RadioStatusStripState
 import cn.silverdragon.draarl.ui.components.StatusTone
@@ -45,8 +46,6 @@ internal fun ConnectionPanel(
             connectionTone = connectionTone(status.phase),
             nodeSelectionEnabled = controller.accessPoints.isNotEmpty() && status.phase !in NODE_SELECTION_BLOCKED_PHASES,
             onlineCount = controller.onlineDevices.size,
-            receiveLevel = controller.playbackLevel,
-            transmitLevel = controller.transmitLevel,
             receiving = receivingAudio,
             transmitting = status.transmitting,
             denoiseEnabled = controller.playbackDenoiseEnabled,
@@ -59,12 +58,36 @@ internal fun ConnectionPanel(
             error = status.error,
         ),
         avatar = { UserAvatar(user?.avatarUrl.orEmpty(), Modifier.size(40.dp)) },
+        audioLevel = { modifier ->
+            ControllerAudioLevelMeter(
+                controller = controller,
+                receiving = receivingAudio,
+                transmitting = status.transmitting,
+                modifier = modifier,
+            )
+        },
         onSelectNode = { accessMenu = true },
         onShowOnlineDevices = onToggleDevices,
         onToggleDenoise = controller::togglePlaybackDenoise,
         onToggleMuted = controller::toggleMuted,
         onSelectSendChannel = { groupMenu = true },
         onSelectReceiveChannels = { routingMenu = true },
+    )
+}
+
+@Composable
+private fun ControllerAudioLevelMeter(
+    controller: AppController,
+    receiving: Boolean,
+    transmitting: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    RadioAudioLevelMeter(
+        receiveLevel = controller.playbackLevel,
+        transmitLevel = controller.transmitLevel,
+        receiving = receiving,
+        transmitting = transmitting,
+        modifier = modifier,
     )
 }
 
