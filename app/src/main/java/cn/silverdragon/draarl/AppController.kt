@@ -18,13 +18,11 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import cn.silverdragon.draarl.aprs.AprsConfig
 import cn.silverdragon.draarl.aprs.AprsConfigStore
-import cn.silverdragon.draarl.aprs.AprsConnectionState
+import cn.silverdragon.draarl.aprs.AprsController
+import cn.silverdragon.draarl.aprs.AprsEffects
 import cn.silverdragon.draarl.aprs.AprsIsClient
-import cn.silverdragon.draarl.aprs.AprsPosition
 import cn.silverdragon.draarl.aprs.AprsService
-import cn.silverdragon.draarl.aprs.AprsStatus
 import cn.silverdragon.draarl.auth.PublicAuthController
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.ApiAppDataSource
@@ -91,7 +89,7 @@ private data class RadioSyncSnapshot(val messages: List<RadioMessage>, val hasMo
 
 private data class OlderRadioHistoryResult(val messages: List<RadioMessage>, val hasMore: Boolean)
 
-class AppController internal constructor(application: Application, settingsIoDispatcher: CoroutineDispatcher) :
+class AppController internal constructor(application: Application, ioDispatcher: CoroutineDispatcher) :
     AndroidViewModel(application),
     RadioServiceListener {
     @Suppress("InjectDispatcher")
@@ -103,8 +101,6 @@ class AppController internal constructor(application: Application, settingsIoDis
         Thread(runnable, "draarl-app-worker")
     }
     private val sessionStore = SecureSessionStore(appContext)
-    private val aprsConfigStore = AprsConfigStore(appContext)
-    private val aprsClient = AprsIsClient()
     private val messageStore = RadioMessageStore(appContext)
     private val dashboardStore = DashboardCacheStore(appContext)
     private var serviceBinder: RadioConnectionService.LocalBinder? = null
@@ -125,7 +121,6 @@ class AppController internal constructor(application: Application, settingsIoDis
     private val radioConnectionGeneration = AtomicInteger(0)
     private val preparingRadioConnection = AtomicBoolean(false)
     private val disposed = AtomicBoolean(false)
-    private val sendingAprsPosition = AtomicBoolean(false)
     private val checkingAppUpdate = AtomicBoolean(false)
     private val downloadingAppUpdate = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
@@ -277,7 +272,31 @@ class AppController internal constructor(application: Application, settingsIoDis
         ),
         effects = settingsEffects,
         scope = viewModelScope,
-        ioDispatcher = settingsIoDispatcher
+        ioDispatcher = ioDispatcher
+    )
+    private val aprsEffects = object : AprsEffects {
+        override fun startBackgroundReporting(userId: Int) {
+            ContextCompat.startForegroundService(appContext, AprsService.startIntent(appContext, userId))
+        }
+
+        override fun stopBackgroundReporting() {
+            appContext.stopService(AprsService.stopIntent(appContext))
+        }
+
+        override fun showNotice(message: String) {
+            notice = message
+        }
+
+        override fun friendlyError(error: Throwable): String = this@AppController.friendlyError(error)
+
+        override fun currentTimeMillis(): Long = System.currentTimeMillis()
+    }
+    val aprs = AprsController(
+        storage = AprsConfigStore(appContext),
+        sender = AprsIsClient(),
+        effects = aprsEffects,
+        scope = viewModelScope,
+        ioDispatcher = ioDispatcher
     )
 
     var initializing by mutableStateOf(true)
@@ -330,10 +349,6 @@ class AppController internal constructor(application: Application, settingsIoDis
     var radioHistoryHasMore by mutableStateOf(true)
         private set
     var radioSyncError by mutableStateOf("")
-        private set
-    var aprsConfig by mutableStateOf(AprsConfig())
-        private set
-    var aprsStatus by mutableStateOf(AprsStatus())
         private set
     val currentAppVersionName: String get() = appUpdateManager.currentVersionName
     var appUpdateStatus by mutableStateOf(AppUpdateStatus.IDLE)
@@ -406,7 +421,7 @@ class AppController internal constructor(application: Application, settingsIoDis
                 .onSuccess { session ->
                     mainHandler.post {
                         user = session.user
-                        aprsConfig = aprsConfigStore.load(session.user.id)
+                        aprs.onUserChanged(session.user.id)
                         dashboard = dashboardStore.load(session.user.id) ?: DashboardData()
                         authenticated = true
                         loginBusy = false
@@ -452,9 +467,7 @@ class AppController internal constructor(application: Application, settingsIoDis
         executor.execute { api.logout() }
         authenticated = false
         user = null
-        aprsConfig = AprsConfig()
-        aprsStatus = AprsStatus()
-        appContext.stopService(AprsService.stopIntent(appContext))
+        aprs.onUserChanged(null)
         dashboard = DashboardData()
         devices = emptyList()
         groups = emptyList()
@@ -1137,63 +1150,6 @@ class AppController internal constructor(application: Application, settingsIoDis
 
     fun publicProfile(username: String): User? = publicProfiles[username.lowercase()]
 
-    fun updateAprsConfig(config: AprsConfig) {
-        val normalized = config.copy(
-            server = config.server.trim().ifBlank { "rotate.aprs2.net" },
-            port = config.port.coerceIn(1, 65_535),
-            callsign = config.callsign.trim().uppercase(),
-            movingIntervalSeconds = config.movingIntervalSeconds.coerceIn(60, 600),
-            stationaryIntervalSeconds = config.stationaryIntervalSeconds.coerceIn(60, 3_600)
-        )
-        aprsConfig = normalized
-        user?.id?.let { aprsConfigStore.save(it, normalized) }
-        val currentUserId = user?.id
-        if (normalized.enabled && normalized.autoReport && currentUserId != null) {
-            runCatching {
-                ContextCompat.startForegroundService(
-                    appContext,
-                    AprsService.startIntent(appContext, currentUserId)
-                )
-            }.onFailure { notice = "无法启动 APRS 后台上报：${friendlyError(it)}" }
-        } else {
-            appContext.stopService(AprsService.stopIntent(appContext))
-        }
-    }
-
-    fun sendAprsPosition(position: AprsPosition): Boolean {
-        val config = aprsConfig
-        if (!config.enabled) {
-            notice = "请先在设置中启用 APRS"
-            return false
-        }
-        if (!sendingAprsPosition.compareAndSet(false, true)) {
-            notice = "APRS 位置正在发送"
-            return false
-        }
-        aprsStatus = AprsStatus(AprsConnectionState.CONNECTING, "正在连接 APRS-IS")
-        executor.execute {
-            runCatching {
-                mainHandler.post { aprsStatus = AprsStatus(AprsConnectionState.SENDING, "正在发送 APRS 位置") }
-                kotlinx.coroutines.runBlocking { aprsClient.sendPosition(config, position) }
-            }.onSuccess {
-                mainHandler.post {
-                    aprsStatus = AprsStatus(
-                        state = AprsConnectionState.SENT,
-                        message = "APRS 位置已发送",
-                        lastSentAt = System.currentTimeMillis()
-                    )
-                }
-            }.onFailure { error ->
-                mainHandler.post {
-                    aprsStatus = AprsStatus(AprsConnectionState.ERROR, error.message ?: "APRS 发送失败")
-                    notice = error.message ?: "APRS 发送失败"
-                }
-            }
-            sendingAprsPosition.set(false)
-        }
-        return true
-    }
-
     fun onAppForegroundChanged(inForeground: Boolean) {
         appInForeground = inForeground
         if (inForeground) resumePendingAppUpdateInstall()
@@ -1529,7 +1485,7 @@ class AppController internal constructor(application: Application, settingsIoDis
         if (profileDelegate.isInitialized()) profileDelegate.value.close()
         if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.close()
         settings.close()
-        appContext.stopService(AprsService.stopIntent(appContext))
+        aprs.close()
         radioConnectionGeneration.incrementAndGet()
         pendingConnection = null
         if (preparingRadioConnection.getAndSet(false)) {
@@ -1554,14 +1510,14 @@ class AppController internal constructor(application: Application, settingsIoDis
             savedSession
         }
         user = stored.user
-        aprsConfig = aprsConfigStore.load(stored.user.id)
+        aprs.onUserChanged(stored.user.id)
         dashboard = dashboardStore.load(stored.user.id) ?: DashboardData()
         executor.execute {
             runCatching(api::restoreAndValidate)
                 .onSuccess { session ->
                     mainHandler.post {
                         user = session.user
-                        aprsConfig = aprsConfigStore.load(session.user.id)
+                        aprs.onUserChanged(session.user.id)
                         authenticated = true
                         initializing = false
                         selectedGroupId = sessionStore.selectedGroupId(
@@ -1586,6 +1542,7 @@ class AppController internal constructor(application: Application, settingsIoDis
                         initializing = false
                         authenticated = false
                         user = null
+                        aprs.onUserChanged(null)
                         syncPttOverlay()
                         loginError = if (error is ApiException && error.code == 403) {
                             friendlyError(error)

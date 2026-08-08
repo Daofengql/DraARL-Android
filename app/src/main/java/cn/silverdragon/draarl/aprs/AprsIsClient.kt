@@ -1,12 +1,12 @@
 package cn.silverdragon.draarl.aprs
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress
 import java.net.Socket
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-class AprsIsClient {
-    suspend fun sendPosition(config: AprsConfig, position: AprsPosition) = withContext(Dispatchers.IO) {
+internal class AprsIsClient : AprsPositionSender {
+    override suspend fun sendPosition(config: AprsConfig, position: AprsPosition) = withContext(Dispatchers.IO) {
         require(config.server.isNotBlank()) { "APRS 服务器不能为空" }
         require(config.callsign.isNotBlank()) { "请先设置 APRS 呼号" }
         val password = config.passcode.trim().ifBlank { AprsPacketFormatter.passcode(config.callsign).toString() }

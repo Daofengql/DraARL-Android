@@ -5,40 +5,52 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
-import org.json.JSONObject
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import org.json.JSONObject
 
-class AprsConfigStore(context: Context) {
+internal class AprsConfigStore(context: Context) : AprsConfigStorage {
     private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
     @Synchronized
-    fun load(userId: Int): AprsConfig {
-        if (userId <= 0) return AprsConfig()
-        val encrypted = preferences.getString(key(userId), null) ?: return AprsConfig()
-        return runCatching {
-            val wrapper = JSONObject(encrypted)
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(
-                Cipher.DECRYPT_MODE,
-                getOrCreateKey(),
-                GCMParameterSpec(128, Base64.decode(wrapper.getString("iv"), Base64.NO_WRAP)),
-            )
-            fromJson(JSONObject(cipher.doFinal(Base64.decode(wrapper.getString("data"), Base64.NO_WRAP)).toString(Charsets.UTF_8)))
-        }.getOrDefault(AprsConfig())
+    override fun load(userId: Int): AprsConfig = if (userId <= 0) {
+        AprsConfig()
+    } else {
+        preferences.getString(key(userId), null)?.let(::decrypt) ?: AprsConfig()
     }
 
+    private fun decrypt(encrypted: String): AprsConfig = runCatching {
+        val wrapper = JSONObject(encrypted)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(
+            Cipher.DECRYPT_MODE,
+            getOrCreateKey(),
+            GCMParameterSpec(128, Base64.decode(wrapper.getString("iv"), Base64.NO_WRAP))
+        )
+        fromJson(
+            JSONObject(
+                cipher.doFinal(Base64.decode(wrapper.getString("data"), Base64.NO_WRAP)).toString(Charsets.UTF_8)
+            )
+        )
+    }.getOrDefault(AprsConfig())
+
     @Synchronized
-    fun save(userId: Int, config: AprsConfig) {
+    override fun save(userId: Int, config: AprsConfig) {
         if (userId <= 0) return
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = JSONObject()
             .put("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .put("data", Base64.encodeToString(cipher.doFinal(toJson(config).toString().toByteArray(Charsets.UTF_8)), Base64.NO_WRAP))
+            .put(
+                "data",
+                Base64.encodeToString(
+                    cipher.doFinal(toJson(config).toString().toByteArray(Charsets.UTF_8)),
+                    Base64.NO_WRAP
+                )
+            )
         preferences.edit { putString(key(userId), encrypted.toString()) }
     }
 
@@ -68,7 +80,7 @@ class AprsConfigStore(context: Context) {
         symbolCode = json.optString("symbol_code", ">").firstOrNull() ?: '>',
         autoReport = json.optBoolean("auto_report"),
         movingIntervalSeconds = json.optInt("moving_interval", 120).coerceIn(60, 600),
-        stationaryIntervalSeconds = json.optInt("stationary_interval", 600).coerceIn(60, 3_600),
+        stationaryIntervalSeconds = json.optInt("stationary_interval", 600).coerceIn(60, 3_600)
     )
 
     private fun getOrCreateKey(): SecretKey {
@@ -78,11 +90,11 @@ class AprsConfigStore(context: Context) {
             init(
                 KeyGenParameterSpec.Builder(
                     KEY_ALIAS,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
                 )
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .build(),
+                    .build()
             )
             generateKey()
         }

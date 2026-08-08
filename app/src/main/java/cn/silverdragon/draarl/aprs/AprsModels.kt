@@ -1,5 +1,8 @@
 package cn.silverdragon.draarl.aprs
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class AprsConfig(
     val enabled: Boolean = false,
     val server: String = "rotate.aprs2.net",
@@ -11,15 +14,16 @@ data class AprsConfig(
     val symbolCode: Char = '>',
     val autoReport: Boolean = false,
     val movingIntervalSeconds: Int = 120,
-    val stationaryIntervalSeconds: Int = 600,
+    val stationaryIntervalSeconds: Int = 600
 )
 
+@Immutable
 data class AprsPosition(
     val latitude: Double,
     val longitude: Double,
     val altitudeMeters: Double? = null,
     val accuracyMeters: Float? = null,
-    val timestampMillis: Long = System.currentTimeMillis(),
+    val timestampMillis: Long = System.currentTimeMillis()
 )
 
 enum class AprsConnectionState {
@@ -28,11 +32,12 @@ enum class AprsConnectionState {
     VERIFIED,
     SENDING,
     SENT,
-    ERROR,
+    ERROR
 }
 
+@Immutable
 data class AprsStatus(
     val state: AprsConnectionState = AprsConnectionState.IDLE,
     val message: String = "",
-    val lastSentAt: Long? = null,
+    val lastSentAt: Long? = null
 )

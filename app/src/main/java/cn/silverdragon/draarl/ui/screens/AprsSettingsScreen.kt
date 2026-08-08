@@ -41,26 +41,32 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import cn.silverdragon.draarl.AppController
-import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.aprs.AprsConfig
 import cn.silverdragon.draarl.aprs.AprsConnectionState
+import cn.silverdragon.draarl.aprs.AprsEvent
 import cn.silverdragon.draarl.aprs.AprsPosition
+import cn.silverdragon.draarl.aprs.AprsUiState
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun AprsSettingsScreen(controller: AppController) {
+fun AprsSettingsScreen(
+    state: AprsUiState,
+    defaultCallsign: String,
+    onBack: () -> Unit,
+    onEvent: (AprsEvent) -> Unit,
+    onNotice: (String) -> Unit
+) {
     val context = LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val locationProvider = remember(context) { CurrentLocationProvider(context) }
-    val initial = controller.aprsConfig
+    val initial = state.config
     var enabled by rememberSaveable(initial) { mutableStateOf(initial.enabled) }
     var server by rememberSaveable(initial) { mutableStateOf(initial.server) }
     var port by rememberSaveable(initial) { mutableStateOf(initial.port.toString()) }
-    var callsign by rememberSaveable(initial, controller.user?.callsign) {
-        mutableStateOf(initial.callsign.ifBlank { controller.user?.callsign.orEmpty() })
+    var callsign by rememberSaveable(initial, defaultCallsign) {
+        mutableStateOf(initial.callsign.ifBlank { defaultCallsign })
     }
     var passcode by rememberSaveable(initial) { mutableStateOf(initial.passcode) }
     var comment by rememberSaveable(initial) { mutableStateOf(initial.comment) }
@@ -68,82 +74,90 @@ fun AprsSettingsScreen(controller: AppController) {
     var stationaryInterval by rememberSaveable(initial) {
         mutableFloatStateOf(initial.stationaryIntervalSeconds.toFloat())
     }
-    var saving by remember { mutableStateOf(false) }
     var locating by remember { mutableStateOf(false) }
 
     val locationPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         if (result.values.any { it }) {
             scope.launch {
                 locating = true
                 runCatching {
                     val location = locationProvider.locate()
-                    controller.sendAprsPosition(
-                        AprsPosition(
-                            latitude = location.latitude,
-                            longitude = location.longitude,
-                            altitudeMeters = if (location.hasAltitude()) location.altitude else null,
-                            accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
-                        ),
+                    onEvent(
+                        AprsEvent.SendPosition(
+                            AprsPosition(
+                                latitude = location.latitude,
+                                longitude = location.longitude,
+                                altitudeMeters = if (location.hasAltitude()) location.altitude else null,
+                                accuracyMeters = if (location.hasAccuracy()) location.accuracy else null
+                            )
+                        )
                     )
-                }.onFailure { controller.showNotice(it.message ?: "当前位置获取失败") }
+                }.onFailure { onNotice(it.message ?: "当前位置获取失败") }
                 locating = false
             }
         } else {
-            controller.showNotice("需要定位权限才能发送 APRS 位置")
+            onNotice("需要定位权限才能发送 APRS 位置")
         }
     }
 
     fun sendNow() {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val fine =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        val coarse =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
         if (fine || coarse) {
             scope.launch {
                 locating = true
                 runCatching {
                     val location = locationProvider.locate()
-                    controller.sendAprsPosition(
-                        AprsPosition(
-                            latitude = location.latitude,
-                            longitude = location.longitude,
-                            altitudeMeters = if (location.hasAltitude()) location.altitude else null,
-                            accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
-                        ),
+                    onEvent(
+                        AprsEvent.SendPosition(
+                            AprsPosition(
+                                latitude = location.latitude,
+                                longitude = location.longitude,
+                                altitudeMeters = if (location.hasAltitude()) location.altitude else null,
+                                accuracyMeters = if (location.hasAccuracy()) location.accuracy else null
+                            )
+                        )
                     )
-                }.onFailure { controller.showNotice(it.message ?: "当前位置获取失败") }
+                }.onFailure { onNotice(it.message ?: "当前位置获取失败") }
                 locating = false
             }
         } else {
-            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            locationPermission.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
         }
     }
 
     fun save() {
         val parsedPort = port.toIntOrNull()
         if (callsign.isBlank()) {
-            controller.showNotice("请填写 APRS 呼号")
+            onNotice("请填写 APRS 呼号")
             return
         }
         if (parsedPort == null || parsedPort !in 1..65535) {
-            controller.showNotice("请输入有效的 APRS 端口")
+            onNotice("请输入有效的 APRS 端口")
             return
         }
-        saving = true
-        controller.updateAprsConfig(
-            AprsConfig(
-                enabled = enabled,
-                server = server,
-                port = parsedPort,
-                callsign = callsign,
-                passcode = passcode,
-                comment = comment,
-                autoReport = enabled && autoReport,
-                stationaryIntervalSeconds = stationaryInterval.toInt().coerceIn(60, 3_600),
-            ),
+        onEvent(
+            AprsEvent.SaveConfig(
+                AprsConfig(
+                    enabled = enabled,
+                    server = server,
+                    port = parsedPort,
+                    callsign = callsign,
+                    passcode = passcode,
+                    comment = comment,
+                    autoReport = enabled && autoReport,
+                    stationaryIntervalSeconds = stationaryInterval.toInt().coerceIn(60, 3_600)
+                )
+            )
         )
-        saving = false
-        controller.showNotice("APRS 设置已保存")
     }
 
     Scaffold(
@@ -151,32 +165,36 @@ fun AprsSettingsScreen(controller: AppController) {
             TopAppBar(
                 title = { Text("APRS 设置") },
                 navigationIcon = {
-                    IconButton(onClick = { controller.navigate(AppPage.SETTINGS) }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
-                    IconButton(onClick = ::save, enabled = !saving) {
+                    IconButton(onClick = ::save, enabled = !state.saving) {
                         Icon(Icons.Default.Save, contentDescription = "保存")
                     }
-                },
+                }
             )
-        },
+        }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text("启用 APRS", style = MaterialTheme.typography.titleMedium)
-                            Text("位置包直接发送到 APRS-IS，不经过 DraARL 服务端", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "位置包直接发送到 APRS-IS，不经过 DraARL 服务端",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         Switch(checked = enabled, onCheckedChange = { enabled = it })
                     }
@@ -186,11 +204,27 @@ fun AprsSettingsScreen(controller: AppController) {
                 SettingsSectionHeader("服务器")
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(server, { server = it }, Modifier.fillMaxWidth(), label = { Text("APRS-IS 地址") }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, Modifier.fillMaxWidth(), label = { Text("端口") }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(callsign, { callsign = it.uppercase() }, Modifier.fillMaxWidth(), label = { Text("呼号（不含 SSID 也可以）") }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(passcode, { passcode = it.filter { char -> char.isDigit() }.take(6) }, Modifier.fillMaxWidth(), label = { Text("验证密码（留空自动计算）") }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(comment, { comment = it.take(43) }, Modifier.fillMaxWidth(), label = { Text("位置包注释") }, singleLine = true, enabled = enabled)
+                        OutlinedTextField(server, {
+                            server = it
+                        }, Modifier.fillMaxWidth(), label = {
+                            Text("APRS-IS 地址")
+                        }, singleLine = true, enabled = enabled)
+                        OutlinedTextField(port, {
+                            port = it.filter(Char::isDigit).take(5)
+                        }, Modifier.fillMaxWidth(), label = { Text("端口") }, singleLine = true, enabled = enabled)
+                        OutlinedTextField(callsign, {
+                            callsign = it.uppercase()
+                        }, Modifier.fillMaxWidth(), label = {
+                            Text("呼号（不含 SSID 也可以）")
+                        }, singleLine = true, enabled = enabled)
+                        OutlinedTextField(passcode, {
+                            passcode = it.filter { char -> char.isDigit() }.take(6)
+                        }, Modifier.fillMaxWidth(), label = {
+                            Text("验证密码（留空自动计算）")
+                        }, singleLine = true, enabled = enabled)
+                        OutlinedTextField(comment, {
+                            comment = it.take(43)
+                        }, Modifier.fillMaxWidth(), label = { Text("位置包注释") }, singleLine = true, enabled = enabled)
                     }
                 }
             }
@@ -201,7 +235,11 @@ fun AprsSettingsScreen(controller: AppController) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text("后台自动上报", style = MaterialTheme.typography.bodyLarge)
-                                Text("需要定位权限，并会显示系统常驻通知", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "需要定位权限，并会显示系统常驻通知",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Switch(checked = autoReport, enabled = enabled, onCheckedChange = { autoReport = it })
                         }
@@ -211,7 +249,7 @@ fun AprsSettingsScreen(controller: AppController) {
                             onValueChange = { stationaryInterval = it },
                             valueRange = 60f..3_600f,
                             steps = 35,
-                            enabled = enabled && autoReport,
+                            enabled = enabled && autoReport
                         )
                     }
                 }
@@ -220,13 +258,27 @@ fun AprsSettingsScreen(controller: AppController) {
                 SettingsSectionHeader("测试")
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = ::sendNow, enabled = enabled && !locating && controller.aprsStatus.state !in setOf(AprsConnectionState.CONNECTING, AprsConnectionState.SENDING), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = ::sendNow,
+                            enabled = enabled && !locating && !state.sending,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(Icons.Default.LocationOn, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text(if (locating) "正在获取位置" else "立即上报当前位置")
                         }
-                        if (controller.aprsStatus.message.isNotBlank()) {
-                            Text(controller.aprsStatus.message, style = MaterialTheme.typography.bodySmall, color = if (controller.aprsStatus.state == AprsConnectionState.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (state.status.message.isNotBlank()) {
+                            Text(
+                                state.status.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (state.status.state ==
+                                    AprsConnectionState.ERROR
+                                ) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
                         }
                     }
                 }

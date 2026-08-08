@@ -360,7 +360,13 @@ private fun AuthenticatedApp(controller: AppController) {
                             onBack = { controller.navigate(AppPage.SETTINGS) }
                         )
 
-                        AppPage.APRS_SETTINGS -> AprsSettingsScreen(controller)
+                        AppPage.APRS_SETTINGS -> AprsSettingsScreen(
+                            state = controller.aprs.uiState,
+                            defaultCallsign = controller.user?.callsign.orEmpty(),
+                            onBack = { controller.navigate(AppPage.SETTINGS) },
+                            onEvent = controller.aprs::onEvent,
+                            onNotice = controller::showNotice
+                        )
 
                         AppPage.LOCATION_MAP -> LocationMapScreen(
                             initialLocation = mapLocation,
