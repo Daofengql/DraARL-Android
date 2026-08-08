@@ -5,23 +5,40 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 ## 当前功能
 
 - 图片验证码 + HTTP JWT 登录、加密会话存储、access token 自动刷新
+- “设备、群组、PTT、工具、我的”五入口导航，覆盖设备/群组管理、资料与账号安全
 - 通过 `GET /api/access-points` 获取公开中心/边缘 UDP 入口
 - 并行探测边缘节点时延、自动选择最快可达节点并连接，探测不可用时按服务端优先级回退
 - DraARLv1 现代 UDP 幽灵认证，使用安装范围随机 `client_instance_id` 和服务端签发的 Session
 - 同账号多台 Android 可同时在线；2 秒心跳、连接看门狗和重新认证式自动重连
-- 每个 Session 单一发送频道、多频道收听，路由通过 Session API 原子更新
-- 16 kHz Opus PTT 语音收发，按来源频道和发送者隔离接收流并串行播放
+- 发送/日志频道统一切换，多频道收听路由通过 Session API 原子更新
+- 16 kHz Opus PTT 语音收发、录音与可选 RNNoise 播放降噪，按来源频道和发送者隔离接收流并串行播放
+- 文本、语音和位置消息；高德地图选点、位置预览、距离与方向计算
 - 按账号和群组隔离的本地 SQLite 消息缓存，并与频道消息游标 API 增量对账
+- 蓝牙设备配网、中继台查询、通联日志、电台预设和梅登海德网格工具
+- APRS-IS 手动/后台位置上报，以及主题、显示缩放、存储和 PTT 悬浮窗设置
 - 通过客户端资源 manifest 检查 APK 更新，并二次验证最低服务端版本、幽灵协议版本和能力集合
 - 前台通信服务，支持应用退到后台后保持 UDP 会话
-- 普通用户仪表盘、设备、群组、通信记录和个人资料页面
+
+## 工程结构
+
+项目是单 `app` 模块的 Kotlin + Jetpack Compose Android 应用：
+
+- `app/src/main/java/cn/silverdragon/draarl/ui`：Compose 导航、页面和公共组件
+- `app/src/main/java/cn/silverdragon/draarl/data`、`network`：本地状态、缓存、数据映射和 HTTP API
+- `app/src/main/java/cn/silverdragon/draarl/radio`、`protocol`：UDP 会话、PTT 音频和 DraARL 协议
+- `app/src/main/java/cn/silverdragon/draarl/aprs`、`tools`、`maps`：APRS、原生工具和地图能力
+- `app/src/main/cpp`：RNNoise 的 JNI/CMake 接入及第三方源码
+
+当前规模、代码分布和维护重点见 [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)。
 
 ## 构建
 
-环境要求：Android SDK 36.1、JDK 21 或更高版本。
+环境要求：Android SDK 36.1、JDK 21（当前也已在 JDK 24 环境验证）；本机需具备 Android NDK 和 CMake 以构建 RNNoise。项目 Wrapper 使用 Gradle 9.5.0，Android Gradle Plugin 为 9.3.0。
+
+地图相关功能从 Gradle 属性或 `local.properties` 读取 `AMAP_API_KEY`；未配置时不影响基础通信功能和 Debug 构建，但地图选点与预览不可用。
 
 ```powershell
-.\gradlew.bat test lintDebug assembleDebug
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
 调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。

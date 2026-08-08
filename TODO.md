@@ -1,14 +1,15 @@
 # DraARL Android TODO
 
-更新时间：2026-07-27
+更新时间：2026-08-08
 
 实施状态：代码与自动化门禁已完成，真机及真实 BLE/弱网场景待用户验收。
 
-最终验证：
+当前基线：
 
-- `testDebugUnitTest`：68 个测试通过，0 失败、0 跳过。
-- `lintDebug`、`assembleDebug`、`assembleDebugAndroidTest`、`assembleRelease`：通过。
-- Release：`1.0-beta8`（versionCode 5），APK Signature Scheme v2 校验通过。
+- 版本：`2.0.0-alpha1`（versionCode 8），minSdk 24、targetSdk 36、compileSdk 36.1。
+- 2026-08-08：`testDebugUnitTest` 共 132 个测试通过，0 失败、0 跳过。
+- 2026-08-08：`lintDebug`、`assembleDebug`、`assembleDebugAndroidTest` 通过；仪器测试尚未连接设备执行。
+- Release 构建与 APK 签名应在发布候选版本上重新验证，不沿用旧版结果。
 
 ## 目标
 
