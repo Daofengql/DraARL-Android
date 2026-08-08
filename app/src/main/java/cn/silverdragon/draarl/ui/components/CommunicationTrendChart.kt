@@ -1,6 +1,7 @@
 package cn.silverdragon.draarl.ui.components
 
 import android.graphics.Paint
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -13,9 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,14 +42,18 @@ import kotlin.math.roundToInt
 fun CommunicationTrendChart(data: List<DailyCommunicationStats>) {
     val countLineColor = MaterialTheme.appColors.statComms
     val durationLineColor = MaterialTheme.appColors.statDuration
-    Card(shape = MaterialTheme.shapes.small) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.appColors.divider)
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(Icons.Default.Forum, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text("近30天通信趋势", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -56,7 +61,7 @@ fun CommunicationTrendChart(data: List<DailyCommunicationStats>) {
             if (data.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().height(220.dp),
-                    contentAlignment = Alignment.Center,
+                    contentAlignment = Alignment.Center
                 ) {
                     Text("暂无通信记录数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -92,7 +97,7 @@ private fun TrendCanvas(data: List<DailyCommunicationStats>, countLineColor: Col
         modifier = Modifier
             .fillMaxWidth()
             .height(230.dp)
-            .semantics { contentDescription = description },
+            .semantics { contentDescription = description }
     ) {
         val plotLeft = 36.dp.toPx()
         val plotRight = size.width - 42.dp.toPx()
@@ -130,7 +135,7 @@ private fun TrendCanvas(data: List<DailyCommunicationStats>, countLineColor: Col
                 data[index].date.takeLast(5),
                 x,
                 size.height - 5.dp.toPx(),
-                textPaint,
+                textPaint
             )
         }
 
@@ -142,7 +147,7 @@ private fun TrendCanvas(data: List<DailyCommunicationStats>, countLineColor: Col
             plotHeight = plotHeight,
             maxValue = maxCount.toLong(),
             value = { it.count.toLong() },
-            color = countLineColor,
+            color = countLineColor
         )
         drawSeries(
             data = data,
@@ -152,7 +157,7 @@ private fun TrendCanvas(data: List<DailyCommunicationStats>, countLineColor: Col
             plotHeight = plotHeight,
             maxValue = maxDuration,
             value = DailyCommunicationStats::durationMs,
-            color = durationLineColor,
+            color = durationLineColor
         )
     }
 }
@@ -165,7 +170,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSeries(
     plotHeight: Float,
     maxValue: Long,
     value: (DailyCommunicationStats) -> Long,
-    color: Color,
+    color: Color
 ) {
     val path = Path()
     data.forEachIndexed { index, item ->

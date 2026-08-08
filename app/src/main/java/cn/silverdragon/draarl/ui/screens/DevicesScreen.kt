@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -79,12 +78,16 @@ import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.ReplaceableDevice
 import cn.silverdragon.draarl.data.deviceModelName
+import cn.silverdragon.draarl.ui.components.CommandIconButton
 import cn.silverdragon.draarl.ui.components.EmptyState
+import cn.silverdragon.draarl.ui.components.StatusIndicator
 import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.state.activeGroups
 import cn.silverdragon.draarl.ui.state.filterDevices
 import cn.silverdragon.draarl.ui.state.groupNamesById
 import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.dataTypography
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -261,17 +264,21 @@ internal fun DevicesContent(state: DevicesContentState, onAction: (DevicesConten
             OutlinedTextField(
                 value = filter,
                 onValueChange = { filter = it },
-                placeholder = { Text("搜索设备名称、呼号或 SSID") },
+                placeholder = { Text("搜索名称、呼号或 SSID") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = { onAction(DevicesContentAction.BindDevice) }) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = "动态码绑定")
-            }
-            IconButton(onClick = { onAction(DevicesContentAction.OpenPassword) }) {
-                Icon(Icons.Default.Key, contentDescription = "设备密码")
-            }
+            CommandIconButton(
+                onClick = { onAction(DevicesContentAction.BindDevice) },
+                contentDescription = "动态码绑定",
+                icon = Icons.Default.QrCodeScanner
+            )
+            CommandIconButton(
+                onClick = { onAction(DevicesContentAction.OpenPassword) },
+                contentDescription = "设备密码",
+                icon = Icons.Default.Key
+            )
         }
 
         Row(
@@ -340,18 +347,14 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                StatusPill(
-                    if (device.online) "在线" else "离线",
-                    if (device.online) {
-                        MaterialTheme.appColors.statusConnected
-                    } else {
-                        MaterialTheme.appColors.statusOffline
-                    }
+                StatusIndicator(
+                    text = if (device.online) "在线" else "离线",
+                    tone = if (device.online) StatusTone.CONNECTED else StatusTone.NEUTRAL
                 )
             }
             Text(
                 "${device.callsign}-${device.ssid} · ${deviceModelName(device.model)}",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.dataTypography.compact,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
@@ -379,7 +382,7 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
 @Composable
 private fun DeviceAvatar(device: Device, size: Int = 48) {
     Surface(
-        shape = CircleShape,
+        shape = MaterialTheme.shapes.small,
         color = if (device.online) {
             MaterialTheme.appColors.receiveContainer
         } else {

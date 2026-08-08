@@ -5,11 +5,11 @@
 
 ## 规模结论
 
-这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.36 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
+这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.37 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 136 | 23,665 | 不含空行、生成目录和第三方源码 |
+| 生产 Kotlin | 136 | 23,728 | 不含空行、生成目录和第三方源码 |
 | JVM 单元测试 Kotlin | 48 | 2,069 | 149 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 2 | 366 | 12 张壳层和一级页面参考图 |
@@ -40,8 +40,8 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | `AppController.kt` | 1,819 |
 | `network/ApiClient.kt` | 1,184 |
 | `radio/UdpRadioClient.kt` | 1,094 |
-| `ui/screens/DevicesScreen.kt` | 1,003 |
-| `ui/screens/GroupsScreen.kt` | 844 |
+| `ui/screens/DevicesScreen.kt` | 1,006 |
+| `ui/screens/GroupsScreen.kt` | 845 |
 
 ## 架构边界
 

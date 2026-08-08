@@ -1,5 +1,6 @@
 package cn.silverdragon.draarl.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -12,9 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -26,12 +27,13 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.ui.components.CommunicationTrendChart
 import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.dataTypography
 
 @Composable
 internal fun ProfileOverview(stats: DashboardData) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("动态概览", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         StatRow(
@@ -39,14 +41,14 @@ internal fun ProfileOverview(stats: DashboardData) {
                 "设备在线 / 总数",
                 "${stats.onlineDevices} / ${stats.devices}",
                 Icons.Default.Devices,
-                MaterialTheme.appColors.statDevices,
+                MaterialTheme.appColors.statDevices
             ),
             right = StatValue(
                 "累计时长 · ${stats.communications} 条记录",
                 formatCompactDuration(stats.communicationDurationMs),
                 Icons.Default.AccessTime,
-                MaterialTheme.appColors.statDuration,
-            ),
+                MaterialTheme.appColors.statDuration
+            )
         )
         CommunicationTrendChart(stats.communicationTrend)
     }
@@ -58,7 +60,7 @@ private data class StatValue(val label: String, val value: String, val icon: Ima
 private fun StatRow(left: StatValue, right: StatValue) {
     Row(
         Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         StatCard(left, Modifier.weight(1f).fillMaxHeight())
         StatCard(right, Modifier.weight(1f).fillMaxHeight())
@@ -67,18 +69,26 @@ private fun StatRow(left: StatValue, right: StatValue) {
 
 @Composable
 private fun StatCard(stat: StatValue, modifier: Modifier = Modifier) {
-    Card(modifier.heightIn(min = 124.dp), shape = MaterialTheme.shapes.small) {
+    Surface(
+        modifier = modifier.heightIn(min = 124.dp),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.appColors.divider)
+    ) {
         Column(Modifier.fillMaxHeight().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(stat.icon, contentDescription = null, tint = stat.color)
             Text(
                 stat.value,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.dataTypography.identity,
                 maxLines = 1,
                 softWrap = false,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Ellipsis
             )
-            Text(stat.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                stat.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -12,15 +12,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,9 +31,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.data.formatRadioIdentifiers
-import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.StatusIndicator
+import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.dataTypography
 
 @Composable
 internal fun ProfileHeader(
@@ -42,33 +44,30 @@ internal fun ProfileHeader(
     onAvatarClick: () -> Unit,
     onEditClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onPresetsClick: () -> Unit,
+    onPresetsClick: () -> Unit
 ) {
     val radioIdentifiers = formatRadioIdentifiers(user.mdcId, user.dmrId)
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        shape = MaterialTheme.shapes.small,
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(80.dp).clickable(onClick = onAvatarClick),
-                    contentAlignment = Alignment.BottomEnd,
+                    contentAlignment = Alignment.BottomEnd
                 ) {
                     UserAvatar(url = user.avatarUrl, modifier = Modifier.size(80.dp))
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.primary,
-                        shadowElevation = 2.dp,
+                        shadowElevation = 2.dp
                     ) {
                         Icon(
                             Icons.Default.CameraAlt,
                             contentDescription = "更换头像",
                             tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(5.dp).size(16.dp),
+                            modifier = Modifier.padding(5.dp).size(16.dp)
                         )
                     }
                 }
@@ -78,77 +77,74 @@ internal fun ProfileHeader(
                     Text(
                         listOfNotNull(
                             "@${user.username}",
-                            user.callsign.takeIf(String::isNotBlank),
+                            user.callsign.takeIf(String::isNotBlank)
                         ).joinToString("  "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.dataTypography.value,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    StatusPill(
+                    StatusIndicator(
                         text = when (user.approvalStatus) {
                             1 -> "已审核"
                             2 -> "未通过"
                             else -> "待审核"
                         },
-                        color = when (user.approvalStatus) {
-                            1 -> MaterialTheme.appColors.statusConnected
-                            2 -> MaterialTheme.colorScheme.error
-                            else -> MaterialTheme.appColors.statusConnecting
-                        },
+                        tone = when (user.approvalStatus) {
+                            1 -> StatusTone.CONNECTED
+                            2 -> StatusTone.ERROR
+                            else -> StatusTone.CONNECTING
+                        }
                     )
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Row {
-                        IconButton(onClick = onEditClick) {
-                            Icon(Icons.Default.Edit, contentDescription = "编辑资料")
-                        }
-                        IconButton(onClick = onSettingsClick) {
-                            Icon(Icons.Default.Settings, contentDescription = "设置")
-                        }
-                    }
-                    IconButton(onClick = onPresetsClick) {
-                        Icon(
-                            Icons.Default.FavoriteBorder,
-                            contentDescription = "电台预设",
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+            ) {
+                CommandIconButton(onClick = onEditClick, contentDescription = "编辑资料", icon = Icons.Default.Edit)
+                CommandIconButton(
+                    onClick = onPresetsClick,
+                    contentDescription = "电台预设",
+                    icon = Icons.Default.FavoriteBorder
+                )
+                CommandIconButton(onClick = onSettingsClick, contentDescription = "设置", icon = Icons.Default.Settings)
             }
             if (radioIdentifiers.isNotBlank()) {
                 ProfileMetaRow(
                     icon = Icons.Default.Badge,
                     text = radioIdentifiers,
+                    technical = true
                 )
             }
             if (user.address.isNotBlank()) {
                 ProfileMetaRow(
                     icon = Icons.Default.LocationOn,
-                    text = user.address,
+                    text = user.address
                 )
             }
             if (user.introduction.isNotBlank()) {
                 Text(
                     user.introduction,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (!user.isApproved) {
                 Surface(
                     color = MaterialTheme.colorScheme.tertiaryContainer,
-                    shape = MaterialTheme.shapes.small,
+                    shape = MaterialTheme.shapes.small
                 ) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             if (user.approvalStatus == 2) "账号审核未通过" else "账号正在等待审核",
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.SemiBold
                         )
                         Text(
                             user.reviewNote.ifBlank { "审核通过后可使用在线收发、设备、群组和通联日志。" },
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
+                HorizontalDivider(color = MaterialTheme.appColors.divider)
             }
         }
     }
@@ -158,24 +154,25 @@ internal fun ProfileHeader(
 private fun ProfileMetaRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     text: String,
+    technical: Boolean = false
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             icon,
             contentDescription = null,
             modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.primary,
+            tint = MaterialTheme.colorScheme.primary
         )
         Spacer(Modifier.width(8.dp))
         Text(
             text,
-            style = MaterialTheme.typography.bodyMedium,
+            style = if (technical) MaterialTheme.dataTypography.value else MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

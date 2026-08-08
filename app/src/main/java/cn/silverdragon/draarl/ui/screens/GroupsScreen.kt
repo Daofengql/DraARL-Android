@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -81,10 +80,14 @@ import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.deviceModelName
+import cn.silverdragon.draarl.ui.components.CommandIconButton
 import cn.silverdragon.draarl.ui.components.EmptyState
+import cn.silverdragon.draarl.ui.components.StatusIndicator
 import cn.silverdragon.draarl.ui.components.StatusPill
+import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.state.visibleGroupSections
 import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.dataTypography
 
 @Composable
 fun GroupsScreen(controller: AppController) {
@@ -323,17 +326,15 @@ private fun GroupActionsToolbar(onStartSearch: () -> Unit, onSearchToJoin: () ->
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)
     ) {
-        IconButton(onClick = onStartSearch) {
-            Icon(Icons.Default.Search, contentDescription = "搜索群组")
-        }
-        IconButton(onClick = onSearchToJoin) {
-            Icon(Icons.Default.GroupAdd, contentDescription = "搜索并加入群组")
-        }
-        IconButton(onClick = onCreateGroup) {
-            Icon(Icons.Default.Add, contentDescription = "新建群组")
-        }
+        CommandIconButton(onClick = onStartSearch, contentDescription = "搜索群组", icon = Icons.Default.Search)
+        CommandIconButton(
+            onClick = onSearchToJoin,
+            contentDescription = "搜索并加入群组",
+            icon = Icons.Default.GroupAdd
+        )
+        CommandIconButton(onClick = onCreateGroup, contentDescription = "新建群组", icon = Icons.Default.Add)
     }
 }
 
@@ -414,11 +415,11 @@ private fun GroupListRow(group: Group, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (group.status == 0) StatusPill("已停用", MaterialTheme.colorScheme.error)
+                if (group.status == 0) StatusIndicator("已停用", StatusTone.ERROR)
             }
             Text(
                 "${group.onlineCount} 在线 / ${group.totalCount} 设备 · ID ${group.id}",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.dataTypography.compact,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (group.note.isNotBlank()) {
@@ -447,7 +448,7 @@ private fun GroupAvatar(group: Group, size: Int) {
     } else {
         MaterialTheme.appColors.onReceiveContainer
     }
-    Surface(shape = CircleShape, color = background, modifier = Modifier.size(size.dp)) {
+    Surface(shape = MaterialTheme.shapes.small, color = background, modifier = Modifier.size(size.dp)) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 if (group.isPrivate) Icons.Default.Lock else Icons.Default.LockOpen,
