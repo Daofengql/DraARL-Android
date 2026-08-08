@@ -26,14 +26,11 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -52,6 +49,9 @@ import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.decodeLocationMessage
 import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.ui.components.UserAvatar
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -181,29 +181,27 @@ internal fun MessageListFloatingActions(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                FilledTonalButton(onClick = onToggleAutoPlay) {
-                    Icon(
-                        if (autoPlaying) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.PlaylistPlay,
-                        contentDescription = null,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (autoPlaying) "停止连播" else "$unplayedCount 条未听")
-                }
+                CommandButton(
+                    label = if (autoPlaying) "停止连播" else "$unplayedCount 条未听",
+                    onClick = onToggleAutoPlay,
+                    leadingIcon = if (autoPlaying) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.PlaylistPlay,
+                    style = if (autoPlaying) CommandStyle.PRIMARY else CommandStyle.SECONDARY,
+                )
                 if (unplayedCount > 0) {
-                    FilledTonalIconButton(onClick = onClearUnplayed) {
-                        Icon(Icons.Default.DoneAll, contentDescription = "清除全部未听标记")
-                    }
+                    CommandIconButton(
+                        onClick = onClearUnplayed,
+                        contentDescription = "清除全部未听标记",
+                        icon = Icons.Default.DoneAll,
+                    )
                 }
             }
         }
         if (canScrollToBottom) {
-            SmallFloatingActionButton(
+            CommandIconButton(
                 onClick = onScrollToBottom,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
-            ) {
-                Icon(Icons.Default.VerticalAlignBottom, contentDescription = "滚动到最新记录")
-            }
+                contentDescription = "滚动到最新记录",
+                icon = Icons.Default.VerticalAlignBottom,
+            )
         }
     }
 }

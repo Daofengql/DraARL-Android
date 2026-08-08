@@ -1,0 +1,274 @@
+package cn.silverdragon.draarl.ui.components
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.appMotion
+import cn.silverdragon.draarl.ui.theme.dataTypography
+import kotlin.math.PI
+import kotlin.math.sin
+
+@Immutable
+data class RadioStatusStripState(
+    val stationIdentity: String,
+    val radioIdentifiers: String,
+    val connectionText: String,
+    val connectionTone: StatusTone,
+    val nodeSelectionEnabled: Boolean,
+    val onlineCount: Int,
+    val receiveLevel: Float,
+    val transmitLevel: Float,
+    val receiving: Boolean,
+    val transmitting: Boolean,
+    val denoiseEnabled: Boolean,
+    val muted: Boolean,
+    val sendChannel: String,
+    val sendChannelEnabled: Boolean,
+    val receiveChannelCount: Int,
+    val receiveChannelsEnabled: Boolean,
+    val speaker: String,
+    val error: String,
+)
+
+@Composable
+fun RadioStatusStrip(
+    state: RadioStatusStripState,
+    avatar: @Composable () -> Unit,
+    onSelectNode: () -> Unit,
+    onShowOnlineDevices: () -> Unit,
+    onToggleDenoise: () -> Unit,
+    onToggleMuted: () -> Unit,
+    onSelectSendChannel: () -> Unit,
+    onSelectReceiveChannels: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { avatar() }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        text = state.stationIdentity,
+                        style = MaterialTheme.dataTypography.identity,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (state.radioIdentifiers.isNotBlank()) {
+                        Text(
+                            text = state.radioIdentifiers,
+                            style = MaterialTheme.dataTypography.compact,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.clickable(
+                            enabled = state.nodeSelectionEnabled,
+                            onClick = onSelectNode,
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        StatusIndicator(
+                            text = state.connectionText,
+                            tone = state.connectionTone,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "选择边缘节点",
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    CommandIconButton(
+                        onClick = onToggleDenoise,
+                        contentDescription = if (state.denoiseEnabled) "关闭神经网络降噪" else "开启神经网络降噪",
+                        icon = Icons.Default.GraphicEq,
+                        selected = state.denoiseEnabled,
+                    )
+                    CommandIconButton(
+                        onClick = onToggleMuted,
+                        contentDescription = if (state.muted) "开启接收音频" else "关闭接收音频",
+                        icon = if (state.muted) {
+                            Icons.AutoMirrored.Filled.VolumeOff
+                        } else {
+                            Icons.AutoMirrored.Filled.VolumeUp
+                        },
+                        danger = state.muted,
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 28.dp).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusIndicator(
+                    text = "${state.onlineCount} 在线",
+                    tone = if (state.onlineCount > 0) StatusTone.CONNECTED else StatusTone.NEUTRAL,
+                    modifier = Modifier.clickable(onClick = onShowOnlineDevices).padding(vertical = 4.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = when {
+                        state.transmitting -> "TX"
+                        state.receiving -> "RX"
+                        else -> "RX / TX"
+                    },
+                    style = MaterialTheme.dataTypography.compact,
+                    color = when {
+                        state.transmitting -> MaterialTheme.appColors.transmit
+                        state.receiving -> MaterialTheme.appColors.receive
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                AudioLevelMeter(
+                    receiveLevel = state.receiveLevel,
+                    transmitLevel = state.transmitLevel,
+                    receiving = state.receiving,
+                    transmitting = state.transmitting,
+                    modifier = Modifier.widthIn(min = 96.dp, max = 144.dp).height(18.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CommandButton(
+                    label = "发送/日志",
+                    supportingText = state.sendChannel,
+                    leadingIcon = Icons.Default.Mic,
+                    trailingIcon = Icons.Default.KeyboardArrowDown,
+                    onClick = onSelectSendChannel,
+                    modifier = Modifier.weight(1f),
+                    enabled = state.sendChannelEnabled,
+                )
+                CommandButton(
+                    label = "收听频道",
+                    supportingText = "${state.receiveChannelCount} 个频道",
+                    leadingIcon = Icons.Default.Headphones,
+                    trailingIcon = Icons.Default.KeyboardArrowDown,
+                    onClick = onSelectReceiveChannels,
+                    modifier = Modifier.weight(1f),
+                    enabled = state.receiveChannelsEnabled,
+                )
+            }
+            if (state.speaker.isNotBlank()) {
+                InlineNotice(
+                    text = "${state.speaker} 正在发言",
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    tone = StatusTone.RECEIVE,
+                )
+            }
+            if (state.error.isNotBlank()) {
+                InlineNotice(
+                    text = state.error,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    tone = StatusTone.ERROR,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.appColors.divider)
+        }
+    }
+}
+
+@Composable
+private fun AudioLevelMeter(
+    receiveLevel: Float,
+    transmitLevel: Float,
+    receiving: Boolean,
+    transmitting: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val active = transmitting || receiving
+    val level = if (transmitting) transmitLevel else receiveLevel
+    val animatedLevel by animateFloatAsState(
+        targetValue = if (active) level.coerceIn(0f, 1f) else 0f,
+        animationSpec = tween(durationMillis = MaterialTheme.appMotion.quick),
+        label = "audioLevel",
+    )
+    val primary = if (transmitting) MaterialTheme.appColors.transmit else MaterialTheme.appColors.receive
+    val warning = MaterialTheme.appColors.warning
+    val error = MaterialTheme.appColors.transmit
+    val inactive = MaterialTheme.appColors.divider.copy(alpha = 0.72f)
+    Canvas(
+        modifier = modifier.semantics {
+            contentDescription = when {
+                transmitting -> "发送电平 ${(animatedLevel * 100).toInt()}%"
+                receiving -> "接收电平 ${(animatedLevel * 100).toInt()}%"
+                else -> "当前没有收发音频"
+            }
+        },
+    ) {
+        val gap = 2.dp.toPx()
+        val segments = (size.width / 6.dp.toPx()).toInt().coerceIn(8, 18)
+        val segmentWidth = (size.width - gap * (segments - 1)) / segments
+        repeat(segments) { index ->
+            val progress = (index + 1f) / segments
+            val envelope = 0.4f + 0.6f * sin(progress * PI).toFloat()
+            val barHeight = size.height * envelope
+            val selected = active && animatedLevel >= progress
+            val color = if (!selected) {
+                inactive
+            } else when {
+                progress > 0.84f -> error
+                progress > 0.66f -> warning
+                else -> primary
+            }
+            drawRoundRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(
+                    x = index * (segmentWidth + gap),
+                    y = size.height - barHeight,
+                ),
+                size = androidx.compose.ui.geometry.Size(segmentWidth, barHeight),
+                cornerRadius = CornerRadius(segmentWidth / 2f, segmentWidth / 2f),
+            )
+        }
+    }
+}

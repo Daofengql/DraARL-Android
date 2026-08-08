@@ -7,22 +7,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -30,7 +27,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlSheet
+import cn.silverdragon.draarl.ui.theme.appColors
 import kotlin.math.roundToInt
 
 @Composable
@@ -44,60 +47,48 @@ internal fun RadioExtraPanel(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(128.dp).padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.Start,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+        Column {
+            HorizontalDivider(color = MaterialTheme.appColors.divider)
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 104.dp).padding(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.Start,
             ) {
-                Surface(
-                    modifier = Modifier.size(52.dp),
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    IconButton(onClick = onLocationClick, enabled = !locating) {
-                        Icon(Icons.Default.LocationOn, contentDescription = "位置")
-                    }
+                    CommandIconButton(
+                        onClick = onLocationClick,
+                        contentDescription = "位置",
+                        icon = Icons.Default.LocationOn,
+                        enabled = !locating,
+                    )
+                    Text(
+                        if (locating) "定位中" else "位置",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
-                Text(
-                    if (locating) "定位中" else "位置",
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-            Spacer(Modifier.size(18.dp))
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Surface(
-                    modifier = Modifier.size(52.dp),
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
+                Spacer(Modifier.size(18.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    IconButton(
+                    CommandIconButton(
                         onClick = if (cwTransmitting) onStopCw else onCwClick,
+                        contentDescription = if (cwTransmitting) "停止 CW" else "CW 自动发送",
+                        icon = if (cwTransmitting) Icons.Default.Stop else Icons.Default.GraphicEq,
                         enabled = cwEnabled || cwTransmitting,
-                    ) {
-                        Icon(
-                            if (cwTransmitting) Icons.Default.Stop else Icons.Default.GraphicEq,
-                            contentDescription = if (cwTransmitting) "停止 CW" else "CW 自动发送",
-                        )
-                    }
+                        danger = cwTransmitting,
+                    )
+                    Text(if (cwTransmitting) "停止 CW" else "CW", style = MaterialTheme.typography.labelMedium)
                 }
-                Text(if (cwTransmitting) "停止 CW" else "CW", style = MaterialTheme.typography.labelMedium)
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CwSendSheet(
     text: String,
@@ -116,12 +107,25 @@ internal fun CwSendSheet(
     onSend: () -> Unit,
     onStop: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    DraarlSheet(
+        title = "CW 自动发送",
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction(
+            label = if (previewing) "停止试听" else "试听",
+            onClick = if (previewing) onStopPreview else onPreview,
+            enabled = previewing || (previewEnabled && !transmitting && text.isNotBlank()),
+        ),
+        confirmAction = DraarlAction(
+            label = if (transmitting) "停止 CW" else "发送 CW",
+            onClick = if (transmitting) onStop else onSend,
+            enabled = transmitting || (enabled && !previewing && text.isNotBlank()),
+            style = if (transmitting) CommandStyle.DANGER else CommandStyle.PRIMARY,
+        ),
+    ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text("CW 自动发送", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,
@@ -157,35 +161,10 @@ internal fun CwSendSheet(
                 valueRange = 400f..1_000f,
                 steps = 11,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                OutlinedButton(
-                    onClick = if (previewing) onStopPreview else onPreview,
-                    enabled = previewing || (previewEnabled && !transmitting && text.isNotBlank()),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(if (previewing) Icons.Default.Stop else Icons.Default.GraphicEq, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text(if (previewing) "停止试听" else "试听")
-                }
-                Button(
-                    onClick = if (transmitting) onStop else onSend,
-                    enabled = transmitting || (enabled && !previewing && text.isNotBlank()),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(if (transmitting) Icons.Default.Stop else Icons.Default.GraphicEq, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text(if (transmitting) "停止 CW" else "发送 CW")
-                }
-            }
-            Spacer(Modifier.height(20.dp))
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LocationTypeSheet(
     locating: Boolean,
@@ -193,24 +172,46 @@ internal fun LocationTypeSheet(
     onCurrentLocation: () -> Unit,
     onPickLocation: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text(
-            "发送位置",
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.titleMedium,
+    DraarlSheet(
+        title = "发送位置",
+        onDismissRequest = onDismiss,
+    ) {
+        LocationChoiceRow(
+            icon = Icons.Default.MyLocation,
+            title = if (locating) "正在获取当前位置" else "发送当前位置",
+            detail = "使用设备当前的 WGS-84 坐标",
+            enabled = !locating,
+            onClick = onCurrentLocation,
         )
-        ListItem(
-            headlineContent = { Text(if (locating) "正在获取当前位置" else "发送当前位置") },
-            supportingContent = { Text("使用设备当前的 WGS-84 坐标") },
-            leadingContent = { Icon(Icons.Default.MyLocation, contentDescription = null) },
-            modifier = Modifier.clickable(enabled = !locating, onClick = onCurrentLocation),
+        HorizontalDivider(color = MaterialTheme.appColors.divider)
+        LocationChoiceRow(
+            icon = Icons.Default.Map,
+            title = "选择标点位置",
+            detail = "在地图上选择一个位置后发送",
+            onClick = onPickLocation,
         )
-        ListItem(
-            headlineContent = { Text("选择标点位置") },
-            supportingContent = { Text("在地图上选择一个位置后发送") },
-            leadingContent = { Icon(Icons.Default.Map, contentDescription = null) },
-            modifier = Modifier.clickable(onClick = onPickLocation),
-        )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun LocationChoiceRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f).clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

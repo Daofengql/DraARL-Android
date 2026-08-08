@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,18 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Router
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,55 +30,55 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.Group
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlDialog
 import cn.silverdragon.draarl.ui.theme.appColors
 
 @Composable
 internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), tonalElevation = 6.dp) {
-            Column(Modifier.padding(vertical = 12.dp)) {
-                DialogTitle("选择边缘节点")
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                    items(controller.accessPoints, key = AccessPoint::id) { point ->
-                        val selected = point.id == controller.selectedAccessPoint?.id
-                        val probe = controller.accessPointProbes.firstOrNull { it.accessPoint.id == point.id }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                .clickable {
-                                    if (!selected) controller.selectAccessPoint(point)
-                                    onDismiss()
-                                }
-                                .padding(horizontal = 18.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Default.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(point.displayName, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                                val meta = listOf(point.region, point.network).filter(String::isNotBlank).joinToString(" · ")
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    if (meta.isNotBlank()) {
-                                        Text(
-                                            meta,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                        )
-                                    }
-                                    LatencyText(probe?.latencyMs, prefix = "ICMP ")
-                                }
+    DraarlDialog(
+        title = "选择边缘节点",
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction("关闭", onDismiss),
+    ) {
+        LazyColumn(Modifier.heightIn(max = 420.dp)) {
+            items(controller.accessPoints, key = AccessPoint::id) { point ->
+                val selected = point.id == controller.selectedAccessPoint?.id
+                val probe = controller.accessPointProbes.firstOrNull { it.accessPoint.id == point.id }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                        .clickable {
+                            if (!selected) controller.selectAccessPoint(point)
+                            onDismiss()
+                        }
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(point.displayName, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                        val meta = listOf(point.region, point.network).filter(String::isNotBlank).joinToString(" · ")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (meta.isNotBlank()) {
+                                Text(
+                                    meta,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
                             }
-                            if (selected) Icon(Icons.Default.Check, contentDescription = "当前节点")
+                            LatencyText(probe?.latencyMs, prefix = "ICMP ")
                         }
                     }
+                    if (selected) Icon(Icons.Default.Check, contentDescription = "当前节点")
                 }
-                CloseDialogButton(onDismiss)
             }
         }
     }
@@ -92,42 +87,40 @@ internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit)
 @Composable
 internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
     val availableGroups = controller.groups.filter { !it.isPrivate || it.joined || it.owner }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), tonalElevation = 6.dp) {
-            Column(Modifier.padding(vertical = 12.dp)) {
-                DialogTitle("发送/日志频道")
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                    items(availableGroups, key = Group::id) { group ->
-                        val selected = group.id == controller.selectedGroupId
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                .clickable {
-                                    if (!selected) controller.switchGroup(group)
-                                    onDismiss()
-                                }
-                                .padding(horizontal = 18.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(group.name, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                                Text(
-                                    listOf(
-                                        "${group.onlineCount} 在线",
-                                        if (group.isPrivate) "私有群组" else "公开群组",
-                                    ).joinToString(" · "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            if (selected) Icon(Icons.Default.Check, contentDescription = "当前群组")
+    DraarlDialog(
+        title = "发送/日志频道",
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction("关闭", onDismiss),
+    ) {
+        LazyColumn(Modifier.heightIn(max = 420.dp)) {
+            items(availableGroups, key = Group::id) { group ->
+                val selected = group.id == controller.selectedGroupId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                        .clickable {
+                            if (!selected) controller.switchGroup(group)
+                            onDismiss()
                         }
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(group.name, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                        Text(
+                            listOf(
+                                "${group.onlineCount} 在线",
+                                if (group.isPrivate) "私有群组" else "公开群组",
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
+                    if (selected) Icon(Icons.Default.Check, contentDescription = "当前群组")
                 }
-                CloseDialogButton(onDismiss)
             }
         }
     }
@@ -140,54 +133,46 @@ internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
     var rxGroupIds by remember(controller.radioStatus.sessionId, primaryGroupId) {
         mutableStateOf(controller.receiveGroupIds + primaryGroupId)
     }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), tonalElevation = 6.dp) {
-            Column(Modifier.padding(vertical = 12.dp)) {
-                DialogTitle("收听频道")
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                    items(availableGroups, key = Group::id) { group ->
-                        val transmitting = group.id == primaryGroupId
-                        val receiving = group.id in rxGroupIds
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = receiving,
-                                enabled = !transmitting,
-                                onCheckedChange = { checked ->
-                                    rxGroupIds = if (checked) rxGroupIds + group.id else rxGroupIds - group.id
-                                },
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(group.name, fontWeight = if (transmitting) FontWeight.SemiBold else FontWeight.Normal)
-                                Text(
-                                    when {
-                                        transmitting -> "发送/日志频道，必须收听"
-                                        receiving -> "收听"
-                                        else -> "未订阅"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
+    DraarlDialog(
+        title = "收听频道",
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction("取消", onDismiss),
+        confirmAction = DraarlAction(
+            label = "应用",
+            onClick = {
+                controller.updateRadioRouting(primaryGroupId, rxGroupIds)
+                onDismiss()
+            },
+            enabled = controller.radioStatus.connected && !controller.radioRoutingUpdating && primaryGroupId > 0,
+            style = CommandStyle.PRIMARY,
+        ),
+    ) {
+        LazyColumn(Modifier.heightIn(max = 420.dp)) {
+            items(availableGroups, key = Group::id) { group ->
+                val transmitting = group.id == primaryGroupId
+                val receiving = group.id in rxGroupIds
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
-                    Button(
-                        onClick = {
-                            controller.updateRadioRouting(primaryGroupId, rxGroupIds)
-                            onDismiss()
+                    Checkbox(
+                        checked = receiving,
+                        enabled = !transmitting,
+                        onCheckedChange = { checked ->
+                            rxGroupIds = if (checked) rxGroupIds + group.id else rxGroupIds - group.id
                         },
-                        enabled = controller.radioStatus.connected && !controller.radioRoutingUpdating && primaryGroupId > 0,
-                    ) {
-                        Text("应用")
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(group.name, fontWeight = if (transmitting) FontWeight.SemiBold else FontWeight.Normal)
+                        Text(
+                            when {
+                                transmitting -> "发送/日志频道，必须收听"
+                                receiving -> "收听"
+                                else -> "未订阅"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -209,24 +194,4 @@ internal fun LatencyText(latencyMs: Int?, modifier: Modifier = Modifier, prefix:
         },
         maxLines = 1,
     )
-}
-
-@Composable
-private fun DialogTitle(title: String) {
-    Text(
-        title,
-        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-    )
-}
-
-@Composable
-private fun ColumnScope.CloseDialogButton(onDismiss: () -> Unit) {
-    TextButton(
-        onClick = onDismiss,
-        modifier = Modifier.align(Alignment.End).padding(horizontal = 8.dp),
-    ) {
-        Text("关闭")
-    }
 }

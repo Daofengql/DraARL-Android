@@ -1,8 +1,6 @@
 package cn.silverdragon.draarl.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContentTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -71,7 +69,6 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
-import cn.silverdragon.draarl.pagePosition
 import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
@@ -90,6 +87,7 @@ import cn.silverdragon.draarl.ui.screens.SystemSettingsScreen
 import cn.silverdragon.draarl.ui.screens.ToolsScreen
 import cn.silverdragon.draarl.ui.components.DraarlBottomBar
 import cn.silverdragon.draarl.ui.components.DraarlBottomBarItem
+import cn.silverdragon.draarl.ui.theme.appMotion
 
 @Composable
 fun DraarlApp(controller: AppController) {
@@ -268,6 +266,7 @@ private fun AuthenticatedApp(controller: AppController) {
         AppPage.APRS_SETTINGS,
         AppPage.LOCATION_MAP,
     )
+    val motion = MaterialTheme.appMotion
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(
@@ -296,22 +295,8 @@ private fun AuthenticatedApp(controller: AppController) {
             androidx.compose.animation.AnimatedContent(
                 targetState = controller.page,
                 transitionSpec = {
-                    val direction = if (pagePosition(targetState) >= pagePosition(initialState)) {
-                        AnimatedContentTransitionScope.SlideDirection.Left
-                    } else {
-                        AnimatedContentTransitionScope.SlideDirection.Right
-                    }
-                    (
-                        slideIntoContainer(
-                            towards = direction,
-                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-                        ) + fadeIn(animationSpec = tween(160))
-                    ) togetherWith (
-                        slideOutOfContainer(
-                            towards = direction,
-                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-                        ) + fadeOut(animationSpec = tween(160))
-                    )
+                    fadeIn(animationSpec = tween(motion.medium)) togetherWith
+                        fadeOut(animationSpec = tween(motion.short))
                 },
                 contentKey = { it },
             ) { page ->

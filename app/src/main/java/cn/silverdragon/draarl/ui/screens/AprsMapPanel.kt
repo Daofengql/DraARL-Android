@@ -11,13 +11,11 @@ import android.graphics.Rect
 import android.graphics.RectF
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,6 +62,8 @@ import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.LastMapLocationStore
 import cn.silverdragon.draarl.maps.MapDistance
+import cn.silverdragon.draarl.ui.components.DraarlSegment
+import cn.silverdragon.draarl.ui.components.DraarlSegmentedControl
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
@@ -377,48 +376,23 @@ internal fun RadioModeSwitcher(
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
-        Row(Modifier.fillMaxWidth().height(48.dp)) {
-            RadioModeTab(
-                text = "地图",
-                selected = mapSelected,
-                onClick = onMap,
-                modifier = Modifier.weight(1f),
-            )
-            RadioModeTab(
-                text = "通联日志",
-                selected = !mapSelected,
-                onClick = onMessages,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        DraarlSegmentedControl(
+            segments = RADIO_CONTENT_SEGMENTS,
+            selectedKey = if (mapSelected) RADIO_MAP_SEGMENT else RADIO_MESSAGES_SEGMENT,
+            onSelect = { selected ->
+                if (selected == RADIO_MAP_SEGMENT) onMap() else onMessages()
+            },
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        )
     }
 }
 
-@Composable
-private fun RadioModeTab(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier.fillMaxSize().clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        )
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(3.dp)
-                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
-        )
-    }
-}
+private const val RADIO_MAP_SEGMENT = "map"
+private const val RADIO_MESSAGES_SEGMENT = "messages"
+private val RADIO_CONTENT_SEGMENTS = listOf(
+    DraarlSegment(RADIO_MAP_SEGMENT, "地图"),
+    DraarlSegment(RADIO_MESSAGES_SEGMENT, "通联日志"),
+)
 
 private fun createAvatarMarkerBitmap(avatar: Bitmap?): Bitmap {
     val output = Bitmap.createBitmap(MARKER_WIDTH, MARKER_HEIGHT, Bitmap.Config.ARGB_8888)
