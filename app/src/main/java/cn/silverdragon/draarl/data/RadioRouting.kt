@@ -13,5 +13,19 @@ data class RadioRouting(
             require(normalized.size <= MAX_RECEIVE_GROUPS) { "收听频道不能超过 $MAX_RECEIVE_GROUPS 个" }
             return RadioRouting(txGroupId, normalized)
         }
+
+        fun forTransmitGroupSwitch(
+            currentTxGroupId: Int,
+            currentRxGroupIds: Collection<Int>,
+            nextTxGroupId: Int,
+        ): RadioRouting {
+            val current = normalize(currentTxGroupId, currentRxGroupIds)
+            val nextRxGroupIds = if (current.rxGroupIds == listOf(current.txGroupId)) {
+                listOf(nextTxGroupId)
+            } else {
+                current.rxGroupIds + nextTxGroupId
+            }
+            return normalize(nextTxGroupId, nextRxGroupIds)
+        }
     }
 }

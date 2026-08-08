@@ -264,8 +264,6 @@ class AppController(application: Application) : AndroidViewModel(application), R
         private set
     var selectedGroupId by mutableIntStateOf(999)
         private set
-    var transmitGroupId by mutableIntStateOf(999)
-        private set
     var receiveGroupIds by mutableStateOf<Set<Int>>(setOf(999))
         private set
     var radioRoutingUpdating by mutableStateOf(false)
@@ -403,8 +401,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
-                        transmitGroupId = sessionStore.transmitGroupId(session.user.id, selectedGroupId)
-                        receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, transmitGroupId)
+                        receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, selectedGroupId)
                         page = AppPage.RADIO
                         manualRadioDisconnect = false
                         syncPttOverlay()
@@ -665,6 +662,8 @@ class AppController(application: Application) : AndroidViewModel(application), R
                                 ?: snapshot.groups.firstOrNull { group -> group.id == 999 }?.id
                                 ?: snapshot.groups.firstOrNull()?.id
                                 ?: 999
+                            receiveGroupIds = receiveGroupIds + selectedGroupId
+                            sessionStore.setRadioRouting(it.id, selectedGroupId, receiveGroupIds)
                         }
                         syncPttOverlay()
                         dashboard = DashboardData(
@@ -801,7 +800,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                     accessPoint = point,
                     accessToken = api.freshAccessToken(),
                     clientInstanceId = sessionStore.clientInstanceId(),
-                    groupId = transmitGroupId,
+                    groupId = selectedGroupId,
                 )
             }.onSuccess { config ->
                 mainHandler.post {
@@ -1335,22 +1334,41 @@ class AppController(application: Application) : AndroidViewModel(application), R
 
     fun switchGroup(group: Group) {
         if (group.id == selectedGroupId) return
+        val userId = user?.id ?: return
+        val routing = runCatching {
+            RadioRouting.forTransmitGroupSwitch(selectedGroupId, receiveGroupIds, group.id)
+        }.getOrElse { error ->
+            notice = error.message ?: "发送与收听频道无效"
+            return
+        }
+        if (radioStatus.connected && radioStatus.sessionId.isNotBlank()) {
+            updateRadioRouting(routing.txGroupId, routing.rxGroupIds)
+            return
+        }
+        receiveGroupIds = routing.rxGroupIds.toSet()
+        applySelectedRadioGroup(routing.txGroupId, "已切换发送/日志频道：${group.name}")
+        sessionStore.setRadioRouting(userId, selectedGroupId, receiveGroupIds)
+        serviceBinder?.setRouting(selectedGroupId, receiveGroupIds)
+        syncPttOverlay()
+    }
+
+    private fun applySelectedRadioGroup(groupId: Int, message: String? = null) {
+        if (groupId <= 0 || groupId == selectedGroupId) return
         stopVoiceAutoPlay(stopCurrent = true)
-        user?.id ?: return
         groupSwitchGeneration.incrementAndGet()
         radioDataGeneration.incrementAndGet()
         radioCacheLoadGeneration.incrementAndGet()
         radioHistoryGeneration.incrementAndGet()
         pendingRadioDataSync.set(false)
-        selectedGroupId = group.id
-        user?.let { sessionStore.setSelectedGroupId(it.id, group.id) }
+        selectedGroupId = groupId
+        user?.let { sessionStore.setSelectedGroupId(it.id, groupId) }
         radioMessages.clear()
         displayedRadioMessageGroupId = null
         radioHistoryLoading = false
         radioHistoryHasMore = true
         radioSyncError = ""
-        loadCachedRadioMessages(group.id)
-        notice = "正在查看 ${group.name}"
+        loadCachedRadioMessages(groupId)
+        message?.let { notice = it }
         refreshRadioData()
     }
 
@@ -1376,12 +1394,14 @@ class AppController(application: Application) : AndroidViewModel(application), R
                 if (disposed.get() || user?.id != userId || radioStatus.sessionId != sessionId) return@post
                 result
                     .onSuccess { session ->
-                        transmitGroupId = session.txGroupId
-                        receiveGroupIds = session.rxGroupIds.toSet()
-                        sessionStore.setRadioRouting(userId, transmitGroupId, receiveGroupIds)
-                        serviceBinder?.setRouting(transmitGroupId, receiveGroupIds)
+                        receiveGroupIds = session.rxGroupIds.toSet() + session.txGroupId
+                        val primaryChanged = selectedGroupId != session.txGroupId
+                        sessionStore.setRadioRouting(userId, session.txGroupId, receiveGroupIds)
+                        serviceBinder?.setRouting(session.txGroupId, receiveGroupIds)
+                        val groupName = groups.firstOrNull { it.id == session.txGroupId }?.name ?: "群组 ${session.txGroupId}"
+                        applySelectedRadioGroup(session.txGroupId, "已切换发送/日志频道：$groupName")
                         syncPttOverlay()
-                        notice = "发送与收听频道已更新"
+                        if (!primaryChanged) notice = "收听频道已更新"
                     }
                     .onFailure { error -> notice = friendlyError(error) }
             }
@@ -1465,9 +1485,9 @@ class AppController(application: Application) : AndroidViewModel(application), R
             val wasConnected = radioStatus.connected
             radioStatus = status
             if (status.connected && status.sessionId.isNotBlank()) {
-                transmitGroupId = status.groupId
-                receiveGroupIds = status.receiveGroupIds.toSet().ifEmpty { setOf(status.groupId) }
-                user?.id?.let { sessionStore.setRadioRouting(it, transmitGroupId, receiveGroupIds) }
+                receiveGroupIds = status.receiveGroupIds.toSet() + status.groupId
+                user?.id?.let { sessionStore.setRadioRouting(it, status.groupId, receiveGroupIds) }
+                applySelectedRadioGroup(status.groupId)
             }
             if (status.speaker.isBlank() && playingMessageId == null) playbackLevel = 0f
             if (!status.transmitting) transmitLevel = 0f
@@ -1661,8 +1681,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
                             session.user.id,
                             session.user.lastGroupId.takeIf { it > 0 } ?: 999,
                         )
-                        transmitGroupId = sessionStore.transmitGroupId(session.user.id, selectedGroupId)
-                        receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, transmitGroupId)
+                        receiveGroupIds = sessionStore.receiveGroupIds(session.user.id, selectedGroupId)
                         page = AppPage.RADIO
                         manualRadioDisconnect = false
                         syncPttOverlay()
@@ -1708,7 +1727,7 @@ class AppController(application: Application) : AndroidViewModel(application), R
         serviceBinder?.configurePttOverlay(
             enabled = enabled,
             visible = enabled && !appInForeground,
-            groupName = groups.firstOrNull { it.id == transmitGroupId }?.name ?: "群组 $transmitGroupId",
+            groupName = groups.firstOrNull { it.id == selectedGroupId }?.name ?: "群组 $selectedGroupId",
         )
     }
 

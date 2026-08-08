@@ -22,10 +22,9 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Router
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,6 +46,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.RadioConnectionPhase
@@ -68,10 +68,6 @@ internal fun ConnectionPanel(
     var groupMenu by remember { mutableStateOf(false) }
     var routingMenu by remember { mutableStateOf(false) }
     val selectedGroup = controller.groups.firstOrNull { it.id == controller.selectedGroupId }
-    val transmitGroup = controller.groups.firstOrNull { it.id == controller.transmitGroupId }
-    val selectedProbe = controller.accessPointProbes.firstOrNull {
-        it.accessPoint.id == controller.selectedAccessPoint?.id
-    }
     val user = controller.user
     val callsign = user?.let { it.callsign.ifBlank { it.displayName } }.orEmpty().ifBlank { "DraARL" }
     val stationIdentity = formatRadioIdentity(callsign, status.ssid)
@@ -102,7 +98,16 @@ internal fun ConnectionPanel(
                             maxLines = 1,
                         )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.clickable(
+                            enabled = controller.accessPoints.isNotEmpty() && status.phase !in setOf(
+                                RadioConnectionPhase.CONNECTING,
+                                RadioConnectionPhase.AUTHENTICATING,
+                                RadioConnectionPhase.RECONNECTING,
+                            ),
+                        ) { accessMenu = true },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Icon(
                             if (status.connected) Icons.Default.CloudDone else Icons.Default.CloudOff,
                             contentDescription = null,
@@ -111,18 +116,21 @@ internal fun ConnectionPanel(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            connectionText(status.phase),
+                            "${connectionText(status.phase)} · ${controller.selectedAccessPoint?.displayName ?: "选择节点"}",
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodySmall,
                             color = connectionColor(status.phase),
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        Text(
-                            "${controller.onlineDevices.size} 在线",
-                            modifier = Modifier.clickable(onClick = onToggleDevices).padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "选择边缘节点", modifier = Modifier.size(16.dp))
                     }
+                    Text(
+                        "${controller.onlineDevices.size} 在线",
+                        modifier = Modifier.clickable(onClick = onToggleDevices).padding(vertical = 2.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
                 val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null
                 Column(
@@ -187,59 +195,40 @@ internal fun ConnectionPanel(
                     )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.weight(1f).padding(start = 12.dp)) {
-                    OutlinedButton(
-                        onClick = { accessMenu = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = controller.accessPoints.isNotEmpty() && status.phase !in setOf(
-                            RadioConnectionPhase.CONNECTING,
-                            RadioConnectionPhase.AUTHENTICATING,
-                            RadioConnectionPhase.RECONNECTING,
-                        ),
-                    ) {
-                        Icon(Icons.Default.Router, contentDescription = null)
-                        Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
-                            Text(
-                                controller.selectedAccessPoint?.displayName
-                                    ?: if (controller.selectingAccessPoint) "优选边缘中" else "边缘节点",
-                                maxLines = 1,
-                            )
-                            if (controller.selectedAccessPoint != null || selectedProbe != null) {
-                                LatencyText(selectedProbe?.latencyMs)
-                            }
-                        }
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
-                    }
-                }
-                Box(Modifier.weight(1f).padding(end = 12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(Modifier.weight(1f)) {
                     OutlinedButton(
                         onClick = { groupMenu = true },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = controller.groups.isNotEmpty(),
+                        enabled = controller.groups.isNotEmpty() && !controller.radioRoutingUpdating,
                     ) {
-                        Icon(Icons.Default.Groups, contentDescription = null)
+                        Icon(Icons.Default.Mic, contentDescription = null)
                         Text(
-                            "查看 ${selectedGroup?.name ?: "群组 ${controller.selectedGroupId}"}",
+                            "发送/日志\n${selectedGroup?.name ?: "群组 ${controller.selectedGroupId}"}",
                             modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
-                            maxLines = 1,
+                            maxLines = 2,
                         )
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
                     }
                 }
-            }
-            OutlinedButton(
-                onClick = { routingMenu = true },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                enabled = controller.groups.isNotEmpty() && status.connected && !controller.radioRoutingUpdating,
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = null)
-                Text(
-                    "发送 ${transmitGroup?.name ?: "群组 ${controller.transmitGroupId}"} · 收听 ${controller.receiveGroupIds.size} 个频道",
-                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                    maxLines = 2,
-                )
-                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                Box(Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { routingMenu = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = controller.groups.isNotEmpty() && status.connected && !controller.radioRoutingUpdating,
+                    ) {
+                        Icon(Icons.Default.Headphones, contentDescription = null)
+                        Text(
+                            "收听频道\n${controller.receiveGroupIds.size} 个频道",
+                            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+                            maxLines = 2,
+                        )
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                    }
+                }
             }
             if (status.speaker.isNotBlank()) {
                 Surface(
