@@ -1,0 +1,682 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CognitiveComplexMethod:AccountSecurityScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AccountSecurityScreen</ID>
+    <ID>CognitiveComplexMethod:AppController.kt:AppController$fun checkAppUpdate</ID>
+    <ID>CognitiveComplexMethod:AppController.kt:AppController$fun connectRadio</ID>
+    <ID>CognitiveComplexMethod:AppController.kt:AppController$fun loadOlderRadioMessages</ID>
+    <ID>CognitiveComplexMethod:AppController.kt:AppController$override fun onRadioMessage</ID>
+    <ID>CognitiveComplexMethod:AppController.kt:AppController$override fun onRadioStatus</ID>
+    <ID>CognitiveComplexMethod:AppController.kt:AppController$private fun restoreSession</ID>
+    <ID>CognitiveComplexMethod:AppController.kt:AppController$private fun startRefreshAll</ID>
+    <ID>CognitiveComplexMethod:AppUpdateManager.kt:AppUpdateManager$private fun downloadToFile: File</ID>
+    <ID>CognitiveComplexMethod:AprsMapPanel.kt:@Composable internal fun AprsMapPanel</ID>
+    <ID>CognitiveComplexMethod:AprsService.kt:AprsService$override fun onStartCommand: Int</ID>
+    <ID>CognitiveComplexMethod:AprsSettingsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AprsSettingsScreen</ID>
+    <ID>CognitiveComplexMethod:AuthStepIndicator.kt:@Composable internal fun AuthStepIndicator</ID>
+    <ID>CognitiveComplexMethod:BleProvisionScreen.kt:@Composable internal fun BleProvisionScreen</ID>
+    <ID>CognitiveComplexMethod:CwToneGenerator.kt:CwToneGenerator$private fun buildSegments: List&lt;Segment&gt;</ID>
+    <ID>CognitiveComplexMethod:DevicesScreen.kt:@Composable private fun DeviceConfigDialog</ID>
+    <ID>CognitiveComplexMethod:DevicesScreen.kt:@Composable private fun DeviceDetailDialog</ID>
+    <ID>CognitiveComplexMethod:DevicesScreen.kt:@Composable private fun DeviceListRow</ID>
+    <ID>CognitiveComplexMethod:DevicesScreen.kt:@Composable private fun DevicePasswordDialog</ID>
+    <ID>CognitiveComplexMethod:DevicesScreen.kt:@Composable private fun DynamicBindDialog</ID>
+    <ID>CognitiveComplexMethod:DraarlApp.kt:@Composable @OptIn(ExperimentalLayoutApi::class) private fun AuthenticatedApp</ID>
+    <ID>CognitiveComplexMethod:DraarlApp.kt:@Composable private fun AppUpdateDialog</ID>
+    <ID>CognitiveComplexMethod:DraarlBottomBar.kt:@Composable private fun BottomBarItem</ID>
+    <ID>CognitiveComplexMethod:EmailChangeSection.kt:@Composable internal fun ChangeEmailSection</ID>
+    <ID>CognitiveComplexMethod:GroupsScreen.kt:@Composable fun GroupsScreen</ID>
+    <ID>CognitiveComplexMethod:GroupsScreen.kt:@Composable private fun GroupDetailDialog</ID>
+    <ID>CognitiveComplexMethod:GroupsScreen.kt:@Composable private fun GroupDevicesDialog</ID>
+    <ID>CognitiveComplexMethod:GroupsScreen.kt:@Composable private fun GroupEditorDialog</ID>
+    <ID>CognitiveComplexMethod:LocationMapScreen.kt:@Composable internal fun ManagedAmapView</ID>
+    <ID>CognitiveComplexMethod:LocationMapScreen.kt:@Composable private fun LocationDetailsPanel</ID>
+    <ID>CognitiveComplexMethod:LocationMapScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LocationMapScreen</ID>
+    <ID>CognitiveComplexMethod:LogbookEditorScreen.kt:@Composable internal fun LogbookEditorScreen</ID>
+    <ID>CognitiveComplexMethod:LogbookPlacePickerScreen.kt:@Composable internal fun LogbookPlacePickerScreen</ID>
+    <ID>CognitiveComplexMethod:LogbookScreen.kt:@Composable internal fun LogbookScreen</ID>
+    <ID>CognitiveComplexMethod:MaidenheadToolScreen.kt:@Composable internal fun MaidenheadToolScreen</ID>
+    <ID>CognitiveComplexMethod:PasswordResetForm.kt:@Composable internal fun ForgotPasswordFormStepped</ID>
+    <ID>CognitiveComplexMethod:ProfileHeader.kt:@Composable internal fun ProfileHeader</ID>
+    <ID>CognitiveComplexMethod:ProfileInfoSection.kt:@OptIn(ExperimentalLayoutApi::class) @Composable internal fun ProfileInfoSection</ID>
+    <ID>CognitiveComplexMethod:PublicAuthController.kt:PublicAuthController$fun register</ID>
+    <ID>CognitiveComplexMethod:RadioComposer.kt:@Composable internal fun RadioComposer</ID>
+    <ID>CognitiveComplexMethod:RadioExtraPanel.kt:@Composable internal fun RadioExtraPanel</ID>
+    <ID>CognitiveComplexMethod:RadioMessageComponents.kt:@Composable internal fun MessageItem</ID>
+    <ID>CognitiveComplexMethod:RadioMessageComponents.kt:@Composable internal fun MessageListFloatingActions</ID>
+    <ID>CognitiveComplexMethod:RadioPresetsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable internal fun RadioPresetsScreen</ID>
+    <ID>CognitiveComplexMethod:RadioScreen.kt:@Composable fun RadioScreen</ID>
+    <ID>CognitiveComplexMethod:RadioSelectionDialogs.kt:@Composable internal fun AccessPointDialog</ID>
+    <ID>CognitiveComplexMethod:RadioSelectionDialogs.kt:@Composable internal fun GroupDialog</ID>
+    <ID>CognitiveComplexMethod:RadioSelectionDialogs.kt:@Composable internal fun RoutingDialog</ID>
+    <ID>CognitiveComplexMethod:RadioStatusStrip.kt:@Composable fun RadioStatusStrip</ID>
+    <ID>CognitiveComplexMethod:RegisterForm.kt:@Composable internal fun RegisterFormStepped</ID>
+    <ID>CognitiveComplexMethod:SystemSettingsScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun SystemSettingsScreen</ID>
+    <ID>ComplexCondition:ApiClient.kt:ApiClient$code == 401 &amp;&amp; requiresAuth &amp;&amp; allowRefresh &amp;&amp; refreshSession(token.orEmpty())</ID>
+    <ID>ComplexCondition:AppController.kt:AppController$decision.applyResults &amp;&amp; api.currentSession() != null &amp;&amp; error == null &amp;&amp; snapshot != null</ID>
+    <ID>ComplexCondition:AppController.kt:AppController$disposed.get() || generation != accessPointDiscoveryGeneration.get() || user?.id != userId || !authenticated</ID>
+    <ID>ComplexCondition:AppController.kt:AppController$disposed.get() || generation != groupCountsGeneration.get() || user?.id != userId || !authenticated</ID>
+    <ID>ComplexCondition:AppController.kt:AppController$disposed.get() || generation != radioDataGeneration.get() || groupId != selectedGroupId || user?.id != userId || !authenticated</ID>
+    <ID>ComplexCondition:AppController.kt:AppController$playingMessageId != null || voiceAutoPlayPendingMessageId != null || radioStatus.transmitting || radioStatus.speaker.isNotBlank()</ID>
+    <ID>ComplexCondition:AppController.kt:AppController$voiceAutoPlayEnabled &amp;&amp; !status.transmitting &amp;&amp; status.speaker.isBlank() &amp;&amp; playingMessageId == null &amp;&amp; voiceAutoPlayPendingMessageId == null</ID>
+    <ID>ComplexCondition:AppController.kt:AppController$voiceAutoPlayEnabled &amp;&amp; messageId == null &amp;&amp; previousMessageId != null &amp;&amp; voiceAutoPlayPendingMessageId == null</ID>
+    <ID>ComplexCondition:BleProvisioningClient.kt:BleProvisioningClient$closed.get() || expectedGeneration != connectionGeneration.get() || gatt == null || status.phase == BleConnectionPhase.DISCONNECTED</ID>
+    <ID>ComplexCondition:DeviceManagementController.kt:DeviceManagementController$replaceDeviceId == null &amp;&amp; (ssid == null || ssid !in 1..254 || ssid in 100..105)</ID>
+    <ID>ComplexCondition:LocationMapScreen.kt:value.length &lt;= 12 &amp;&amp; value.all { it.isDigit() || it == '.' || it == '-' }</ID>
+    <ID>ComplexCondition:OpusAudioEngine.kt:OpusAudioEngine$released.get() || capture.isCapturing || (audioCacheKey.isBlank() &amp;&amp; audioUrl.isBlank())</ID>
+    <ID>ComplexCondition:PttOverlayWindow.kt:PttOverlayWindow$!dragging &amp;&amp; radioStatus.connected &amp;&amp; !radioStatus.transmitting &amp;&amp; radioStatus.speaker.isBlank()</ID>
+    <ID>ComplexCondition:RadioPresetsScreen.kt:targetInfo != null &amp;&amp; currentIndex &gt;= 0 &amp;&amp; targetIndex &gt;= 0 &amp;&amp; currentIndex != targetIndex</ID>
+    <ID>ComplexCondition:UdpRadioClient.kt:UdpRadioClient$!status.connected || status.transmitting || status.speaker.isNotBlank() || normalized.isEmpty()</ID>
+    <ID>ComplexCondition:UdpRadioClient.kt:UdpRadioClient$packetOffset &lt; samples.size &amp;&amp; shouldContinue() &amp;&amp; (!requireActive || isActive(currentGeneration)) &amp;&amp; (!sendToRemote || status.transmitting)</ID>
+    <ID>CyclomaticComplexMethod:AppController.kt:AppController$override fun onRadioMessage</ID>
+    <ID>CyclomaticComplexMethod:AppController.kt:AppController$override fun onRadioStatus</ID>
+    <ID>CyclomaticComplexMethod:AppController.kt:AppController$private fun startRefreshAll</ID>
+    <ID>CyclomaticComplexMethod:AppUpdateManager.kt:AppUpdateManager$private fun downloadToFile: File</ID>
+    <ID>CyclomaticComplexMethod:AprsMapPanel.kt:@Composable internal fun AprsMapPanel</ID>
+    <ID>CyclomaticComplexMethod:AprsSettingsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AprsSettingsScreen</ID>
+    <ID>CyclomaticComplexMethod:DevicesScreen.kt:@Composable private fun DeviceConfigDialog</ID>
+    <ID>CyclomaticComplexMethod:DraarlApp.kt:@Composable @OptIn(ExperimentalLayoutApi::class) private fun AuthenticatedApp</ID>
+    <ID>CyclomaticComplexMethod:EmailChangeSection.kt:@Composable internal fun ChangeEmailSection</ID>
+    <ID>CyclomaticComplexMethod:LocationMapScreen.kt:@Composable internal fun ManagedAmapView</ID>
+    <ID>CyclomaticComplexMethod:LocationMapScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LocationMapScreen</ID>
+    <ID>CyclomaticComplexMethod:LogbookPlacePickerScreen.kt:@Composable internal fun LogbookPlacePickerScreen</ID>
+    <ID>CyclomaticComplexMethod:MaidenheadToolScreen.kt:@Composable internal fun MaidenheadToolScreen</ID>
+    <ID>CyclomaticComplexMethod:RadioPresetsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable internal fun RadioPresetsScreen</ID>
+    <ID>CyclomaticComplexMethod:RadioScreen.kt:@Composable fun RadioScreen</ID>
+    <ID>CyclomaticComplexMethod:SystemSettingsScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun SystemSettingsScreen</ID>
+    <ID>CyclomaticComplexMethod:UdpRadioClient.kt:UdpRadioClient$private fun establish</ID>
+    <ID>ForbiddenMethodCall:AccessPointSelector.kt:AccessPointSelector$newFixedThreadPool(minOf(points.size, MAX_PARALLEL_PROBES))</ID>
+    <ID>ForbiddenMethodCall:AppController.kt:AppController$newFixedThreadPool(4) { runnable -&gt; Thread(runnable, "draarl-app-worker") }</ID>
+    <ID>ForbiddenMethodCall:BleProvisioningClient.kt:BleProvisioningClient$newSingleThreadScheduledExecutor { runnable -&gt; Thread(runnable, "draarl-ble-timeouts") }</ID>
+    <ID>ForbiddenMethodCall:OpusAudioEngine.kt:OpusAudioEngine$newSingleThreadExecutor { runnable -&gt; Thread(runnable, "draarl-audio-download") }</ID>
+    <ID>ForbiddenMethodCall:OpusPlaybackController.kt:OpusPlaybackController$newSingleThreadExecutor { runnable -&gt; Thread(runnable, "draarl-opus-playback") }</ID>
+    <ID>ForbiddenMethodCall:ToolsController.kt:ToolsController$newFixedThreadPool(2) { runnable -&gt; Thread(runnable, "draarl-tools") }</ID>
+    <ID>ForbiddenMethodCall:UdpRadioClient.kt:UdpRadioClient$newScheduledThreadPool(2) { runnable -&gt; Thread(runnable, "draarl-udp-scheduler") }</ID>
+    <ID>ForbiddenMethodCall:UdpRadioClient.kt:UdpRadioClient$newSingleThreadExecutor { runnable -&gt; Thread(runnable, "draarl-udp-connect") }</ID>
+    <ID>ImplicitDefaultLocale:AppUpdateManager.kt:"%02x".format(byte)</ID>
+    <ID>ImplicitDefaultLocale:RadioAudioCache.kt:RadioAudioCache$"%02x".format(byte.toInt() and 0xff)</ID>
+    <ID>InjectDispatcher:AmapPlaceService.kt:AmapPlaceService$IO</ID>
+    <ID>InjectDispatcher:AprsIsClient.kt:AprsIsClient$IO</ID>
+    <ID>InjectDispatcher:AprsService.kt:AprsService$IO</ID>
+    <ID>LargeClass:ApiClient.kt:ApiClient</ID>
+    <ID>LargeClass:AppController.kt:AppController : AndroidViewModelRadioServiceListener</ID>
+    <ID>LargeClass:UdpRadioClient.kt:UdpRadioClient</ID>
+    <ID>LongMethod:AccountSecurityScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AccountSecurityScreen</ID>
+    <ID>LongMethod:AprsMapPanel.kt:@Composable internal fun AprsMapPanel</ID>
+    <ID>LongMethod:AprsSettingsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AprsSettingsScreen</ID>
+    <ID>LongMethod:AvatarCropDialog.kt:@Composable fun AvatarCropDialog</ID>
+    <ID>LongMethod:BleProvisionScreen.kt:@Composable internal fun BleProvisionScreen</ID>
+    <ID>LongMethod:DevicesScreen.kt:@Composable fun DevicesScreen</ID>
+    <ID>LongMethod:DevicesScreen.kt:@Composable private fun DeviceConfigDialog</ID>
+    <ID>LongMethod:DraarlApp.kt:@Composable @OptIn(ExperimentalLayoutApi::class) private fun AuthenticatedApp</ID>
+    <ID>LongMethod:EmailChangeSection.kt:@Composable internal fun ChangeEmailSection</ID>
+    <ID>LongMethod:GroupsScreen.kt:@Composable fun GroupsScreen</ID>
+    <ID>LongMethod:GroupsScreen.kt:@Composable private fun GroupDevicesDialog</ID>
+    <ID>LongMethod:LocationMapScreen.kt:@Composable internal fun ManagedAmapView</ID>
+    <ID>LongMethod:LocationMapScreen.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LocationMapScreen</ID>
+    <ID>LongMethod:LogbookEditorScreen.kt:@Composable internal fun LogbookEditorScreen</ID>
+    <ID>LongMethod:LogbookPlacePickerScreen.kt:@Composable internal fun LogbookPlacePickerScreen</ID>
+    <ID>LongMethod:LogbookScreen.kt:@Composable internal fun LogbookScreen</ID>
+    <ID>LongMethod:MaidenheadToolScreen.kt:@Composable internal fun MaidenheadToolScreen</ID>
+    <ID>LongMethod:PasswordResetForm.kt:@Composable internal fun ForgotPasswordFormStepped</ID>
+    <ID>LongMethod:ProfileHeader.kt:@Composable internal fun ProfileHeader</ID>
+    <ID>LongMethod:RadioPresetsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable internal fun RadioPresetsScreen</ID>
+    <ID>LongMethod:RadioScreen.kt:@Composable fun RadioScreen</ID>
+    <ID>LongMethod:RadioStatusStrip.kt:@Composable fun RadioStatusStrip</ID>
+    <ID>LongMethod:RegisterForm.kt:@Composable internal fun RegisterFormStepped</ID>
+    <ID>LongMethod:StorageSettingsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun StorageSettingsScreen</ID>
+    <ID>LongMethod:SystemSettingsScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun SystemSettingsScreen</ID>
+    <ID>LongMethod:UdpRadioClient.kt:UdpRadioClient$private fun establish</ID>
+    <ID>LongParameterList:ApiClient.kt:ApiClient$fun getClientResourceManifest: ClientResourceManifest</ID>
+    <ID>LongParameterList:ApiClient.kt:ApiClient$fun register: RegistrationResult</ID>
+    <ID>LongParameterList:ApiClient.kt:ApiClient$fun updateGroup: Group</ID>
+    <ID>LongParameterList:ApiClient.kt:ApiClient$fun updateProfile: User</ID>
+    <ID>LongParameterList:AuthComponents.kt:@Composable internal fun CaptchaRow</ID>
+    <ID>LongParameterList:AuthComponents.kt:@Composable internal fun PasswordField</ID>
+    <ID>LongParameterList:CaptchaInput.kt:@Composable fun CaptchaInput</ID>
+    <ID>LongParameterList:CommunicationTrendChart.kt:private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSeries</ID>
+    <ID>LongParameterList:DeviceManagementController.kt:DeviceManagementController</ID>
+    <ID>LongParameterList:DevicesScreen.kt:@Composable private fun DeviceDetailDialog</ID>
+    <ID>LongParameterList:DevicesScreen.kt:@Composable private fun GroupPickerDialog</ID>
+    <ID>LongParameterList:DraarlApp.kt:@Composable private fun AppUpdateDialog</ID>
+    <ID>LongParameterList:DraarlComponents.kt:@Composable fun CommandButton</ID>
+    <ID>LongParameterList:DraarlComponents.kt:@Composable fun CommandIconButton</ID>
+    <ID>LongParameterList:DraarlContainers.kt:@Composable fun DraarlDialog</ID>
+    <ID>LongParameterList:DraarlContainers.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun DraarlSheet</ID>
+    <ID>LongParameterList:DraarlProtocol.kt:DraarlProtocol$fun encode: ByteArray</ID>
+    <ID>LongParameterList:DraarlProtocol.kt:DraarlProtocol$fun heartbeat: ByteArray</ID>
+    <ID>LongParameterList:GroupManagementController.kt:GroupManagementController</ID>
+    <ID>LongParameterList:GroupManagementController.kt:GroupManagementController$fun save</ID>
+    <ID>LongParameterList:GroupsScreen.kt:@Composable private fun GroupDetailDialog</ID>
+    <ID>LongParameterList:GroupsScreen.kt:@Composable private fun GroupDevicesDialog</ID>
+    <ID>LongParameterList:LocationMapScreen.kt:@Composable internal fun ManagedAmapView</ID>
+    <ID>LongParameterList:LocationMapScreen.kt:@Composable private fun LocationDetailsPanel</ID>
+    <ID>LongParameterList:LogbookScreen.kt:@Composable private fun LogbookCard</ID>
+    <ID>LongParameterList:ProfileController.kt:ProfileController</ID>
+    <ID>LongParameterList:ProfileController.kt:ProfileController$fun updateProfile</ID>
+    <ID>LongParameterList:PublicAuthController.kt:PublicAuthController$fun register</ID>
+    <ID>LongParameterList:RadioComposer.kt:@Composable internal fun RadioComposer</ID>
+    <ID>LongParameterList:RadioExtraPanel.kt:@Composable internal fun CwSendSheet</ID>
+    <ID>LongParameterList:RadioExtraPanel.kt:@Composable internal fun RadioExtraPanel</ID>
+    <ID>LongParameterList:RadioMessageComponents.kt:@Composable internal fun MessageListFloatingActions</ID>
+    <ID>LongParameterList:RadioStatusStrip.kt:@Composable fun RadioStatusStrip</ID>
+    <ID>LongParameterList:RegisterForm.kt:@Composable private fun RegisterBasicInfo</ID>
+    <ID>LongParameterList:RegisterForm.kt:@Composable private fun RegisterEmailVerification</ID>
+    <ID>LongParameterList:RegisterForm.kt:@Composable private fun RegisterPassword</ID>
+    <ID>LongParameterList:StorageSettingsScreen.kt:@Composable private fun StorageCategoryCard</ID>
+    <ID>LongParameterList:SystemSettingsScreen.kt:@Composable private fun SettingsToggleRow</ID>
+    <ID>LongParameterList:UdpRadioClient.kt:UdpRadioClient$private fun handleVoice</ID>
+    <ID>LongParameterList:UdpRadioClient.kt:UdpRadioClient$private fun streamPcmPackets</ID>
+    <ID>LoopWithTooManyJumpStatements:ApiClient.kt:ApiClient$while</ID>
+    <ID>LoopWithTooManyJumpStatements:AprsIsClient.kt:AprsIsClient$while</ID>
+    <ID>LoopWithTooManyJumpStatements:UdpRadioClient.kt:UdpRadioClient$while</ID>
+    <ID>MagicNumber:AccessPointSelector.kt:AccessPointSelector$1_000_000L</ID>
+    <ID>MagicNumber:AccessPointSelector.kt:AccessPointSelector$500L</ID>
+    <ID>MagicNumber:ApiClient.kt:200</ID>
+    <ID>MagicNumber:ApiClient.kt:299</ID>
+    <ID>MagicNumber:ApiClient.kt:500</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$100</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$10_800L</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$1_209_600L</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$200</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$299</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$300</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$30_000</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$400</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$401</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$403</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$500</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$600</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$60_000L</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$65535</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient$999</ID>
+    <ID>MagicNumber:ApiClient.kt:ApiClient.Companion$400</ID>
+    <ID>MagicNumber:AppController.kt:AppController$403</ID>
+    <ID>MagicNumber:AppController.kt:AppController$404</ID>
+    <ID>MagicNumber:AppController.kt:AppController$405</ID>
+    <ID>MagicNumber:AppController.kt:AppController$999</ID>
+    <ID>MagicNumber:AppDisplayScale.kt:0.5f</ID>
+    <ID>MagicNumber:AppDisplayScale.kt:AppDisplayScale.COMFORTABLE$384</ID>
+    <ID>MagicNumber:AppDisplayScale.kt:AppDisplayScale.COMPACT$480</ID>
+    <ID>MagicNumber:AppDisplayScale.kt:AppDisplayScale.STANDARD$432</ID>
+    <ID>MagicNumber:AppNavigation.kt:3</ID>
+    <ID>MagicNumber:AppNavigation.kt:4</ID>
+    <ID>MagicNumber:AppNavigation.kt:5</ID>
+    <ID>MagicNumber:AppNavigation.kt:6</ID>
+    <ID>MagicNumber:AppNavigation.kt:7</ID>
+    <ID>MagicNumber:AppUpdateManager.kt:3</ID>
+    <ID>MagicNumber:AppUpdateManager.kt:AppUpdateManager$200</ID>
+    <ID>MagicNumber:AppUpdateManager.kt:AppUpdateManager$299</ID>
+    <ID>MagicNumber:AprsConfigStore.kt:AprsConfigStore$120</ID>
+    <ID>MagicNumber:AprsConfigStore.kt:AprsConfigStore$128</ID>
+    <ID>MagicNumber:AprsConfigStore.kt:AprsConfigStore$14580</ID>
+    <ID>MagicNumber:AprsConfigStore.kt:AprsConfigStore$3_600</ID>
+    <ID>MagicNumber:AprsConfigStore.kt:AprsConfigStore$60</ID>
+    <ID>MagicNumber:AprsConfigStore.kt:AprsConfigStore$600</ID>
+    <ID>MagicNumber:AprsConfigStore.kt:AprsConfigStore$65535</ID>
+    <ID>MagicNumber:AprsIsClient.kt:AprsIsClient$65535</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:113f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:135</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:145f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:1e-7</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:21f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:31f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:52f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:5f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:63f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:66f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:69f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:80f</ID>
+    <ID>MagicNumber:AprsMapPanel.kt:9</ID>
+    <ID>MagicNumber:AprsPacketFormatter.kt:AprsPacketFormatter$0x7fff</ID>
+    <ID>MagicNumber:AprsPacketFormatter.kt:AprsPacketFormatter$180.0</ID>
+    <ID>MagicNumber:AprsPacketFormatter.kt:AprsPacketFormatter$8</ID>
+    <ID>MagicNumber:AprsPacketFormatter.kt:AprsPacketFormatter$90.0</ID>
+    <ID>MagicNumber:AprsService.kt:AprsService$1_000L</ID>
+    <ID>MagicNumber:AprsService.kt:AprsService$26</ID>
+    <ID>MagicNumber:AprsService.kt:AprsService$29</ID>
+    <ID>MagicNumber:AprsService.kt:AprsService$3_600</ID>
+    <ID>MagicNumber:AprsService.kt:AprsService$60</ID>
+    <ID>MagicNumber:AprsSettingsScreen.kt:3_600</ID>
+    <ID>MagicNumber:AprsSettingsScreen.kt:43</ID>
+    <ID>MagicNumber:AprsSettingsScreen.kt:5</ID>
+    <ID>MagicNumber:AprsSettingsScreen.kt:6</ID>
+    <ID>MagicNumber:AprsSettingsScreen.kt:60</ID>
+    <ID>MagicNumber:AprsSettingsScreen.kt:65535</ID>
+    <ID>MagicNumber:AudioLevelThrottler.kt:AudioLevelThrottler$1_000_000L</ID>
+    <ID>MagicNumber:AuthValidation.kt:RegistrationValidation$20</ID>
+    <ID>MagicNumber:AuthValidation.kt:RegistrationValidation$3</ID>
+    <ID>MagicNumber:AuthValidation.kt:RegistrationValidation$6</ID>
+    <ID>MagicNumber:AvatarCropDialog.kt:0.5f</ID>
+    <ID>MagicNumber:AvatarCropDialog.kt:5f</ID>
+    <ID>MagicNumber:AvatarCropDialog.kt:90</ID>
+    <ID>MagicNumber:BleProvisionScreen.kt:6</ID>
+    <ID>MagicNumber:BleProvisioningClient.kt:BleProvisioningClient$60_050</ID>
+    <ID>MagicNumber:CaptchaInput.kt:8</ID>
+    <ID>MagicNumber:CommunicationTrendChart.kt:1_000</ID>
+    <ID>MagicNumber:CommunicationTrendChart.kt:3_600_000.0</ID>
+    <ID>MagicNumber:CommunicationTrendChart.kt:3_600_000L</ID>
+    <ID>MagicNumber:CommunicationTrendChart.kt:5</ID>
+    <ID>MagicNumber:CommunicationTrendChart.kt:60_000.0</ID>
+    <ID>MagicNumber:CommunicationTrendChart.kt:60_000L</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$0.1</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$0.2</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$0.8293</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$100.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$12</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$12.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$137.8347</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$150.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$160.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$180.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$20.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$3.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$30.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$300.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$320.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$40.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$55.8271</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$6.0</ID>
+    <ID>MagicNumber:CoordinateConverter.kt:CoordinateConverter$72.004</ID>
+    <ID>MagicNumber:DeviceManagementController.kt:DeviceManagementController$100</ID>
+    <ID>MagicNumber:DeviceManagementController.kt:DeviceManagementController$105</ID>
+    <ID>MagicNumber:DeviceManagementController.kt:DeviceManagementController$254</ID>
+    <ID>MagicNumber:DevicesScreen.kt:0.5f</ID>
+    <ID>MagicNumber:DevicesScreen.kt:100f</ID>
+    <ID>MagicNumber:DevicesScreen.kt:19</ID>
+    <ID>MagicNumber:DevicesScreen.kt:23</ID>
+    <ID>MagicNumber:DevicesScreen.kt:24f</ID>
+    <ID>MagicNumber:DevicesScreen.kt:3</ID>
+    <ID>MagicNumber:DevicesScreen.kt:6</ID>
+    <ID>MagicNumber:DevicesScreen.kt:7</ID>
+    <ID>MagicNumber:DevicesScreen.kt:76</ID>
+    <ID>MagicNumber:DevicesScreen.kt:80f</ID>
+    <ID>MagicNumber:DevicesScreen.kt:8f</ID>
+    <ID>MagicNumber:DraarlApp.kt:0.65f</ID>
+    <ID>MagicNumber:DraarlApplication.kt:DraarlApplication$0.15</ID>
+    <ID>MagicNumber:DraarlComponents.kt:0.8f</ID>
+    <ID>MagicNumber:DraarlComponents.kt:1.2f</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$10</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$16</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$1_000</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$32</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$38</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$4</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$48</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$49</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$50</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$51</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$52</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$53</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$54</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$6</ID>
+    <ID>MagicNumber:DraarlProtocol.kt:DraarlProtocol$8</ID>
+    <ID>MagicNumber:EmailChangeSection.kt:1_000</ID>
+    <ID>MagicNumber:EmailChangeSection.kt:60</ID>
+    <ID>MagicNumber:EmailChangeSection.kt:8</ID>
+    <ID>MagicNumber:GroupsScreen.kt:0.48f</ID>
+    <ID>MagicNumber:GroupsScreen.kt:42</ID>
+    <ID>MagicNumber:GroupsScreen.kt:48</ID>
+    <ID>MagicNumber:GroupsScreen.kt:76</ID>
+    <ID>MagicNumber:HistoricalAudioLoader.kt:HistoricalAudioLoader.Companion$200</ID>
+    <ID>MagicNumber:HistoricalAudioLoader.kt:HistoricalAudioLoader.Companion$299</ID>
+    <ID>MagicNumber:LastMapLocationStore.kt:LastMapLocationStore$180.0</ID>
+    <ID>MagicNumber:LastMapLocationStore.kt:LastMapLocationStore$90.0</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:0.5f</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:10f</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:15f</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:18f</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:20f</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:3</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:4f</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:8f</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:AmapPreviewCache$12</ID>
+    <ID>MagicNumber:LocationMapScreen.kt:AmapPreviewCache$1_024</ID>
+    <ID>MagicNumber:LocationMessage.kt:180.0</ID>
+    <ID>MagicNumber:LocationMessage.kt:4</ID>
+    <ID>MagicNumber:LocationMessage.kt:90.0</ID>
+    <ID>MagicNumber:LogbookDraftMapper.kt:40</ID>
+    <ID>MagicNumber:LogbookDraftMapper.kt:90</ID>
+    <ID>MagicNumber:MaidenheadLocator.kt:MaidenheadLocator$180.0</ID>
+    <ID>MagicNumber:MaidenheadLocator.kt:MaidenheadLocator$4</ID>
+    <ID>MagicNumber:MaidenheadLocator.kt:MaidenheadLocator$8</ID>
+    <ID>MagicNumber:MaidenheadLocator.kt:MaidenheadLocator$90.0</ID>
+    <ID>MagicNumber:MaidenheadToolScreen.kt:3</ID>
+    <ID>MagicNumber:MaidenheadToolScreen.kt:4</ID>
+    <ID>MagicNumber:MaidenheadToolScreen.kt:8</ID>
+    <ID>MagicNumber:MainActivity.kt:MainActivity$1.04f</ID>
+    <ID>MagicNumber:MainActivity.kt:MainActivity$220L</ID>
+    <ID>MagicNumber:MapDistance.kt:MapDistance$1_000.0</ID>
+    <ID>MagicNumber:Models.kt:100</ID>
+    <ID>MagicNumber:Models.kt:101</ID>
+    <ID>MagicNumber:Models.kt:102</ID>
+    <ID>MagicNumber:Models.kt:103</ID>
+    <ID>MagicNumber:Models.kt:104</ID>
+    <ID>MagicNumber:Models.kt:105</ID>
+    <ID>MagicNumber:Models.kt:236</ID>
+    <ID>MagicNumber:Models.kt:237</ID>
+    <ID>MagicNumber:Models.kt:238</ID>
+    <ID>MagicNumber:Models.kt:239</ID>
+    <ID>MagicNumber:OpusPlaybackController.kt:OpusPlaybackController$8</ID>
+    <ID>MagicNumber:PasswordResetForm.kt:1_000</ID>
+    <ID>MagicNumber:PasswordResetForm.kt:60</ID>
+    <ID>MagicNumber:PlaybackDenoise.kt:100f</ID>
+    <ID>MagicNumber:PttOverlayWindow.kt:PttOverlayWindow$0.72f</ID>
+    <ID>MagicNumber:PttOverlayWindow.kt:PttOverlayWindow$38</ID>
+    <ID>MagicNumber:PttOverlayWindow.kt:PttOverlayWindow$6</ID>
+    <ID>MagicNumber:PttOverlayWindow.kt:PttOverlayWindow$76</ID>
+    <ID>MagicNumber:RadioAudioCache.kt:RadioAudioCache$0xff</ID>
+    <ID>MagicNumber:RadioExtraPanel.kt:0.5f</ID>
+    <ID>MagicNumber:RadioExtraPanel.kt:50</ID>
+    <ID>MagicNumber:RadioExtraPanel.kt:50f</ID>
+    <ID>MagicNumber:RadioMessageStore.kt:RadioMessageStore$3</ID>
+    <ID>MagicNumber:RadioMessageStore.kt:RadioMessageStore$4</ID>
+    <ID>MagicNumber:RadioMessageStore.kt:RadioMessageStore$5</ID>
+    <ID>MagicNumber:RadioScreen.kt:1_000</ID>
+    <ID>MagicNumber:RadioScreen.kt:40</ID>
+    <ID>MagicNumber:RadioScreen.kt:400</ID>
+    <ID>MagicNumber:RadioScreen.kt:8</ID>
+    <ID>MagicNumber:RadioScreen.kt:80</ID>
+    <ID>MagicNumber:RadioStatusStrip.kt:100</ID>
+    <ID>MagicNumber:RawOpusRecording.kt:RawOpusRecording.Companion$6</ID>
+    <ID>MagicNumber:RegisterForm.kt:1_000</ID>
+    <ID>MagicNumber:RegisterForm.kt:3</ID>
+    <ID>MagicNumber:RegisterForm.kt:60</ID>
+    <ID>MagicNumber:SecureSessionStore.kt:SecureSessionStore$128</ID>
+    <ID>MagicNumber:SecureSessionStore.kt:SecureSessionStore$999</ID>
+    <ID>MagicNumber:StorageSettingsScreen.kt:1_024.0</ID>
+    <ID>MagicNumber:StorageSettingsScreen.kt:1_024L</ID>
+    <ID>MagicNumber:SystemSettingsScreen.kt:10</ID>
+    <ID>MagicNumber:SystemSettingsScreen.kt:10f</ID>
+    <ID>MagicNumber:SystemSettingsScreen.kt:5</ID>
+    <ID>MagicNumber:SystemSettingsScreen.kt:5f</ID>
+    <ID>MagicNumber:TransmitTailTone.kt:TransmitTailToneGenerator$1_000</ID>
+    <ID>MagicNumber:UdpRadioClient.kt:UdpRadioClient$100L</ID>
+    <ID>MagicNumber:UdpRadioClient.kt:UdpRadioClient$1_000L</ID>
+    <ID>MagicNumber:VoiceStreamKey.kt:VoiceStreamKey$255</ID>
+    <ID>MatchingDeclarationName:AppNavigation.kt:AppPage</ID>
+    <ID>MatchingDeclarationName:DraarlBottomBar.kt:DraarlBottomBarItem</ID>
+    <ID>MatchingDeclarationName:DraarlContainers.kt:DraarlAction</ID>
+    <ID>MatchingDeclarationName:DraarlSegmentedControl.kt:DraarlSegment</ID>
+    <ID>MatchingDeclarationName:LogbookPlacePickerScreen.kt:LogbookPlaceSelection</ID>
+    <ID>MatchingDeclarationName:RadioStatusStrip.kt:RadioStatusStripState</ID>
+    <ID>MatchingDeclarationName:UiListDerivations.kt:VisibleGroupSections</ID>
+    <ID>MaxLineLength:ApiClient.kt:ApiClient$"Content-Disposition: form-data; name=\"file_type\"$lineEnd$lineEnd$fileType$lineEnd--$boundary--$lineEnd".toByteArray()</ID>
+    <ID>MaxLineLength:ApiClient.kt:ApiClient$artifacts = (item.optJSONArray("artifacts") ?: JSONArray()).objects().map(::parseClientResourceArtifact)</ID>
+    <ID>MaxLineLength:AppController.kt:AppController$communicationDurationMs = snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs</ID>
+    <ID>MaxLineLength:AppController.kt:AppController$if</ID>
+    <ID>MaxLineLength:AppController.kt:AppController$if (message.mine || currentClientMessage) currentUser?.callsign.orEmpty() else online?.callsign.orEmpty()</ID>
+    <ID>MaxLineLength:AppController.kt:AppController$if (message.mine || currentClientMessage) currentUser?.nickname.orEmpty() else online?.nickname.orEmpty()</ID>
+    <ID>MaxLineLength:AppController.kt:AppController$if (message.mine || currentClientMessage) currentUser?.username.orEmpty() else online?.username.orEmpty()</ID>
+    <ID>MaxLineLength:AppController.kt:AppController$val cachedMessages = runCatching { messageStore.load(accountKey, groupId, visibleLimit) }.getOrDefault(emptyList())</ID>
+    <ID>MaxLineLength:AppController.kt:AppController$val groupName = groups.firstOrNull { it.id == session.txGroupId }?.name ?: "群组 ${session.txGroupId}"</ID>
+    <ID>MaxLineLength:AppUpdateManager.kt:"""^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"""</ID>
+    <ID>MaxLineLength:AppUpdateManager.kt:AppUpdateManager$val existingBytes = part.takeIf { it.isFile }?.length()?.takeIf { expectedSize &lt;= 0L || it in 1 until expectedSize } ?: 0L</ID>
+    <ID>MaxLineLength:AppUpdateManager.kt:val missingCapabilities = requiredCapabilities.map { it.lowercase() }.filterNot(availableCapabilities::contains).sorted()</ID>
+    <ID>MaxLineLength:AprsConfigStore.kt:AprsConfigStore$.</ID>
+    <ID>MaxLineLength:AprsConfigStore.kt:AprsConfigStore$fromJson(JSONObject(cipher.doFinal(Base64.decode(wrapper.getString("data"), Base64.NO_WRAP)).toString(Charsets.UTF_8)))</ID>
+    <ID>MaxLineLength:AprsMapPanel.kt:Text("地图 Key 未配置", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:AprsMapPanel.kt:Text("正在定位", modifier = Modifier.align(Alignment.Center).padding(top = 54.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:AprsMapPanel.kt:contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface</ID>
+    <ID>MaxLineLength:AprsMapPanel.kt:val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:AprsMapPanel.kt:val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:AprsMapPanel.kt:var avatarMarker by remember(controller.user?.avatarUrl) { mutableStateOf&lt;com.amap.api.maps.model.BitmapDescriptor?&gt;(null) }</ID>
+    <ID>MaxLineLength:AprsPacketFormatter.kt:AprsPacketFormatter$return "$call&gt;APDRA1,TCPIP*:!$latitude${config.symbolTable}$longitude${config.symbolCode}$altitude${if (comment.isBlank()) "" else " $comment"}"</ID>
+    <ID>MaxLineLength:AprsService.kt:AprsService$val movedMeters = previousPosition?.let { distanceMeters(it, currentPosition) } ?: Float.POSITIVE_INFINITY</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:Button</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(callsign, { callsign = it.uppercase() }, Modifier.fillMaxWidth(), label = { Text("呼号（不含 SSID 也可以）") }, singleLine = true, enabled = enabled)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(comment, { comment = it.take(43) }, Modifier.fillMaxWidth(), label = { Text("位置包注释") }, singleLine = true, enabled = enabled)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(passcode, { passcode = it.filter { char -&gt; char.isDigit() }.take(6) }, Modifier.fillMaxWidth(), label = { Text("验证密码（留空自动计算）") }, singleLine = true, enabled = enabled)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, Modifier.fillMaxWidth(), label = { Text("端口") }, singleLine = true, enabled = enabled)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(server, { server = it }, Modifier.fillMaxWidth(), label = { Text("APRS-IS 地址") }, singleLine = true, enabled = enabled)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:Text("位置包直接发送到 APRS-IS，不经过 DraARL 服务端", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:Text("需要定位权限，并会显示系统常驻通知", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:Text(controller.aprsStatus.message, style = MaterialTheme.typography.bodySmall, color = if (controller.aprsStatus.state == AprsConnectionState.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:AprsSettingsScreen.kt:val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.account, { onChange(config.copy(account = it)) }, label = { Text("账号") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.callsign, { onChange(config.copy(callsign = it.uppercase())) }, label = { Text("呼号") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.dns1, { onChange(config.copy(dns1 = it)) }, label = { Text("主 DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.dns2, { onChange(config.copy(dns2 = it)) }, label = { Text("备用 DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.gateway, { onChange(config.copy(gateway = it)) }, label = { Text("网关") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.httpApiBaseUrl, { onChange(config.copy(httpApiBaseUrl = it)) }, label = { Text("HTTPS API") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.ip, { onChange(config.copy(ip = it)) }, label = { Text("IP 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.nodeSsid.toString(), { onChange(config.copy(nodeSsid = it.toIntOrNull() ?: 0)) }, label = { Text("SSID") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.ssid, { onChange(config.copy(ssid = it)) }, label = { Text("SSID") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.subnet, { onChange(config.copy(subnet = it)) }, label = { Text("子网掩码") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.udpHost, { onChange(config.copy(udpHost = it)) }, label = { Text("UDP 主机") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.udpPort.toString(), { onChange(config.copy(udpPort = it.toIntOrNull() ?: 0)) }, label = { Text("UDP 端口") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
+    <ID>MaxLineLength:BleProvisionScreen.kt:color = if (phase == BleConnectionPhase.READY) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
+    <ID>MaxLineLength:BleProvisionScreen.kt:color = if (profile.key == selectedKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
+    <ID>MaxLineLength:BleProvisionScreen.kt:enabled = ble.status.phase in setOf(BleConnectionPhase.CONNECTING, BleConnectionPhase.DISCOVERING, BleConnectionPhase.READY)</ID>
+    <ID>MaxLineLength:BleProvisionScreen.kt:if</ID>
+    <ID>MaxLineLength:BleProvisionScreen.kt:item { BleServerForm(config = ble.config.server, busy = ble.busy, onChange = ble::updateServer, onSave = ble::saveServer) }</ID>
+    <ID>MaxLineLength:BleProvisionScreen.kt:item { BleWifiForm(config = ble.config.wifi, busy = ble.busy, onChange = ble::updateWifi, onSave = ble::saveWifi) }</ID>
+    <ID>MaxLineLength:BleProvisioningClient.kt:BleProvisioningClient$gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothStatusCodes.SUCCESS</ID>
+    <ID>MaxLineLength:BleProvisioningClient.kt:BleProvisioningClient$return statusCharacteristic != null &amp;&amp; authCharacteristic != null &amp;&amp; rpcTxCharacteristic != null &amp;&amp; rpcRxCharacteristic != null</ID>
+    <ID>MaxLineLength:CurrentLocationProvider.kt:CurrentLocationProvider$private</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Box(Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:DeviceActionRow(Icons.Default.Router, "切换群组", "当前：${groupName.ifBlank { device.groupId.toString() }}", onSwitchGroup)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:IconButton(onClick = { copyText(context, "UDP 账号", result.username) }) { Icon(Icons.Default.ContentCopy, "复制账号") }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:IconButton(onClick = { copyText(context, "设备密码", result.devicePassword) }) { Icon(Icons.Default.ContentCopy, "复制密码") }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:OutlinedButton(onClick = { confirmRegenerate = true }, enabled = !controller.deviceManagement.busy) { Text("刷新密码") }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:OutlinedTextField(name, { name = it }, label = { Text("设备名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Row</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text("MAC ${preview.deviceMac}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text("设备密码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text("账号", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text("限制连续和窗口内发射时长", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text(device.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text(device.name.ifBlank { "设备 ${device.id}" }, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text(preview.callsign.ifBlank { "待绑定设备" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text(restrictions.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).padding(end = 8.dp)) { Text("取消") }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:color = if (device.online) MaterialTheme.appColors.receiveContainer else MaterialTheme.colorScheme.surfaceVariant</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:confirmButton = { TextButton(onClick = onConfirm) { Text(confirmText, color = MaterialTheme.colorScheme.error) } }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:confirmButton = { TextButton(onClick = { onSave(name.trim()) }, enabled = name.isNotBlank() &amp;&amp; !busy) { Text("保存") } }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:enabled = !controller.deviceManagement.busy &amp;&amp; txFreq.isNotBlank() &amp;&amp; (sameFrequency || rxFreq.isNotBlank())</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:if (controller.deviceManagement.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:if (controller.deviceManagement.configDeviceId != device.id || controller.deviceManagement.config.isEmpty()) return@LaunchedEffect</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:if (device.online) MaterialTheme.appColors.statusConnected else MaterialTheme.appColors.statusOffline</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:modifier = Modifier.fillMaxWidth().clickable { showDefaultGroup = true }.padding(horizontal = 16.dp, vertical = 12.dp)</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:onClick = { controller.deviceManagement.submitBinding(ssid.toIntOrNull(), replacement?.deviceId) }</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:private</ID>
+    <ID>MaxLineLength:DevicesScreen.kt:tint = if (device.online) MaterialTheme.appColors.onReceiveContainer else MaterialTheme.appColors.statusOffline</ID>
+    <ID>MaxLineLength:DraarlBottomBar.kt:border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))</ID>
+    <ID>MaxLineLength:DraarlBottomBar.kt:color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer</ID>
+    <ID>MaxLineLength:DraarlBottomBar.kt:contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer</ID>
+    <ID>MaxLineLength:DraarlComponentPreviews.kt:CommandButton("发射", {}, Modifier.weight(1f), style = CommandStyle.PRIMARY, leadingIcon = Icons.Default.Mic)</ID>
+    <ID>MaxLineLength:DraarlProtocol.kt:DraarlProtocol$reserved = ByteBuffer.wrap(bytes, RESERVED_OFFSET, 4).order(ByteOrder.BIG_ENDIAN).int.toLong() and UINT32_MAX</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:IconButton</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:OutlinedTextField(name, { name = it }, label = { Text("群组名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:Text(group.name, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:busy &amp;&amp; devices.isEmpty()</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:confirmButton = { TextButton(onClick = onConfirm) { Text(confirmText, color = MaterialTheme.colorScheme.error) } }</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:devices = if (controller.groupManagement.managedGroupId == group.id) controller.groupManagement.managedDevices else emptyList()</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp)) }</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp)) }</ID>
+    <ID>MaxLineLength:GroupsScreen.kt:private</ID>
+    <ID>MaxLineLength:LocationMapScreen.kt:.</ID>
+    <ID>MaxLineLength:LocationMapScreen.kt:LaunchedEffect</ID>
+    <ID>MaxLineLength:LocationMapScreen.kt:Row</ID>
+    <ID>MaxLineLength:LocationMapScreen.kt:val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:LocationMapScreen.kt:val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:LogbookEditorScreen.kt:item { DraftField(draft.myCallsign, { tools.updateDraft(draft.copy(myCallsign = it.uppercase())) }, "我方呼号") }</ID>
+    <ID>MaxLineLength:LogbookPlacePickerScreen.kt:String.format(Locale.US, "WGS-84 %.6f, %.6f · %s", wgs84.latitude, wgs84.longitude, locator)</ID>
+    <ID>MaxLineLength:LogbookScreen.kt:tint = if (searchExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
+    <ID>MaxLineLength:MaidenheadToolScreen.kt:Row</ID>
+    <ID>MaxLineLength:MaidenheadToolScreen.kt:Text(cell.locator, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)</ID>
+    <ID>MaxLineLength:MaidenheadToolScreen.kt:val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:MaidenheadToolScreen.kt:val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:PasswordResetForm.kt:PasswordField(confirmPassword, { confirmPassword = it }, "确认新密码", passwordVisible, { passwordVisible = it }, ImeAction.Done)</ID>
+    <ID>MaxLineLength:PasswordResetForm.kt:PasswordField(newPassword, { newPassword = it }, "新密码", passwordVisible, { passwordVisible = it }, ImeAction.Next)</ID>
+    <ID>MaxLineLength:PasswordResetForm.kt:Text("输入验证码", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:PasswordResetForm.kt:Text("重置密码", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:PasswordResetForm.kt:Text("验证邮箱", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:ProfileOverview.kt:Text(stat.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:RadioConnectionComponents.kt:connectionText = "${connectionText(status.phase)} · ${controller.selectedAccessPoint?.displayName ?: "选择节点"}"</ID>
+    <ID>MaxLineLength:RadioConnectionComponents.kt:nodeSelectionEnabled = controller.accessPoints.isNotEmpty() &amp;&amp; status.phase !in NODE_SELECTION_BLOCKED_PHASES</ID>
+    <ID>MaxLineLength:RadioConnectionComponents.kt:receiveChannelsEnabled = controller.groups.isNotEmpty() &amp;&amp; status.connected &amp;&amp; !controller.radioRoutingUpdating</ID>
+    <ID>MaxLineLength:RadioExtraPanel.kt:modifier</ID>
+    <ID>MaxLineLength:RadioMessageComponents.kt:Text(device.callsign.ifBlank { device.nickname.ifBlank { device.username } }, fontWeight = FontWeight.SemiBold)</ID>
+    <ID>MaxLineLength:RadioMessageComponents.kt:Text(nickname, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:RadioMessageComponents.kt:color = if (message.mine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant</ID>
+    <ID>MaxLineLength:RadioMessageComponents.kt:contentColor = if (message.mine) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
+    <ID>MaxLineLength:RadioMessageReconciler.kt:RadioMessageReconciler$existing.id == message.id || existing.serverRecordId != null &amp;&amp; existing.serverRecordId == message.serverRecordId</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:IconButton(onClick = { deleting = preset }) { Icon(Icons.Default.Delete, contentDescription = "删除") }</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:IconButton(onClick = { editing = preset }) { Icon(Icons.Default.Edit, contentDescription = "编辑") }</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:OutlinedTextField(value.antenna, { value = value.copy(antenna = it) }, label = { Text("天线") }, singleLine = true)</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:OutlinedTextField(value.radio, { value = value.copy(radio = it) }, label = { Text("电台") }, singleLine = true)</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:Text(listOf(preset.radio, preset.antenna).filter(String::isNotBlank).joinToString(" · "))</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:Text(preset.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:listOfNotNull(preset.power?.let { "${it}W" }, preset.qth.takeIf(String::isNotBlank)).joinToString(" · ")</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)</ID>
+    <ID>MaxLineLength:RadioPresetsScreen.kt:val draggedCenter = draggedInfo.offset + draggedOffset + draggedInfo.size / 2f</ID>
+    <ID>MaxLineLength:RadioScreen.kt:CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)</ID>
+    <ID>MaxLineLength:RadioScreen.kt:ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:RadioScreen.kt:if</ID>
+    <ID>MaxLineLength:RadioScreen.kt:val</ID>
+    <ID>MaxLineLength:RadioSelectionDialogs.kt:Row</ID>
+    <ID>MaxLineLength:RegionPicker.kt:modifier = Modifier.fillMaxWidth().clickable { onSelect(options[index]) }.padding(vertical = 14.dp)</ID>
+    <ID>MaxLineLength:RegisterForm.kt:PasswordField(confirmPassword, onConfirmPasswordChange, "确认密码", passwordVisible, onPasswordVisibleChange, ImeAction.Done)</ID>
+    <ID>MaxLineLength:RelaySearchScreen.kt:Text(if (relay.status == 1) "可用" else "停用", color = if (relay.status == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)</ID>
+    <ID>MaxLineLength:RelaySearchScreen.kt:if (relay.ownerCallsign.isNotBlank()) Text("维护 ${relay.ownerCallsign}", style = MaterialTheme.typography.bodySmall)</ID>
+    <ID>MaxLineLength:StorageSettingsScreen.kt:Icon(Icons.Default.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)</ID>
+    <ID>MaxLineLength:StorageSettingsScreen.kt:Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)</ID>
+    <ID>MaxLineLength:StorageSettingsScreen.kt:Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:StorageSettingsScreen.kt:Text(formatBytes(size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)</ID>
+    <ID>MaxLineLength:SystemSettingsScreen.kt:ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:SystemSettingsScreen.kt:val</ID>
+    <ID>MaxLineLength:Theme.kt:headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp)</ID>
+    <ID>MaxLineLength:Theme.kt:labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp)</ID>
+    <ID>MaxLineLength:Theme.kt:titleLarge = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp)</ID>
+    <ID>MaxLineLength:Theme.kt:titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp)</ID>
+    <ID>MaxLineLength:Theme.kt:titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp)</ID>
+    <ID>MaxLineLength:ToolCommon.kt:Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))</ID>
+    <ID>MaxLineLength:ToolsScreen.kt:Text("需要账号审核", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
+    <ID>MaxLineLength:UdpRadioClient.kt:UdpRadioClient$if (!status.connected || status.transmitting || status.speaker.isNotBlank() || normalized.isEmpty()) return false</ID>
+    <ID>NestedBlockDepth:AppUpdateManager.kt:AppUpdateManager$private fun downloadToFile: File</ID>
+    <ID>NoNameShadowing:DeviceManagementController.kt:DeviceManagementController${ it.id == device.id }</ID>
+    <ID>NoNameShadowing:GroupManagementController.kt:GroupManagementController${ it.id == device.id }</ID>
+    <ID>NoNameShadowing:GroupManagementController.kt:GroupManagementController${ it.id == group.id }</ID>
+    <ID>ReturnCount:ApiClient.kt:ApiClient$fun acceptCurrentUser</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun checkAppUpdate</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun connectRadio</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun downloadAndInstallAppUpdate</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun loadOlderRadioMessages</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun refreshRadioData</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun sendAprsPosition: Boolean</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun sendCw: Boolean</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun sendText: Boolean</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun setPttOverlayEnabled: Boolean</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun switchGroup</ID>
+    <ID>ReturnCount:AppController.kt:AppController$fun updateRadioRouting</ID>
+    <ID>ReturnCount:AppController.kt:AppController$private fun advanceVoiceAutoPlay</ID>
+    <ID>ReturnCount:AppController.kt:AppController$private fun derivedAccessPoint: AccessPoint?</ID>
+    <ID>ReturnCount:AppController.kt:AppController$private fun loadCachedRadioMessages</ID>
+    <ID>ReturnCount:AppController.kt:AppController$private fun requestVoicePlayback</ID>
+    <ID>ReturnCount:AppController.kt:AppController$private fun withStableAudioCacheKey: RadioMessage</ID>
+    <ID>ReturnCount:AppUpdateManager.kt:AppUpdateManager$fun checkForUpdate: AppUpdateInfo?</ID>
+    <ID>ReturnCount:AppUpdateManager.kt:AppUpdateManager$private fun verifyDownloadedFile: Boolean</ID>
+    <ID>ReturnCount:AppUpdateManager.kt:ParsedSemver$override fun compareTo: Int</ID>
+    <ID>ReturnCount:AppUpdateManager.kt:internal fun normalizeVersionForSemver: String</ID>
+    <ID>ReturnCount:AprsConfigStore.kt:AprsConfigStore$@Synchronized fun load: AprsConfig</ID>
+    <ID>ReturnCount:AudioLevelThrottler.kt:AudioLevelThrottler$@Synchronized fun update: Float?</ID>
+    <ID>ReturnCount:BleProvisionProtocol.kt:BleProvisionProtocol$fun parseStatus: BleProvisionStatus?</ID>
+    <ID>ReturnCount:BleProvisionProtocol.kt:BleProvisionProtocol.FrameAssembler$@Synchronized fun append: String?</ID>
+    <ID>ReturnCount:BleProvisioningClient.kt:BleProvisioningClient$private fun handleCharacteristicValue</ID>
+    <ID>ReturnCount:BleProvisioningClient.kt:BleProvisioningClient$private fun waitForAuthentication</ID>
+    <ID>ReturnCount:BleProvisioningClient.kt:BleProvisioningClient$private fun writeNext</ID>
+    <ID>ReturnCount:BleProvisioningClient.kt:BleProvisioningClient.&lt;no name provided&gt;$override fun onServicesDiscovered</ID>
+    <ID>ReturnCount:CurrentLocationProvider.kt:CurrentLocationProvider$suspend fun locate: Location</ID>
+    <ID>ReturnCount:DraarlProtocol.kt:DraarlProtocol$fun authError: String</ID>
+    <ID>ReturnCount:DraarlProtocol.kt:DraarlProtocol$fun decode: DraarlPacket?</ID>
+    <ID>ReturnCount:DraarlProtocol.kt:DraarlProtocol$fun splitOpusFrames: List&lt;ByteArray&gt;</ID>
+    <ID>ReturnCount:LastMapLocationStore.kt:LastMapLocationStore$fun load: CachedMapLocation?</ID>
+    <ID>ReturnCount:OpusCaptureController.kt:OpusCaptureController$@SuppressLint("MissingPermission") fun start: Boolean</ID>
+    <ID>ReturnCount:OpusPlaybackController.kt:OpusPlaybackController$fun playLive</ID>
+    <ID>ReturnCount:PlaybackDenoise.kt:RnnoisePlaybackDenoiser$fun process: ShortArray</ID>
+    <ID>ReturnCount:PlaybackDenoise.kt:RnnoisePlaybackDenoiser$private fun ensureHandleLocked: Boolean</ID>
+    <ID>ReturnCount:PlaybackDenoise.kt:internal fun blendDenoisedPcm: ShortArray</ID>
+    <ID>ReturnCount:PttOverlayWindow.kt:PttOverlayWindow$fun show: Boolean</ID>
+    <ID>ReturnCount:RadioAudioCache.kt:RadioAudioCache$@Synchronized fun get: ByteArray?</ID>
+    <ID>ReturnCount:RadioMessageReconciler.kt:RadioMessageReconciler$fun isLikelySameEvent: Boolean</ID>
+    <ID>ReturnCount:RadioMessageReconciler.kt:RadioMessageReconciler$fun shouldRemoveFromAuthoritativeWindow: Boolean</ID>
+    <ID>ReturnCount:RefreshCoordinator.kt:RefreshCoordinator$@Synchronized fun complete: RefreshDecision</ID>
+    <ID>ReturnCount:ToolsController.kt:ToolsController$fun saveDraft</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$@Synchronized fun startPtt: Boolean</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$@Synchronized fun stopPtt</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$fun previewCw: Boolean</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$fun sendCw: Boolean</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$fun sendText: Boolean</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$fun togglePlayback: Boolean</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$private fun establish</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$private fun scheduleReconnect</ID>
+    <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$private fun send: Boolean</ID>
+    <ID>ReturnCount:VoiceStreamPlaybackQueue.kt:VoiceStreamPlaybackQueue$fun onStream: Boolean</ID>
+    <ID>SwallowedException:ApiClient.kt:ApiClient$error: Exception</ID>
+    <ID>SwallowedException:AvatarCropDialog.kt:e: Exception</ID>
+    <ID>ThrowsCount:ApiClient.kt:ApiClient$fun freshAccessToken: String</ID>
+    <ID>ThrowsCount:ApiClient.kt:ApiClient$fun renewAccessToken: String</ID>
+    <ID>ThrowsCount:ApiClient.kt:ApiClient$fun restoreAndValidate: Session</ID>
+    <ID>ThrowsCount:ApiClient.kt:ApiClient$private fun rawRequest: JSONObject</ID>
+    <ID>ThrowsCount:ApiClient.kt:ApiClient.Companion$fun normalizeBaseUrl: String</ID>
+    <ID>ThrowsCount:AppUpdateManager.kt:internal fun requireCompatibleAppUpdateServerContract</ID>
+    <ID>ThrowsCount:UdpRadioClient.kt:UdpRadioClient$private fun establish</ID>
+    <ID>TooGenericExceptionCaught:ApiClient.kt:ApiClient$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:AprsMapPanel.kt:error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:AvatarCropDialog.kt:e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LocationMapScreen.kt:error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:LogbookPlacePickerScreen.kt:failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:MaidenheadToolScreen.kt:cause: Throwable</ID>
+    <ID>TooGenericExceptionCaught:OpusCaptureController.kt:OpusCaptureController$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:RadioScreen.kt:error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:UdpRadioClient.kt:UdpRadioClient$error: Exception</ID>
+    <ID>TooManyFunctions:ApiClient.kt:ApiClient</ID>
+    <ID>TooManyFunctions:ApiClient.kt:cn.silverdragon.draarl.network.ApiClient.kt</ID>
+    <ID>TooManyFunctions:AppController.kt:AppController : AndroidViewModelRadioServiceListener</ID>
+    <ID>TooManyFunctions:BleProvisionController.kt:BleProvisionController</ID>
+    <ID>TooManyFunctions:BleProvisioningClient.kt:BleProvisioningClient</ID>
+    <ID>TooManyFunctions:DeviceManagementController.kt:DeviceManagementController</ID>
+    <ID>TooManyFunctions:DevicesScreen.kt:cn.silverdragon.draarl.ui.screens.DevicesScreen.kt</ID>
+    <ID>TooManyFunctions:DraarlProtocol.kt:DraarlProtocol</ID>
+    <ID>TooManyFunctions:GroupManagementController.kt:GroupManagementController</ID>
+    <ID>TooManyFunctions:GroupsScreen.kt:cn.silverdragon.draarl.ui.screens.GroupsScreen.kt</ID>
+    <ID>TooManyFunctions:OpusAudioEngine.kt:OpusAudioEngine</ID>
+    <ID>TooManyFunctions:OpusPlaybackController.kt:OpusPlaybackController</ID>
+    <ID>TooManyFunctions:PttOverlayWindow.kt:PttOverlayWindow</ID>
+    <ID>TooManyFunctions:RadioConnectionService.kt:RadioConnectionService : ServiceUdpRadioListener</ID>
+    <ID>TooManyFunctions:RadioConnectionService.kt:RadioConnectionService$LocalBinder : Binder</ID>
+    <ID>TooManyFunctions:RadioMessageStore.kt:RadioMessageStore : SQLiteOpenHelper</ID>
+    <ID>TooManyFunctions:SecureSessionStore.kt:SecureSessionStore</ID>
+    <ID>TooManyFunctions:ToolsController.kt:ToolsController</ID>
+    <ID>TooManyFunctions:UdpRadioClient.kt:UdpRadioClient</ID>
+    <ID>UnnecessarySafeCall:AuthComponents.kt:result?.devicePassword</ID>
+    <ID>UnsafeCallOnNullableType:LocationMapScreen.kt:selectedGcj!!</ID>
+    <ID>UnusedPrivateFunction:DraarlComponentPreviews.kt:@Preview( name = "Components Dark Large Text", widthDp = 360, fontScale = 1.5f, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, ) @Composable private fun ComponentsDarkPreview</ID>
+    <ID>UnusedPrivateFunction:DraarlComponentPreviews.kt:@Preview( name = "Dialog And Sheet Dark Large Text", widthDp = 360, fontScale = 1.5f, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, ) @Composable private fun ContainersDarkPreview</ID>
+    <ID>UnusedPrivateFunction:DraarlComponentPreviews.kt:@Preview( name = "Radio Status Dark Large Text", widthDp = 360, fontScale = 1.5f, uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true, ) @Composable private fun RadioStatusDarkPreview</ID>
+    <ID>UnusedPrivateFunction:DraarlComponentPreviews.kt:@Preview(name = "Bottom Bar 2x Text", widthDp = 360, heightDp = 100, fontScale = 2f, showBackground = true) @Composable private fun BottomBarLargeTextPreview</ID>
+    <ID>UnusedPrivateFunction:DraarlComponentPreviews.kt:@Preview(name = "Components Light", widthDp = 360, showBackground = true) @Composable private fun ComponentsLightPreview</ID>
+    <ID>UnusedPrivateFunction:DraarlComponentPreviews.kt:@Preview(name = "Dialog And Sheet", widthDp = 360, showBackground = true) @Composable private fun ContainersPreview</ID>
+    <ID>UnusedPrivateFunction:DraarlComponentPreviews.kt:@Preview(name = "Radio Status Narrow", widthDp = 360, showBackground = true) @Composable private fun RadioStatusNarrowPreview</ID>
+    <ID>UnusedPrivateFunction:UdpRadioClient.kt:UdpRadioClient$private fun formatDuration: String</ID>
+    <ID>UnusedPrivateProperty:AppController.kt:AppController.Companion$private const val ANDROID_CLIENT_SSID = 101</ID>
+    <ID>UnusedPrivateProperty:AppUpdateManager.kt:AppUpdateManager$private val context: Context</ID>
+    <ID>UnusedPrivateProperty:PttOverlayWindow.kt:PttOverlayWindow$private val onStartPtt: () -&gt; Boolean</ID>
+    <ID>UseCheckOrError:BleProvisioningClient.kt:BleProvisioningClient$throw IllegalStateException("RPC 通道尚未就绪")</ID>
+    <ID>UseCheckOrError:BleProvisioningClient.kt:BleProvisioningClient$throw IllegalStateException("无法启动蓝牙扫描")</ID>
+    <ID>UseCheckOrError:BleProvisioningClient.kt:BleProvisioningClient$throw IllegalStateException("设备尚未连接")</ID>
+    <ID>UseCheckOrError:BleProvisioningClient.kt:BleProvisioningClient$throw IllegalStateException("该设备不支持蓝牙")</ID>
+    <ID>UseCheckOrError:UdpRadioClient.kt:UdpRadioClient$throw IllegalStateException("UDP 认证超时")</ID>
+    <ID>UseOrEmpty:ApiClient.kt:ApiClient$connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""</ID>
+    <ID>UseOrEmpty:ApiClient.kt:optString(key).takeUnless { it == "null" } ?: ""</ID>
+    <ID>UseOrEmpty:AppUpdateManager.kt:ParsedSemver.Companion$match.groupValues[4].takeIf(String::isNotBlank)?.split('.') ?: emptyList()</ID>
+    <ID>UseOrEmpty:SecureSessionStore.kt:SecureSessionStore$preferences.getString(KEY_ACCESS_POINT, "") ?: ""</ID>
+    <ID>UseOrEmpty:SecureSessionStore.kt:SecureSessionStore$preferences.getString(KEY_LAST_SERVER, "") ?: ""</ID>
+  </CurrentIssues>
+</SmellBaseline>

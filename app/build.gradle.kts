@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.detekt)
 }
 
 val releaseSigning = Properties().apply {
@@ -39,6 +40,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    ndkVersion = "28.2.13676358"
 
     signingConfigs {
         if (hasReleaseSigning) {
@@ -70,8 +72,26 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
+}
+
+detekt {
+    source.setFrom("src/main/java", "src/test/java", "src/androidTest/java")
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    baseline = rootProject.file("config/detekt/baseline.xml")
+    buildUponDefaultConfig = true
+    parallel = true
+    basePath.set(rootProject.projectDir)
+}
+
+tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+    exclude("**/cpp/third_party/rnnoise/**", "**/build/**")
+}
+
+tasks.withType<dev.detekt.gradle.DetektCreateBaselineTask>().configureEach {
+    exclude("**/cpp/third_party/rnnoise/**", "**/build/**")
 }
 
 dependencies {

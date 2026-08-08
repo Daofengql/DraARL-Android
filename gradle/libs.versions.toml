@@ -10,6 +10,9 @@ lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
+detekt = "2.0.0-alpha.6"
+ktlint = "1.8.0"
+spotless = "8.9.0"
 concentus = "1.0.2"
 coil = "3.3.0"
 amapMap = "10.0.600"
@@ -43,3 +46,5 @@ amap-search = { group = "com.amap.api", name = "search", version.ref = "amapSear
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

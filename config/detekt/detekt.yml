@@ -1,0 +1,39 @@
+complexity:
+  CognitiveComplexMethod:
+    active: true
+    allowedComplexity: 20
+  CyclomaticComplexMethod:
+    active: true
+    allowedComplexity: 20
+  LargeClass:
+    active: true
+    allowedLines: 600
+  LongMethod:
+    active: true
+    allowedLines: 80
+
+exceptions:
+  SwallowedException:
+    active: true
+  TooGenericExceptionCaught:
+    active: true
+
+naming:
+  FunctionNaming:
+    active: true
+    functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
+
+style:
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - reason: 'Use an owned structured-concurrency scope for ordinary asynchronous work.'
+        value: 'java.util.concurrent.Executors.newCachedThreadPool'
+      - reason: 'Use an owned structured-concurrency scope for ordinary asynchronous work.'
+        value: 'java.util.concurrent.Executors.newFixedThreadPool'
+      - reason: 'Use an owned structured-concurrency scope for ordinary asynchronous work.'
+        value: 'java.util.concurrent.Executors.newSingleThreadExecutor'
+      - reason: 'Use a lifecycle-owned scheduler and document its shutdown boundary.'
+        value: 'java.util.concurrent.Executors.newSingleThreadScheduledExecutor'
+      - reason: 'Use a lifecycle-owned scheduler and document its shutdown boundary.'
+        value: 'java.util.concurrent.Executors.newScheduledThreadPool'

@@ -33,13 +33,16 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 
 ## 构建
 
-环境要求：Android SDK 36.1、JDK 21（当前也已在 JDK 24 环境验证）；本机需具备 Android NDK 和 CMake 以构建 RNNoise。项目 Wrapper 使用 Gradle 9.5.0，Android Gradle Plugin 为 9.3.0。
+环境要求：Android SDK 36.1、JDK 17 或更高版本（CI 使用 JDK 17，本地已在 JDK 24 验证）、Android NDK 28.2.13676358 和 CMake 3.22.1。项目 Wrapper 使用 Gradle 9.5.0，Android Gradle Plugin 为 9.3.0。
 
 地图相关功能从 Gradle 属性或 `local.properties` 读取 `AMAP_API_KEY`；未配置时不影响基础通信功能和 Debug 构建，但地图选点与预览不可用。
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
+.\gradlew.bat spotlessCheck detektDebug
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
 ```
+
+Spotless 只检查相对 `origin/main` 新增或修改的 Kotlin/Gradle 文件；Detekt 使用存量基线，并阻止新增的复杂方法、超长类、吞异常和无明确生命周期的通用线程池。GitHub Actions 对 `main` 和 Pull Request 执行同一组静态检查、构建门禁和 Markdown 链接检查。
 
 调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
 
