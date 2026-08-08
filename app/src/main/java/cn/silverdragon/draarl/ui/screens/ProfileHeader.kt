@@ -92,7 +92,7 @@ internal fun ProfileHeader(
                         color = when (user.approvalStatus) {
                             1 -> MaterialTheme.appColors.statusConnected
                             2 -> MaterialTheme.colorScheme.error
-                            else -> MaterialTheme.appColors.statusWarning
+                            else -> MaterialTheme.appColors.statusConnecting
                         },
                     )
                 }

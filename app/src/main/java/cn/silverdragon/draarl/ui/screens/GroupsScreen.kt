@@ -68,11 +68,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import cn.silverdragon.draarl.ui.theme.appColors
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -385,8 +385,16 @@ private fun GroupListRow(group: Group, onClick: () -> Unit) {
 
 @Composable
 private fun GroupAvatar(group: Group, size: Int) {
-    val background = if (group.isPrivate) Color(0xFFEAF2FF) else Color(0xFFE7F6EF)
-    val foreground = if (group.isPrivate) MaterialTheme.colorScheme.primary else Color(0xFF147D5B)
+    val background = if (group.isPrivate) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.appColors.receiveContainer
+    }
+    val foreground = if (group.isPrivate) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.appColors.onReceiveContainer
+    }
     Surface(shape = CircleShape, color = background, modifier = Modifier.size(size.dp)) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -558,7 +566,7 @@ private fun GroupSearchDialog(controller: AppController, onClose: () -> Unit, on
                                     group.isPrivate && !group.joined -> OutlinedButton(onClick = { onJoin(group) }) {
                                         Text("加入")
                                     }
-                                    group.joined -> StatusPill("已加入", Color(0xFF147D5B))
+                                    group.joined -> StatusPill("已加入", MaterialTheme.appColors.statusConnected)
                                     else -> StatusPill("公开", MaterialTheme.colorScheme.primary)
                                 }
                             }
@@ -709,7 +717,11 @@ private fun GroupDevicesDialog(
                                 }
                                 StatusPill(
                                     if (device.online) "在线" else "离线",
-                                    if (device.online) Color(0xFF147D5B) else MaterialTheme.colorScheme.outline,
+                                    if (device.online) {
+                                        MaterialTheme.appColors.statusConnected
+                                    } else {
+                                        MaterialTheme.appColors.statusOffline
+                                    },
                                 )
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {

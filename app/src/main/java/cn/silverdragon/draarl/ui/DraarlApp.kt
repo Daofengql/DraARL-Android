@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Devices
@@ -41,13 +40,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,7 +58,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -94,6 +88,8 @@ import cn.silverdragon.draarl.ui.screens.SettingsScreen
 import cn.silverdragon.draarl.ui.screens.StorageSettingsScreen
 import cn.silverdragon.draarl.ui.screens.SystemSettingsScreen
 import cn.silverdragon.draarl.ui.screens.ToolsScreen
+import cn.silverdragon.draarl.ui.components.DraarlBottomBar
+import cn.silverdragon.draarl.ui.components.DraarlBottomBarItem
 
 @Composable
 fun DraarlApp(controller: AppController) {
@@ -455,51 +451,18 @@ private fun AppUpdateDialog(
 @Composable
 internal fun MainBottomBar(selectedPage: AppPage, onNavigate: (AppPage) -> Unit) {
     val items = MAIN_NAVIGATION_PAGES.map(::navigationItem)
-    NavigationBar(
-        windowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        items.forEach { item ->
-            NavigationBarItem(
-                selected = selectedPage == item.page,
-                onClick = { onNavigate(item.page) },
-                icon = {
-                    if (item.page == AppPage.RADIO) {
-                        Surface(
-                            modifier = Modifier.size(52.dp),
-                            shape = CircleShape,
-                            color = if (selectedPage == AppPage.RADIO) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.primaryContainer
-                            },
-                            contentColor = if (selectedPage == AppPage.RADIO) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            },
-                            tonalElevation = if (selectedPage == AppPage.RADIO) 4.dp else 0.dp,
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(item.icon, contentDescription = item.label, modifier = Modifier.size(26.dp))
-                            }
-                        }
-                    } else {
-                        Icon(item.icon, contentDescription = item.label)
-                    }
-                },
-                label = { Text(item.label) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    indicatorColor = Color.Transparent,
-                ),
+    DraarlBottomBar(
+        items = items.map { item ->
+            DraarlBottomBarItem(
+                key = item.page.name,
+                label = item.label,
+                icon = item.icon,
+                prominent = item.page == AppPage.RADIO,
             )
-        }
-    }
+        },
+        selectedKey = selectedPage.name,
+        onSelect = { key -> items.firstOrNull { it.page.name == key }?.page?.let(onNavigate) },
+    )
 }
 
 private data class NavigationItem(

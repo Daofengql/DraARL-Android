@@ -15,23 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -54,7 +46,14 @@ import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.formatRadioIdentifiers
 import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.ui.components.UserAvatar
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.StatusIndicator
+import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.appMotion
+import cn.silverdragon.draarl.ui.theme.dataTypography
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -86,8 +85,7 @@ internal fun ConnectionPanel(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text(
                         stationIdentity,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.dataTypography.identity,
                         maxLines = 1,
                     )
                     if (radioIdentifiers.isNotBlank()) {
@@ -108,20 +106,10 @@ internal fun ConnectionPanel(
                         ) { accessMenu = true },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            if (status.connected) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = connectionColor(status.phase),
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "${connectionText(status.phase)} · ${controller.selectedAccessPoint?.displayName ?: "选择节点"}",
+                        StatusIndicator(
+                            text = "${connectionText(status.phase)} · ${controller.selectedAccessPoint?.displayName ?: "选择节点"}",
+                            tone = connectionTone(status.phase),
                             modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = connectionColor(status.phase),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                         Icon(Icons.Default.KeyboardArrowDown, contentDescription = "选择边缘节点", modifier = Modifier.size(16.dp))
                     }
@@ -129,7 +117,7 @@ internal fun ConnectionPanel(
                         "${controller.onlineDevices.size} 在线",
                         modifier = Modifier.clickable(onClick = onToggleDevices).padding(vertical = 2.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.appColors.statusConnected,
                     )
                 }
                 val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null
@@ -145,7 +133,7 @@ internal fun ConnectionPanel(
                             else -> "RX / TX"
                         },
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (status.transmitting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (status.transmitting) MaterialTheme.appColors.transmit else MaterialTheme.appColors.receive,
                     )
                     AudioLevelMeter(
                         receiveLevel = controller.playbackLevel,
@@ -155,107 +143,65 @@ internal fun ConnectionPanel(
                         modifier = Modifier.fillMaxWidth().height(18.dp),
                     )
                 }
-                FilledTonalIconButton(
+                CommandIconButton(
                     onClick = controller::togglePlaybackDenoise,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = if (controller.playbackDenoiseEnabled) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                        contentColor = if (controller.playbackDenoiseEnabled) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    ),
-                ) {
-                    Icon(
-                        Icons.Default.GraphicEq,
-                        contentDescription = if (controller.playbackDenoiseEnabled) {
-                            "关闭神经网络降噪"
-                        } else {
-                            "开启神经网络降噪"
-                        },
-                    )
-                }
-                IconButton(onClick = controller::toggleMuted) {
-                    Icon(
-                        if (controller.muted) {
-                            Icons.AutoMirrored.Filled.VolumeOff
-                        } else {
-                            Icons.AutoMirrored.Filled.VolumeUp
-                        },
-                        contentDescription = if (controller.muted) "开启接收音频" else "关闭接收音频",
-                        tint = if (controller.muted) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
+                    contentDescription = if (controller.playbackDenoiseEnabled) {
+                        "关闭神经网络降噪"
+                    } else {
+                        "开启神经网络降噪"
+                    },
+                    icon = Icons.Default.GraphicEq,
+                    selected = controller.playbackDenoiseEnabled,
+                )
+                CommandIconButton(
+                    onClick = controller::toggleMuted,
+                    contentDescription = if (controller.muted) "开启接收音频" else "关闭接收音频",
+                    icon = if (controller.muted) {
+                        Icons.AutoMirrored.Filled.VolumeOff
+                    } else {
+                        Icons.AutoMirrored.Filled.VolumeUp
+                    },
+                    danger = controller.muted,
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Box(Modifier.weight(1f)) {
-                    OutlinedButton(
-                        onClick = { groupMenu = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = controller.groups.isNotEmpty() && !controller.radioRoutingUpdating,
-                    ) {
-                        Icon(Icons.Default.Mic, contentDescription = null)
-                        Text(
-                            "发送/日志\n${selectedGroup?.name ?: "群组 ${controller.selectedGroupId}"}",
-                            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
-                            maxLines = 2,
-                        )
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
-                    }
-                }
-                Box(Modifier.weight(1f)) {
-                    OutlinedButton(
-                        onClick = { routingMenu = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = controller.groups.isNotEmpty() && status.connected && !controller.radioRoutingUpdating,
-                    ) {
-                        Icon(Icons.Default.Headphones, contentDescription = null)
-                        Text(
-                            "收听频道\n${controller.receiveGroupIds.size} 个频道",
-                            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
-                            maxLines = 2,
-                        )
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
-                    }
-                }
-            }
-            if (status.speaker.isNotBlank()) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Text("${status.speaker} 正在发言", fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-            if (status.error.isNotBlank()) {
-                Text(
-                    status.error,
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
+                CommandButton(
+                    label = "发送/日志",
+                    supportingText = selectedGroup?.name ?: "群组 ${controller.selectedGroupId}",
+                    leadingIcon = Icons.Default.Mic,
+                    trailingIcon = Icons.Default.KeyboardArrowDown,
+                    onClick = { groupMenu = true },
+                    modifier = Modifier.weight(1f),
+                    enabled = controller.groups.isNotEmpty() && !controller.radioRoutingUpdating,
+                )
+                CommandButton(
+                    label = "收听频道",
+                    supportingText = "${controller.receiveGroupIds.size} 个频道",
+                    leadingIcon = Icons.Default.Headphones,
+                    trailingIcon = Icons.Default.KeyboardArrowDown,
+                    onClick = { routingMenu = true },
+                    modifier = Modifier.weight(1f),
+                    enabled = controller.groups.isNotEmpty() && status.connected && !controller.radioRoutingUpdating,
                 )
             }
-            HorizontalDivider()
+            if (status.speaker.isNotBlank()) {
+                InlineNotice(
+                    text = "${status.speaker} 正在发言",
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    tone = StatusTone.RECEIVE,
+                )
+            }
+            if (status.error.isNotBlank()) {
+                InlineNotice(
+                    text = status.error,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    tone = StatusTone.ERROR,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.appColors.divider)
         }
     }
 }
@@ -272,13 +218,13 @@ private fun AudioLevelMeter(
     val level = if (transmitting) transmitLevel else receiveLevel
     val animatedLevel by animateFloatAsState(
         targetValue = if (active) level.coerceIn(0f, 1f) else 0f,
-        animationSpec = tween(durationMillis = 80),
+        animationSpec = tween(durationMillis = MaterialTheme.appMotion.quick),
         label = "audioLevel",
     )
-    val primary = if (transmitting) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val warning = MaterialTheme.appColors.statusWarning
-    val error = MaterialTheme.colorScheme.error
-    val inactive = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    val primary = if (transmitting) MaterialTheme.appColors.transmit else MaterialTheme.appColors.receive
+    val warning = MaterialTheme.appColors.warning
+    val error = MaterialTheme.appColors.transmit
+    val inactive = MaterialTheme.appColors.divider.copy(alpha = 0.72f)
     Canvas(
         modifier = modifier.semantics {
             contentDescription = when {
@@ -317,14 +263,14 @@ private fun AudioLevelMeter(
 }
 
 @Composable
-private fun connectionColor(phase: RadioConnectionPhase): Color = when (phase) {
-    RadioConnectionPhase.CONNECTED -> MaterialTheme.appColors.statusConnected
+private fun connectionTone(phase: RadioConnectionPhase): StatusTone = when (phase) {
+    RadioConnectionPhase.CONNECTED -> StatusTone.CONNECTED
     RadioConnectionPhase.CONNECTING,
     RadioConnectionPhase.AUTHENTICATING,
     RadioConnectionPhase.RECONNECTING,
-    RadioConnectionPhase.DISCOVERING -> MaterialTheme.appColors.statusWarning
-    RadioConnectionPhase.ERROR -> MaterialTheme.colorScheme.error
-    else -> MaterialTheme.colorScheme.outline
+    RadioConnectionPhase.DISCOVERING -> StatusTone.CONNECTING
+    RadioConnectionPhase.ERROR -> StatusTone.ERROR
+    else -> StatusTone.NEUTRAL
 }
 
 private fun connectionText(phase: RadioConnectionPhase): String = when (phase) {

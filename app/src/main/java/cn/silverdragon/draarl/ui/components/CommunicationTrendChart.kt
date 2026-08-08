@@ -33,14 +33,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.silverdragon.draarl.data.DailyCommunicationStats
+import cn.silverdragon.draarl.ui.theme.appColors
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private val CountLineColor = Color(0xFF1976D2)
-private val DurationLineColor = Color(0xFF2E7D32)
-
 @Composable
 fun CommunicationTrendChart(data: List<DailyCommunicationStats>) {
+    val countLineColor = MaterialTheme.appColors.statComms
+    val durationLineColor = MaterialTheme.appColors.statDuration
     Card(shape = MaterialTheme.shapes.small) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -62,10 +62,10 @@ fun CommunicationTrendChart(data: List<DailyCommunicationStats>) {
                 }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    ChartLegend("通信次数", CountLineColor)
-                    ChartLegend("通信时长", DurationLineColor)
+                    ChartLegend("通信次数", countLineColor)
+                    ChartLegend("通信时长", durationLineColor)
                 }
-                TrendCanvas(data)
+                TrendCanvas(data, countLineColor, durationLineColor)
             }
         }
     }
@@ -80,7 +80,7 @@ private fun ChartLegend(label: String, color: Color) {
 }
 
 @Composable
-private fun TrendCanvas(data: List<DailyCommunicationStats>) {
+private fun TrendCanvas(data: List<DailyCommunicationStats>, countLineColor: Color, durationLineColor: Color) {
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val description = buildString {
@@ -142,7 +142,7 @@ private fun TrendCanvas(data: List<DailyCommunicationStats>) {
             plotHeight = plotHeight,
             maxValue = maxCount.toLong(),
             value = { it.count.toLong() },
-            color = CountLineColor,
+            color = countLineColor,
         )
         drawSeries(
             data = data,
@@ -152,7 +152,7 @@ private fun TrendCanvas(data: List<DailyCommunicationStats>) {
             plotHeight = plotHeight,
             maxValue = maxDuration,
             value = DailyCommunicationStats::durationMs,
-            color = DurationLineColor,
+            color = durationLineColor,
         )
     }
 }

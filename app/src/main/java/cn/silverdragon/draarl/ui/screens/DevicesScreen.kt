@@ -64,7 +64,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +72,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.window.Dialog
+import cn.silverdragon.draarl.ui.theme.appColors
 import androidx.compose.ui.window.DialogProperties
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.Device
@@ -286,7 +286,7 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
                 )
                 StatusPill(
                     if (device.online) "在线" else "离线",
-                    if (device.online) Color(0xFF147D5B) else MaterialTheme.colorScheme.outline,
+                    if (device.online) MaterialTheme.appColors.statusConnected else MaterialTheme.appColors.statusOffline,
                 )
             }
             Text(
@@ -316,14 +316,14 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
 private fun DeviceAvatar(device: Device, size: Int = 48) {
     Surface(
         shape = CircleShape,
-        color = if (device.online) Color(0xFFE7F6EF) else MaterialTheme.colorScheme.surfaceVariant,
+        color = if (device.online) MaterialTheme.appColors.receiveContainer else MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.size(size.dp),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 Icons.Default.Devices,
                 contentDescription = null,
-                tint = if (device.online) Color(0xFF147D5B) else MaterialTheme.colorScheme.outline,
+                tint = if (device.online) MaterialTheme.appColors.onReceiveContainer else MaterialTheme.appColors.statusOffline,
                 modifier = Modifier.size((size * 0.5f).dp),
             )
         }
@@ -823,7 +823,11 @@ private fun BindingPreviewContent(
 
 @Composable
 private fun BindingResultContent(result: cn.silverdragon.draarl.data.DeviceBindResult, context: Context) {
-    Text(result.message.ifBlank { "设备配置已提交" }, color = Color(0xFF147D5B), fontWeight = FontWeight.SemiBold)
+    Text(
+        result.message.ifBlank { "设备配置已提交" },
+        color = MaterialTheme.appColors.statusConnected,
+        fontWeight = FontWeight.SemiBold,
+    )
     Text("SSID", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Text(result.ssid?.toString().orEmpty(), fontFamily = FontFamily.Monospace)
     Text("UDP 账号", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

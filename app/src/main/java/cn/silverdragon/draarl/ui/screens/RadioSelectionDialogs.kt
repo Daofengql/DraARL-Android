@@ -205,7 +205,7 @@ internal fun LatencyText(latencyMs: Int?, modifier: Modifier = Modifier, prefix:
             latencyMs == null -> MaterialTheme.colorScheme.onSurfaceVariant
             latencyMs <= 80 -> MaterialTheme.appColors.latencyGood
             latencyMs <= 180 -> MaterialTheme.appColors.latencyWarn
-            else -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.appColors.latencyPoor
         },
         maxLines = 1,
     )

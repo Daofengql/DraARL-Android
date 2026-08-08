@@ -17,36 +17,18 @@
 ## 当前基线
 
 - 版本：`2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin：124 个文件，约 2.20 万行。
+- 生产 Kotlin：127 个文件，约 2.26 万行。
 - JVM 测试：140 个通过；Android 仪器测试 APK 已编译，尚未连接设备执行。
 - 复杂度集中在 `AppController`、`ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
-- UI 直接使用约 36 处 `Card`、55 处 `Surface`、17 处 `AlertDialog`，当前没有 Compose Preview 或截图回归测试。
+- UI 使用约 36 处 `Card`、60 处 `Surface`、17 处 `AlertDialog`；已有 3 个设计系统 Preview，尚无截图回归测试。
 
 ## P1：DraARL UI 设计系统
 
-### [ ] 完整定义视觉 Token
+### [ ] 补齐 DraARL 基础组件
 
-位置：`ui/theme`
+剩余组件：
 
-- 补全浅色和深色的背景、surface container、边框、禁用态、反色和浮层颜色。
-- 将 TX、RX、在线、连接中、告警、错误、时延等级定义为语义颜色，移除页面内硬编码状态色。
-- 以中性灰白/炭黑作为主要表面，DraARL 蓝只用于品牌和关键操作，避免整页蓝色化。
-- 定义统一的间距、分隔线、控件高度、图标尺寸、圆角和动效时长。
-- 技术数据支持等宽数字；呼号、SSID、频率、时延和坐标建立专用文本样式。
-- 保证浅色、深色及所有状态色满足可读性和对比度要求。
-
-验收：页面不再自行声明在线绿、分类背景和状态色；所有视觉决策可以追溯到 Token。
-
-### [ ] 建立 DraARL 基础组件
-
-新增或收敛以下组件：
-
-- `DraarlBottomBar`
 - `RadioStatusStrip`
-- `CommandButton` / `CommandIconButton`
-- `DataRow` / `SectionHeader`
-- `StatusIndicator`
-- `InlineNotice`
 - `DraarlDialog` / `DraarlSheet`
 
 要求：
@@ -54,7 +36,7 @@
 - 内部可以复用 Material 3，页面层不直接设置默认 Material 配色和形状。
 - 控件保持紧凑、稳定尺寸和清晰状态，不使用多层 Card。
 - 通用动作继续使用熟悉的 Material/Lucide 类图标；底栏、PTT、链路和电台状态可使用品牌化图标。
-- 每个基础组件提供浅色、深色、长文本、大字体和禁用状态 Preview。
+- 为剩余组件补充浅色、深色、长文本、大字体和禁用状态 Preview。
 
 验收：新页面只组合 DraARL 组件和 Token，不复制颜色、间距或状态样式。
 
@@ -62,11 +44,8 @@
 
 位置：`ui/DraarlApp.kt`
 
-- 用自定义紧凑命令栏替代默认 `NavigationBar` 外观。
-- 使用细分隔线和稳定高度，减少 tonal elevation。
-- 普通入口采用轻量选中态；中央 PTT 使用独立通信控制造型，不再表现为 Material FAB。
 - 统一一级页面切换动效，降低默认 Material 页面滑动感。
-- 保持系统手势区、三键导航和横竖屏 Insets 正确。
+- 真机确认系统手势区、三键导航和横竖屏 Insets。
 
 验收：底栏仍保持五入口和现有交互，但视觉上不再像 Material 示例应用。
 
@@ -75,8 +54,7 @@
 位置：`ui/screens/Radio*`
 
 - 将呼号、电台标识、连接状态、节点和时延整理为紧凑状态带。
-- TX/RX、收听、静音、降噪和频道控制使用统一命令组件。
-- 减少默认 `OutlinedButton`、`FilledTonalIconButton` 和 Card 的直接视觉特征。
+- 将消息输入、更多工具和弹层内剩余的默认 Material 控件收敛到统一命令组件。
 - 电平、状态和频道信息采用稳定网格，不因文本或状态变化移动布局。
 - 地图和消息模式切换使用 DraARL 分段控制样式。
 

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Icon
@@ -25,6 +24,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.ui.theme.appColors
 
 @Composable
 internal fun PttButton(
@@ -35,9 +35,14 @@ internal fun PttButton(
     onStop: () -> Unit,
 ) {
     val color = when {
-        !enabled -> MaterialTheme.colorScheme.surfaceVariant
-        transmitting -> MaterialTheme.colorScheme.error
+        !enabled -> MaterialTheme.appColors.disabled
+        transmitting -> MaterialTheme.appColors.transmit
         else -> MaterialTheme.colorScheme.primary
+    }
+    val contentColor = when {
+        !enabled -> MaterialTheme.appColors.onDisabled
+        transmitting -> MaterialTheme.appColors.onTransmit
+        else -> MaterialTheme.colorScheme.onPrimary
     }
     Surface(
         modifier = modifier
@@ -62,10 +67,9 @@ internal fun PttButton(
                     },
                 )
             },
-        shape = RoundedCornerShape(8.dp),
+        shape = MaterialTheme.shapes.medium,
         color = color,
-        contentColor = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-        shadowElevation = if (enabled) 3.dp else 0.dp,
+        contentColor = contentColor,
     ) {
         Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(30.dp))
