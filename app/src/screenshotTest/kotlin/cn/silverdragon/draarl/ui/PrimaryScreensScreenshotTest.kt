@@ -4,20 +4,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.DailyCommunicationStats
 import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.User
-import cn.silverdragon.draarl.ui.components.EmptyState
 import cn.silverdragon.draarl.ui.components.RadioStatusStripState
 import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.screens.DevicesContent
@@ -27,6 +21,7 @@ import cn.silverdragon.draarl.ui.screens.ProfileContent
 import cn.silverdragon.draarl.ui.screens.RadioComposer
 import cn.silverdragon.draarl.ui.screens.RadioConnectionPanel
 import cn.silverdragon.draarl.ui.screens.RadioConnectionPanelState
+import cn.silverdragon.draarl.ui.screens.RadioMessageEmptyFeedback
 import cn.silverdragon.draarl.ui.screens.RadioModeSwitcher
 import cn.silverdragon.draarl.ui.screens.ToolsHome
 import com.android.tools.screenshot.PreviewTest
@@ -112,6 +107,19 @@ fun RadioDarkBaseline() {
 }
 
 @PreviewTest
+@Preview(
+    name = "PTT Error Light Large Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun RadioErrorLightLargeTextBaseline() {
+    RadioBaseline(darkTheme = false, hasSyncError = true)
+}
+
+@PreviewTest
 @Preview(name = "Tools Light Landscape", widthDp = 800, heightDp = 360, showBackground = true)
 @Composable
 fun ToolsLightBaseline() {
@@ -194,7 +202,7 @@ private fun GroupsBaseline(darkTheme: Boolean) {
 }
 
 @Composable
-private fun RadioBaseline(darkTheme: Boolean) {
+private fun RadioBaseline(darkTheme: Boolean, hasSyncError: Boolean = false) {
     BaselineScreen(selectedKey = "radio", darkTheme = darkTheme) {
         Column(Modifier.fillMaxSize()) {
             RadioConnectionPanel(
@@ -207,14 +215,10 @@ private fun RadioBaseline(darkTheme: Boolean) {
                 onMessages = {},
                 modifier = Modifier.fillMaxWidth()
             )
-            Box(
-                modifier = Modifier.fillMaxWidth().height(300.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                EmptyState(
-                    icon = Icons.Default.History,
-                    title = "暂无通联记录",
-                    detail = "连接后可在这里查看语音、文本和位置消息"
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                RadioMessageEmptyFeedback(
+                    hasSyncError = hasSyncError,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
             RadioComposer(

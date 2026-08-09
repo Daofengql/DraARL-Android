@@ -17,20 +17,13 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -268,27 +261,10 @@ fun RadioScreen(
                 ) {
                     Column(Modifier.fillMaxSize()) {
                         if (messages.isEmpty()) {
-                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.History,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(44.dp),
-                                        tint = MaterialTheme.colorScheme.outline
-                                    )
-                                    Text("暂无通联记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if (messageState.syncError.isNotBlank()) {
-                                        Text(
-                                            "记录同步暂时中断，稍后自动重试",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                }
-                            }
+                            RadioMessageEmptyFeedback(
+                                hasSyncError = messageState.syncError.isNotBlank(),
+                                modifier = Modifier.weight(1f)
+                            )
                         } else {
                             Box(Modifier.fillMaxWidth().weight(1f)) {
                                 LazyColumn(
@@ -304,30 +280,11 @@ fun RadioScreen(
                                 ) {
                                     if (messageState.historyLoading || messageState.syncError.isNotBlank()) {
                                         item(key = "radio-history-status") {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.Center,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                if (messageState.historyLoading) {
-                                                    CircularProgressIndicator(
-                                                        modifier = Modifier.size(18.dp),
-                                                        strokeWidth = 2.dp
-                                                    )
-                                                    Text(
-                                                        "正在加载更早记录",
-                                                        modifier = Modifier.padding(start = 8.dp),
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                } else {
-                                                    Text(
-                                                        "记录同步暂时中断，稍后自动重试",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.error
-                                                    )
-                                                }
-                                            }
+                                            RadioHistoryFeedback(
+                                                loading = messageState.historyLoading,
+                                                hasSyncError = messageState.syncError.isNotBlank(),
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                            )
                                         }
                                     }
                                     itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
