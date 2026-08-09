@@ -1,6 +1,6 @@
 # 依赖升级记录
 
-更新时间：2026-08-09
+更新时间：2026-08-10
 
 依赖按可独立回滚和验证的版本组升级。每组执行静态检查、JVM 测试、截图验证、Lint、Debug APK 和
 AndroidTest APK 构建，不与业务或 UI 重构放在同一提交。
@@ -32,4 +32,17 @@ Android 36.1 的 2.10.0，避免同一产品线混用版本。Activity Compose 1
 
 完整本地门禁继续通过 288 个 JVM 测试和 38 张 Compose 截图，未要求生产代码、Manifest 或资源适配。
 
-后续仍按 Compose 和 Android 测试库分组升级；每组完成后在此追加版本、兼容限制和验证结果。
+## Compose
+
+| 依赖 | 升级前 | 当前 | Google Maven 最新稳定版 |
+| --- | --- | --- | --- |
+| `androidx.compose:compose-bom` | 2026.02.01 | 2026.06.01 | 2026.06.01 |
+
+Compose UI Test 在该版本中弃用 `androidx.compose.ui.test.junit4.createComposeRule`，底栏仪器测试已迁移到
+`androidx.compose.ui.test.junit4.v2.createComposeRule`。v2 规则使用标准测试调度语义，现有测试通过显式节点查询、
+点击和断言等待空闲，不依赖旧规则的立即执行行为。
+
+完整本地门禁通过 288 个 JVM 测试和 38 张 Compose 截图；迁移后的 AndroidTest Kotlin 强制重新编译且无新增
+弃用警告，Debug Lint、APK 和 AndroidTest APK 构建继续通过。
+
+后续仍需升级 Android JUnit 与 Espresso 测试库，并检查是否存在可删除的未使用直接依赖。

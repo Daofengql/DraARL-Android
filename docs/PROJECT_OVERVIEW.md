@@ -1,6 +1,6 @@
 # DraARL Android 项目概览
 
-审计日期：2026-08-09
+审计日期：2026-08-10
 代码基线：`2.0.0-alpha1`（versionCode 8）
 
 ## 规模结论
@@ -78,6 +78,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - `TODO.md` 只保留尚未完成的实施与真机验收清单；已落地的静态质量门禁不再列为待办。
 - AndroidX Core KTX 已从 1.10.1 升至当前 `compileSdk 36.1` 可用的最高稳定版 1.18.0，Core Splashscreen 从 1.0.1 升至 1.2.0；1.19.0 要求 `compileSdk 37+`，兼容边界记录在 `docs/DEPENDENCY_UPGRADES.md`。
 - AndroidX Lifecycle 已从 2.6.1 升至当前 SDK 可用的最高同组稳定版 2.10.0，Activity Compose 从 1.8.0 升至最新稳定版 1.13.0；Lifecycle Compose 2.11.0 要求 `compileSdk 37+`。
+- Compose BOM 已从 2026.02.01 升至 Google Maven 当前最新稳定版 2026.06.01；仪器测试同时迁移到 Compose UI Test `junit4.v2` 规则 API，消除旧规则弃用警告。
 - 音频收发电平已从连接面板状态中移出，由独立可跳过的 Composable 读取；电平动画值在 Canvas 绘制阶段读取，不再让动画帧触发连接面板重组。编译器指标、复现命令和真机验证缺口记录在 `docs/COMPOSE_PERFORMANCE.md`。
 - 应用更新下载进度已从 `AppUpdateUiState` 拆为独立浮点状态；系统设置页和全局更新弹窗都通过稳定 provider 延后读取进度，进度回调不再替换状态、消息和更新信息共同使用的状态对象。
 - 消息播放 ID 已从 `RadioScreen` 根作用域和 `MessageItemState` 中移出；自动连播滚动使用独立 effect，每个可见消息项通过带结构相等策略的派生状态订阅播放 ID，未匹配项不会因其他消息开始或停止播放而重组。
