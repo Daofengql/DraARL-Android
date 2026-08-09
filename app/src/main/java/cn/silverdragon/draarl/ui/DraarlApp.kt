@@ -72,6 +72,7 @@ import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlBottomBar
 import cn.silverdragon.draarl.ui.components.DraarlBottomBarItem
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.InlineNotice
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.AprsSettingsScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
@@ -257,7 +258,18 @@ private fun AuthenticatedApp(controller: AppController) {
                 MainBottomBar(selectedPage = controller.page, onNavigate = controller::navigate)
             }
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                snackbar = { data ->
+                    InlineNotice(
+                        text = data.visuals.message,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        onDismiss = data::dismiss
+                    )
+                }
+            )
+        }
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize().padding(

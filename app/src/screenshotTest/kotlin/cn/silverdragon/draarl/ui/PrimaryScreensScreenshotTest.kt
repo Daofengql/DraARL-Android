@@ -64,6 +64,29 @@ fun DevicesLoadingLightBaseline() {
 }
 
 @PreviewTest
+@Preview(
+    name = "Devices Empty Dark Large Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun DevicesEmptyDarkLargeTextBaseline() {
+    BaselineScreen(selectedKey = "devices", darkTheme = true) {
+        DevicesContent(
+            state = DevicesContentState(
+                devices = emptyList(),
+                groups = emptyList(),
+                defaultGroupId = null,
+                loading = false
+            ),
+            onAction = {}
+        )
+    }
+}
+
+@PreviewTest
 @Preview(name = "Groups Light Narrow", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun GroupsLightBaseline() {
@@ -85,6 +108,27 @@ fun GroupsEmptyDarkBaseline() {
         GroupsContent(
             groups = emptyList(),
             loading = false,
+            onOpenGroup = {},
+            onSearchToJoin = {},
+            onCreateGroup = {}
+        )
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Groups Loading Light Medium Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.3f,
+    showBackground = true
+)
+@Composable
+fun GroupsLoadingLightBaseline() {
+    BaselineScreen(selectedKey = "groups", darkTheme = false) {
+        GroupsContent(
+            groups = emptyList(),
+            loading = true,
             onOpenGroup = {},
             onSearchToJoin = {},
             onCreateGroup = {}
