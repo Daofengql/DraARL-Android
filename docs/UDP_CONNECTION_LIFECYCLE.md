@@ -20,7 +20,7 @@
 | 数据报收发、读取超时和 Socket 关闭 | `UdpTransport` | `UdpRadioClient` 不直接依赖 `java.net` Socket 类型 |
 | 认证握手 | `draarl-udp-connect` 单线程执行器 | 仅当前代次可以安装和激活 Transport |
 | UDP 阻塞接收 | 每次在线会话的 `draarl-udp-receiver` | 关闭对应 Transport 或代次失效后退出 |
-| 心跳、看门狗、重连和 PTT 超时 | `draarl-udp-scheduler` | `ScheduledFuture` 在 `taskLock` 下登记和取消 |
+| 心跳、看门狗、重连和 PTT 超时 | `UdpSessionTaskCoordinator` | 通过可注入的 `RadioScheduler` 创建，按会话或任务类型统一替换和取消 |
 | 录音、实时播放和录音回放 | `OpusAudioEngine` | 连接替换、重连、断开和释放均先停止活动音频 |
 | 接收语音流与播放队列 | `UdpRadioClient` | 在 `voiceSessionLock` 下更新，清理时结算为消息 |
 | 发射语音缓存 | `UdpRadioClient` | 在 `outgoingVoiceLock` 下更新，发射结束后一次性交接 |
@@ -45,6 +45,7 @@
 - `UdpConnectionStateMachineTest` 验证合法顺序、乱序/陈旧事件、重复连接、单次重连调度、等待期间配置更新、认证失败、主动断开和关闭终态。
 - `UdpAuthenticationTest` 验证认证成功字段、服务端拒绝、异常响应、客户端实例匹配、非认证包忽略和总超时。
 - `UdpTransportTest` 通过本地回环验证双向数据报、读取超时、首选端口回退和幂等关闭。
+- `UdpSessionTaskCoordinatorTest` 使用 fake scheduler 验证会话任务替换、PTT 超时替换、重连保留条件、取消与最终关闭。
 - `RadioReconnectPolicyTest` 验证服务端旧会话过期前的安全重试间隔。
 
 真实 Socket 中断、弱网乱序、前后台切换和音频资源释放仍需仪器测试或真机回归。

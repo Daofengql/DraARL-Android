@@ -88,7 +88,6 @@
     <ID>ForbiddenMethodCall:OpusAudioEngine.kt:OpusAudioEngine$newSingleThreadExecutor { runnable -&gt; Thread(runnable, "draarl-audio-download") }</ID>
     <ID>ForbiddenMethodCall:OpusPlaybackController.kt:OpusPlaybackController$newSingleThreadExecutor { runnable -&gt; Thread(runnable, "draarl-opus-playback") }</ID>
     <ID>ForbiddenMethodCall:ToolsController.kt:ToolsController$newFixedThreadPool(2) { runnable -&gt; Thread(runnable, "draarl-tools") }</ID>
-    <ID>ForbiddenMethodCall:UdpRadioClient.kt:UdpRadioClient$newScheduledThreadPool(2) { runnable -&gt; Thread(runnable, "draarl-udp-scheduler") }</ID>
     <ID>ForbiddenMethodCall:UdpRadioClient.kt:UdpRadioClient$newSingleThreadExecutor { runnable -&gt; Thread(runnable, "draarl-udp-connect") }</ID>
     <ID>ImplicitDefaultLocale:AppUpdateManager.kt:"%02x".format(byte)</ID>
     <ID>ImplicitDefaultLocale:RadioAudioCache.kt:RadioAudioCache$"%02x".format(byte.toInt() and 0xff)</ID>

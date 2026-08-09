@@ -11,8 +11,6 @@ import cn.silverdragon.draarl.protocol.DraarlProtocol
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class RadioConnectionConfig(
@@ -35,13 +33,15 @@ class UdpRadioClient internal constructor(
     context: Context,
     private val listener: UdpRadioListener,
     private val transportFactory: UdpTransportFactory,
-    private val clock: RadioClock
+    private val clock: RadioClock,
+    scheduler: RadioScheduler
 ) {
     constructor(context: Context, listener: UdpRadioListener) : this(
         context = context,
         listener = listener,
         transportFactory = DatagramUdpTransportFactory(),
-        clock = SystemRadioClock
+        clock = SystemRadioClock,
+        scheduler = ExecutorRadioScheduler(threadCount = 2, threadName = "draarl-udp-scheduler")
     )
 
     private val audioCache = RadioAudioCache(context.applicationContext.filesDir.resolve("radio_audio"))
@@ -53,9 +53,7 @@ class UdpRadioClient internal constructor(
     private val connectionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-udp-connect")
     }
-    private val scheduler = Executors.newScheduledThreadPool(2) { runnable ->
-        Thread(runnable, "draarl-udp-scheduler")
-    }
+    private val sessionTasks = UdpSessionTaskCoordinator(scheduler)
     private val connectionState = UdpConnectionStateMachine()
     private val authenticationReceiver = UdpAuthenticationReceiver(AUTH_TOTAL_TIMEOUT_MS, clock::nowMillis)
     private val cwTransmitActive = AtomicBoolean(false)
@@ -63,7 +61,6 @@ class UdpRadioClient internal constructor(
     private val finishingPtt = AtomicBoolean(false)
     private val sendLock = Any()
     private val statusLock = Any()
-    private val taskLock = Any()
     private val voiceSessionLock = Any()
     private val outgoingVoiceLock = Any()
 
@@ -97,21 +94,17 @@ class UdpRadioClient internal constructor(
     private val incomingVoiceStreams = LinkedHashMap<VoiceStreamKey, IncomingVoiceStream>()
     private val voicePlaybackQueue = VoiceStreamPlaybackQueue()
     private var outgoingVoiceBuffer = ByteArrayOutputStream()
-    private var heartbeatTask: ScheduledFuture<*>? = null
-    private var watchdogTask: ScheduledFuture<*>? = null
-    private var reconnectTask: ScheduledFuture<*>? = null
-    private var pttTimeoutTask: ScheduledFuture<*>? = null
 
     @Synchronized
     fun connect(config: RadioConnectionConfig) {
         val attempt = connectionState.connect(config) ?: return
-        cancelReconnectTask()
+        sessionTasks.cancelReconnect()
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
         listener.onCwPreviewState(false)
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
-        stopTasks()
+        sessionTasks.stopSession()
         audioEngine.stopCapture()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
@@ -125,13 +118,13 @@ class UdpRadioClient internal constructor(
 
     fun disconnect() {
         connectionState.dispatch(UdpConnectionEvent.Disconnect)
-        cancelReconnectTask()
+        sessionTasks.cancelReconnect()
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
         listener.onCwPreviewState(false)
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
-        stopTasks()
+        sessionTasks.stopSession()
         audioEngine.stopCapture()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
@@ -201,7 +194,7 @@ class UdpRadioClient internal constructor(
         }
         pttStartedAt = startedAt
         return runCatching {
-            scheduler.execute {
+            sessionTasks.execute {
                 transmitCw(
                     text = tone.normalizedText,
                     toneSamples = tone.samples,
@@ -240,7 +233,7 @@ class UdpRadioClient internal constructor(
         listener.onCwPreviewState(true)
         val currentGeneration = connectionState.generation()
         return runCatching {
-            scheduler.execute { previewCwAudio(tone.samples, tailSamples, currentGeneration) }
+            sessionTasks.execute { previewCwAudio(tone.samples, tailSamples, currentGeneration) }
             true
         }.getOrElse { error ->
             cwPreviewActive.set(false)
@@ -289,7 +282,7 @@ class UdpRadioClient internal constructor(
     fun stopPtt() {
         if (!status.transmitting || cwTransmitActive.get()) return
         if (!finishingPtt.compareAndSet(false, true)) return
-        cancelPttTimeout()
+        sessionTasks.cancelPttTimeout()
         val currentGeneration = connectionState.generation()
         audioEngine.stopCapture()
         val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
@@ -299,7 +292,7 @@ class UdpRadioClient internal constructor(
         }
         audioEngine.resetDecoder()
         runCatching {
-            scheduler.execute {
+            sessionTasks.execute {
                 try {
                     runCatching {
                         streamPcmPackets(
@@ -428,7 +421,7 @@ class UdpRadioClient internal constructor(
         connectionState.dispatch(UdpConnectionEvent.Close)
         audioEngine.release()
         connectionExecutor.shutdownNow()
-        scheduler.shutdownNow()
+        sessionTasks.close()
     }
 
     private fun establish(attempt: UdpConnectionAttempt) {
@@ -461,7 +454,7 @@ class UdpRadioClient internal constructor(
         if (isActive(currentGeneration)) {
             startReceiver(activeTransport, currentGeneration)
         } else {
-            stopTasks()
+            sessionTasks.stopSession()
             closeTransport(activeTransport)
         }
     }
@@ -469,7 +462,7 @@ class UdpRadioClient internal constructor(
     private fun prepareAttempt(attempt: UdpConnectionAttempt): Boolean {
         val activeBeforeCleanup = isActive(attempt.generation)
         if (activeBeforeCleanup) {
-            stopTasks()
+            sessionTasks.stopSession()
             audioEngine.stopCapture()
             closeTransport()
         }
@@ -817,36 +810,32 @@ class UdpRadioClient internal constructor(
     }
 
     private fun startTasks(currentGeneration: Int) {
-        synchronized(taskLock) {
-            if (!isActive(currentGeneration)) return
-            heartbeatTask = scheduler.scheduleWithFixedDelay(
-                {
-                    if (isActive(currentGeneration) && status.connected) {
-                        send(sessionHeartbeat(), currentGeneration)
-                    }
-                },
-                0,
-                HEARTBEAT_INTERVAL_MS,
-                TimeUnit.MILLISECONDS
-            )
-            watchdogTask = scheduler.scheduleWithFixedDelay(
-                {
-                    val now = clock.nowMillis()
-                    val completedMessages = finishExpiredAndAdvanceVoiceQueue(now, currentGeneration)
-                    completedMessages.forEach(listener::onMessage)
-                    if (completedMessages.isNotEmpty()) {
-                        val activeSpeaker = activeIncomingSpeaker()
-                        updateStatusIfActive(currentGeneration) { it.copy(speaker = activeSpeaker) }
-                        if (activeSpeaker.isBlank()) playReceiveTailTone(currentGeneration)
-                    }
-                    if (status.connected && now - lastServerPacketAt > SERVER_SILENCE_TIMEOUT_MS) {
-                        scheduleReconnect("服务器心跳超时", currentGeneration)
-                    }
-                },
-                WATCHDOG_INTERVAL_MS,
-                WATCHDOG_INTERVAL_MS,
-                TimeUnit.MILLISECONDS
-            )
+        if (!isActive(currentGeneration)) return
+        sessionTasks.startSession(
+            heartbeatIntervalMillis = HEARTBEAT_INTERVAL_MS,
+            watchdogIntervalMillis = WATCHDOG_INTERVAL_MS,
+            heartbeat = { heartbeat(currentGeneration) },
+            watchdog = { watchdog(currentGeneration) }
+        )
+    }
+
+    private fun heartbeat(currentGeneration: Int) {
+        if (isActive(currentGeneration) && status.connected) {
+            send(sessionHeartbeat(), currentGeneration)
+        }
+    }
+
+    private fun watchdog(currentGeneration: Int) {
+        val now = clock.nowMillis()
+        val completedMessages = finishExpiredAndAdvanceVoiceQueue(now, currentGeneration)
+        completedMessages.forEach(listener::onMessage)
+        if (completedMessages.isNotEmpty()) {
+            val activeSpeaker = activeIncomingSpeaker()
+            updateStatusIfActive(currentGeneration) { it.copy(speaker = activeSpeaker) }
+            if (activeSpeaker.isBlank()) playReceiveTailTone(currentGeneration)
+        }
+        if (status.connected && now - lastServerPacketAt > SERVER_SILENCE_TIMEOUT_MS) {
+            scheduleReconnect("服务器心跳超时", currentGeneration)
         }
     }
 
@@ -857,7 +846,7 @@ class UdpRadioClient internal constructor(
         listener.onCwPreviewState(false)
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
-        stopTasks()
+        sessionTasks.stopSession()
         audioEngine.stopCapture()
         finishAllIncomingVoices().forEach(listener::onMessage)
         closeTransport()
@@ -871,15 +860,14 @@ class UdpRadioClient internal constructor(
             lastPacketSentAt = lastPacketSentAt,
             now = clock.nowMillis()
         )
-        val scheduled = runCatching {
-            scheduler.schedule(
-                {
-                    synchronized(taskLock) { reconnectTask = null }
-                    val attempt = connectionState.startReconnect(reconnectGeneration) ?: return@schedule
+        runCatching {
+            sessionTasks.scheduleReconnect(
+                delayMillis = retryDelay,
+                shouldKeep = { connectionState.isWaitingToReconnect(reconnectGeneration) },
+                reconnect = reconnect@{
+                    val attempt = connectionState.startReconnect(reconnectGeneration) ?: return@reconnect
                     connectionExecutor.execute { establish(attempt) }
-                },
-                retryDelay,
-                TimeUnit.MILLISECONDS
+                }
             )
         }.getOrElse { error ->
             if (connectionState.dispatch(UdpConnectionEvent.ReconnectFailed(reconnectGeneration))) {
@@ -888,13 +876,6 @@ class UdpRadioClient internal constructor(
                 }
             }
             return
-        }
-        synchronized(taskLock) {
-            if (connectionState.isWaitingToReconnect(reconnectGeneration)) {
-                reconnectTask = scheduled
-            } else {
-                scheduled.cancel(false)
-            }
         }
     }
 
@@ -939,45 +920,13 @@ class UdpRadioClient internal constructor(
         lastPacketSentAt = clock.nowMillis()
     }
 
-    private fun stopTasks() {
-        synchronized(taskLock) {
-            heartbeatTask?.cancel(false)
-            watchdogTask?.cancel(false)
-            pttTimeoutTask?.cancel(false)
-            heartbeatTask = null
-            watchdogTask = null
-            pttTimeoutTask = null
-        }
-    }
-
     private fun schedulePttTimeout(expectedGeneration: Int) {
-        synchronized(taskLock) {
-            pttTimeoutTask?.cancel(false)
-            pttTimeoutTask = null
-            if (!isActive(expectedGeneration) || !status.transmitting) return
-            val remaining = transmitTimeoutSeconds * 1_000L -
-                (clock.nowMillis() - pttStartedAt)
-            pttTimeoutTask = scheduler.schedule(
-                {
-                    if (isActive(expectedGeneration) && status.transmitting) stopPtt()
-                },
-                remaining.coerceAtLeast(0L),
-                TimeUnit.MILLISECONDS
-            )
-        }
-    }
-
-    private fun cancelPttTimeout() {
-        synchronized(taskLock) {
-            pttTimeoutTask?.cancel(false)
-            pttTimeoutTask = null
-        }
-    }
-
-    private fun cancelReconnectTask() {
-        synchronized(taskLock) {
-            reconnectTask?.cancel(false)
-            reconnectTask = null
+        sessionTasks.cancelPttTimeout()
+        if (!isActive(expectedGeneration) || !status.transmitting) return
+        val remaining = transmitTimeoutSeconds * 1_000L -
+            (clock.nowMillis() - pttStartedAt)
+        sessionTasks.schedulePttTimeout(remaining.coerceAtLeast(0L)) {
+            if (isActive(expectedGeneration) && status.transmitting) stopPtt()
         }
     }
 
