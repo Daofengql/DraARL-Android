@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,26 +42,22 @@ enum class StatusTone {
     RECEIVE,
     TRANSMIT,
     WARNING,
-    ERROR,
+    ERROR
 }
 
 enum class CommandStyle {
     PRIMARY,
     SECONDARY,
-    DANGER,
+    DANGER
 }
 
 @Composable
-fun StatusIndicator(
-    text: String,
-    tone: StatusTone,
-    modifier: Modifier = Modifier,
-) {
+fun StatusIndicator(text: String, tone: StatusTone, modifier: Modifier = Modifier) {
     val color = statusColor(tone)
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(Modifier.size(7.dp).background(color, CircleShape))
         Text(
@@ -66,7 +65,7 @@ fun StatusIndicator(
             style = MaterialTheme.typography.labelMedium,
             color = color,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -80,7 +79,7 @@ fun CommandButton(
     style: CommandStyle = CommandStyle.SECONDARY,
     supportingText: String? = null,
     leadingIcon: ImageVector? = null,
-    trailingIcon: ImageVector? = null,
+    trailingIcon: ImageVector? = null
 ) {
     val colors = commandColors(style, enabled)
     Surface(
@@ -90,18 +89,18 @@ fun CommandButton(
                 MaterialTheme.appDimensions.controlHeight
             } else {
                 MaterialTheme.appDimensions.largeControlHeight
-            },
+            }
         ),
         enabled = enabled,
         shape = MaterialTheme.shapes.small,
         color = colors.container,
         contentColor = colors.content,
-        border = colors.border?.let { BorderStroke(1.dp, it) },
+        border = colors.border?.let { BorderStroke(1.dp, it) }
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.Center
         ) {
             leadingIcon?.let {
                 Icon(it, contentDescription = null, modifier = Modifier.size(MaterialTheme.appDimensions.icon))
@@ -112,7 +111,7 @@ fun CommandButton(
                     text = label,
                     style = MaterialTheme.typography.labelLarge,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis
                 )
                 supportingText?.let {
                     Text(
@@ -120,7 +119,7 @@ fun CommandButton(
                         style = MaterialTheme.dataTypography.compact,
                         color = colors.secondaryContent,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -140,7 +139,7 @@ fun CommandIconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     selected: Boolean = false,
-    danger: Boolean = false,
+    danger: Boolean = false
 ) {
     val style = when {
         danger -> CommandStyle.DANGER
@@ -155,13 +154,13 @@ fun CommandIconButton(
         shape = MaterialTheme.shapes.small,
         color = colors.container,
         contentColor = colors.content,
-        border = colors.border?.let { BorderStroke(1.dp, it) },
+        border = colors.border?.let { BorderStroke(1.dp, it) }
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = contentDescription,
-                modifier = Modifier.size(MaterialTheme.appDimensions.iconLarge),
+                modifier = Modifier.size(MaterialTheme.appDimensions.iconLarge)
             )
         }
     }
@@ -173,18 +172,18 @@ fun DataRow(
     value: String,
     modifier: Modifier = Modifier,
     technical: Boolean = false,
-    leadingIcon: ImageVector? = null,
+    leadingIcon: ImageVector? = null
 ) {
     Row(
         modifier = modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         leadingIcon?.let {
             Icon(
                 imageVector = it,
                 contentDescription = null,
                 modifier = Modifier.size(MaterialTheme.appDimensions.icon),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.width(10.dp))
         }
@@ -192,7 +191,7 @@ fun DataRow(
             text = label,
             modifier = Modifier.weight(0.8f),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.width(12.dp))
         Text(
@@ -202,17 +201,13 @@ fun DataRow(
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.End,
             maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
 
 @Composable
-fun SectionHeader(
-    title: String,
-    modifier: Modifier = Modifier,
-    detail: String? = null,
-) {
+fun SectionHeader(title: String, modifier: Modifier = Modifier, detail: String? = null) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
         detail?.let {
@@ -226,6 +221,7 @@ fun InlineNotice(
     text: String,
     modifier: Modifier = Modifier,
     tone: StatusTone = StatusTone.NEUTRAL,
+    onDismiss: (() -> Unit)? = null
 ) {
     val colors = noticeColors(tone)
     Surface(
@@ -233,15 +229,24 @@ fun InlineNotice(
         shape = MaterialTheme.shapes.small,
         color = colors.container,
         contentColor = colors.content,
-        border = BorderStroke(1.dp, colors.border ?: MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(1.dp, colors.border ?: MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Box(Modifier.padding(top = 5.dp).size(7.dp).background(colors.content, CircleShape))
             Text(text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            onDismiss?.let {
+                IconButton(onClick = it, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "关闭提示",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -250,7 +255,7 @@ private data class ComponentColors(
     val container: Color,
     val content: Color,
     val secondaryContent: Color,
-    val border: Color?,
+    val border: Color?
 )
 
 @Composable
@@ -260,7 +265,7 @@ private fun commandColors(style: CommandStyle, enabled: Boolean): ComponentColor
             container = MaterialTheme.appColors.disabled,
             content = MaterialTheme.appColors.onDisabled,
             secondaryContent = MaterialTheme.appColors.onDisabled,
-            border = null,
+            border = null
         )
     }
     return when (style) {
@@ -268,19 +273,21 @@ private fun commandColors(style: CommandStyle, enabled: Boolean): ComponentColor
             container = MaterialTheme.colorScheme.primary,
             content = MaterialTheme.colorScheme.onPrimary,
             secondaryContent = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f),
-            border = null,
+            border = null
         )
+
         CommandStyle.SECONDARY -> ComponentColors(
             container = MaterialTheme.colorScheme.surfaceContainerLow,
             content = MaterialTheme.colorScheme.onSurface,
             secondaryContent = MaterialTheme.colorScheme.onSurfaceVariant,
-            border = MaterialTheme.colorScheme.outlineVariant,
+            border = MaterialTheme.colorScheme.outlineVariant
         )
+
         CommandStyle.DANGER -> ComponentColors(
             container = MaterialTheme.appColors.transmitContainer,
             content = MaterialTheme.appColors.onTransmitContainer,
             secondaryContent = MaterialTheme.appColors.onTransmitContainer.copy(alpha = 0.8f),
-            border = MaterialTheme.appColors.transmit.copy(alpha = 0.45f),
+            border = MaterialTheme.appColors.transmit.copy(alpha = 0.45f)
         )
     }
 }
@@ -299,33 +306,36 @@ private fun statusColor(tone: StatusTone): Color = when (tone) {
 @Composable
 private fun noticeColors(tone: StatusTone): ComponentColors = when (tone) {
     StatusTone.TRANSMIT,
-    StatusTone.ERROR,
+    StatusTone.ERROR
     -> ComponentColors(
         container = MaterialTheme.appColors.transmitContainer,
         content = MaterialTheme.appColors.onTransmitContainer,
         secondaryContent = MaterialTheme.appColors.onTransmitContainer,
-        border = MaterialTheme.appColors.transmit,
+        border = MaterialTheme.appColors.transmit
     )
+
     StatusTone.RECEIVE,
-    StatusTone.CONNECTED,
+    StatusTone.CONNECTED
     -> ComponentColors(
         container = MaterialTheme.appColors.receiveContainer,
         content = MaterialTheme.appColors.onReceiveContainer,
         secondaryContent = MaterialTheme.appColors.onReceiveContainer,
-        border = MaterialTheme.appColors.receive,
+        border = MaterialTheme.appColors.receive
     )
+
     StatusTone.CONNECTING,
-    StatusTone.WARNING,
+    StatusTone.WARNING
     -> ComponentColors(
         container = MaterialTheme.appColors.warningContainer,
         content = MaterialTheme.appColors.onWarningContainer,
         secondaryContent = MaterialTheme.appColors.onWarningContainer,
-        border = MaterialTheme.appColors.warning,
+        border = MaterialTheme.appColors.warning
     )
+
     StatusTone.NEUTRAL -> ComponentColors(
         container = MaterialTheme.colorScheme.surfaceContainerLow,
         content = MaterialTheme.colorScheme.onSurfaceVariant,
         secondaryContent = MaterialTheme.colorScheme.onSurfaceVariant,
-        border = MaterialTheme.colorScheme.outlineVariant,
+        border = MaterialTheme.colorScheme.outlineVariant
     )
 }

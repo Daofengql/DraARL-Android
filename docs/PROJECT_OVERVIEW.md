@@ -9,10 +9,10 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 170 | 26,699 | 不含空行、生成目录和第三方源码 |
+| 生产 Kotlin | 171 | 26,803 | 不含空行、生成目录和第三方源码 |
 | JVM 单元测试 Kotlin | 55 | 4,050 | 215 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
-| Compose 截图测试 Kotlin | 4 | 670 | 19 张壳层、页面和组件参考图 |
+| Compose 截图测试 Kotlin | 4 | 725 | 22 张壳层、页面、状态和组件参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
 | 自研 C++ 接入 | 1 | 121 | RNNoise JNI/CMake 桥接 |
 | 第三方 RNNoise C/H | 32 | 281,091 | 约 30.2 MB，绝大部分为模型权重数据 |
@@ -25,7 +25,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 | 包 | 文件数 | 职责 |
 | --- | ---: | --- |
-| `ui` | 56 | Compose 页面、导航和组件 |
+| `ui` | 57 | Compose 页面、导航和组件 |
 | `radio` | 31 | 消息状态与同步、会话、UDP、音频、重连、缓存和前台通信服务 |
 | `data` | 16 | 模型、本地存储、消息对账和路由 |
 | `tools` | 11 | BLE、中继、通联日志和预设 |
@@ -40,9 +40,9 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | 文件 | 行数 |
 | --- | ---: |
 | `radio/UdpRadioClient.kt` | 1,094 |
-| `ui/screens/DevicesScreen.kt` | 1,000 |
+| `ui/screens/DevicesScreen.kt` | 1,022 |
 | `AppController.kt` | 988 |
-| `ui/screens/GroupsScreen.kt` | 849 |
+| `ui/screens/GroupsScreen.kt` | 874 |
 | `ui/screens/LocationMapScreen.kt` | 674 |
 
 ## 架构边界
@@ -61,7 +61,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 ## 维护重点
 
-1. `UdpRadioClient` 仍超过 1,000 行，`DevicesScreen` 也正好达到 1,000 行，是当前修改冲突和回归风险最集中的位置。`AppController` 已降至 988 行，后续重点转向 UDP 状态机、异步任务所有权和大型页面。
+1. `UdpRadioClient` 和 `DevicesScreen` 仍超过 1,000 行，是当前修改冲突和回归风险最集中的位置。`AppController` 已降至 988 行，后续重点转向 UDP 状态机、异步任务所有权和大型页面。
 2. 自动化测试以 JVM 测试为主，仪器测试只有 3 个文件。BLE、定位、前台服务、弱网重连、后台麦克风和系统权限仍需要真机覆盖。
 3. CI 已固定 Android SDK 36.1、NDK 28.2 和 CMake 3.22，并执行静态检查、截图验证与 Debug 构建门禁；地图运行验收仍依赖注入高德 Key，Release 签名仍需发布环境显式配置。
 4. Android 客户端依赖同仓库之外的 DraARL Server API 与 UDP 协议文档。服务端契约变更时，应同时检查 README 的“服务端契约”、`DraarlProtocol`、`ApiClient` 和更新清单校验。
@@ -81,6 +81,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 设置、账号安全和存储页已统一为细边框设置组、方形图标位和紧凑数据行，不再用默认 `Card` 叠加页面分区；危险清理使用统一弹窗与等宽动作区。
 - 标准确认、表单和选择弹窗已统一到 `DraarlDialog` 外壳和动作区，危险确认使用统一语义；双操作按钮在 1.75 倍及以上字体下纵向排列，避免命令文案被截断。设备与群组的全屏管理覆盖层保留专用全屏 `Dialog`。
 - CW 与位置选择 Bottom Sheet 已统一到 `DraarlSheet` 外壳、拖拽把手与动作区。
-- 应用壳层、五个一级页面、设置行、存储页、弹窗和 Bottom Sheet 已有 19 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文以及 1.3/1.5/2.0 倍字体。
+- 设备与群组页的页面级加载/空态已统一到 `PageFeedback`；工具类可恢复错误和蓝牙权限拒绝通过可关闭 `InlineNotice` 统一反馈层级。
+- 应用壳层、五个一级页面、设置行、存储页、弹窗、Bottom Sheet 和首批页面反馈已有 22 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文以及 1.3/1.5/2.0 倍字体。
 - GitHub Actions、Spotless/ktlint、Detekt 存量基线和 Markdown 链接检查已接入，RNNoise 第三方目录被显式排除。
 - Android 仪器测试 APK 已在本次基线编译通过，但尚未连接设备执行；Release 构建和签名也需在发布候选版本上重新验证。

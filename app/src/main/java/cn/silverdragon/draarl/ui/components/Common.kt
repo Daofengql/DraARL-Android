@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -21,52 +20,38 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun StatusPill(
-    text: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-) {
+fun StatusPill(text: String, color: Color, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         color = color.copy(alpha = 0.13f),
         contentColor = color,
-        shape = RoundedCornerShape(6.dp),
+        shape = RoundedCornerShape(6.dp)
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
     }
 }
 
 @Composable
-fun EmptyState(
-    icon: ImageVector,
-    title: String,
-    detail: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+fun EmptyState(icon: ImageVector, title: String, detail: String, modifier: Modifier = Modifier) {
+    PageFeedback(
+        kind = PageFeedbackKind.EMPTY,
+        title = title,
+        detail = detail,
+        modifier = modifier,
+        icon = icon
+    )
 }
 
 @Composable
-fun SectionTitle(
-    title: String,
-    action: (@Composable () -> Unit)? = null,
-) {
+fun SectionTitle(title: String, action: (@Composable () -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.width(8.dp).weight(1f))

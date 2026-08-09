@@ -46,6 +46,29 @@ fun DevicesDarkBaseline() {
 }
 
 @PreviewTest
+@Preview(
+    name = "Devices Loading Light Medium Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.3f,
+    showBackground = true
+)
+@Composable
+fun DevicesLoadingLightBaseline() {
+    BaselineScreen(selectedKey = "devices", darkTheme = false) {
+        DevicesContent(
+            state = DevicesContentState(
+                devices = emptyList(),
+                groups = emptyList(),
+                defaultGroupId = null,
+                loading = true
+            ),
+            onAction = {}
+        )
+    }
+}
+
+@PreviewTest
 @Preview(name = "Groups Light Narrow", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun GroupsLightBaseline() {
@@ -57,6 +80,21 @@ fun GroupsLightBaseline() {
 @Composable
 fun GroupsDarkBaseline() {
     GroupsBaseline(darkTheme = true)
+}
+
+@PreviewTest
+@Preview(name = "Groups Empty Dark", widthDp = 411, heightDp = 891, showBackground = true)
+@Composable
+fun GroupsEmptyDarkBaseline() {
+    BaselineScreen(selectedKey = "groups", darkTheme = true) {
+        GroupsContent(
+            groups = emptyList(),
+            loading = false,
+            onOpenGroup = {},
+            onSearchToJoin = {},
+            onCreateGroup = {}
+        )
+    }
 }
 
 @PreviewTest
@@ -85,6 +123,26 @@ fun ToolsLightBaseline() {
 @Composable
 fun ToolsDarkBaseline() {
     ToolsBaseline(darkTheme = true, approved = false)
+}
+
+@PreviewTest
+@Preview(
+    name = "Tools Error Light Large Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun ToolsErrorLightLargeTextBaseline() {
+    BaselineScreen(selectedKey = "tools", darkTheme = false) {
+        ToolsHome(
+            approved = true,
+            error = "无法刷新中继台数据，请检查网络后重试。",
+            onClearError = {},
+            onOpen = {}
+        )
+    }
 }
 
 @PreviewTest

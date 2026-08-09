@@ -86,6 +86,8 @@ import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.components.DraarlDialog
 import cn.silverdragon.draarl.ui.components.EmptyState
+import cn.silverdragon.draarl.ui.components.PageFeedback
+import cn.silverdragon.draarl.ui.components.PageFeedbackKind
 import cn.silverdragon.draarl.ui.components.StatusIndicator
 import cn.silverdragon.draarl.ui.components.StatusPill
 import cn.silverdragon.draarl.ui.components.StatusTone
@@ -344,12 +346,35 @@ private fun GroupActionsToolbar(onStartSearch: () -> Unit, onSearchToJoin: () ->
 
 @Composable
 private fun GroupsList(groups: List<Group>, loading: Boolean, query: String, onOpenGroup: (Group) -> Unit) {
-    if (groups.isEmpty() && !loading) {
-        EmptyState(Icons.Default.Groups, "暂无群组", "可搜索加入私有群组，或创建新群组")
+    if (groups.isEmpty()) {
+        if (loading) {
+            PageFeedback(
+                kind = PageFeedbackKind.LOADING,
+                title = "正在加载群组",
+                detail = "正在同步公开群组与已加入群组",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            EmptyState(
+                Icons.Default.Groups,
+                "暂无群组",
+                "可搜索加入私有群组，或创建新群组",
+                modifier = Modifier.fillMaxSize()
+            )
+        }
         return
     }
     val listState = rememberLazyListState()
     val sections = remember(groups, query) { visibleGroupSections(groups, query) }
+    if (sections.publicGroups.isEmpty() && sections.privateGroups.isEmpty()) {
+        EmptyState(
+            Icons.Default.Search,
+            "没有匹配的群组",
+            "换一个群组名称或 ID 试试",
+            modifier = Modifier.fillMaxSize()
+        )
+        return
+    }
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),

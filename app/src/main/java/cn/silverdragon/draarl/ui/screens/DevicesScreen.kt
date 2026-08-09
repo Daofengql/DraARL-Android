@@ -84,6 +84,8 @@ import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.components.DraarlDialog
 import cn.silverdragon.draarl.ui.components.EmptyState
+import cn.silverdragon.draarl.ui.components.PageFeedback
+import cn.silverdragon.draarl.ui.components.PageFeedbackKind
 import cn.silverdragon.draarl.ui.components.StatusIndicator
 import cn.silverdragon.draarl.ui.components.StatusPill
 import cn.silverdragon.draarl.ui.components.StatusTone
@@ -252,7 +254,6 @@ internal fun DevicesContent(state: DevicesContentState, onAction: (DevicesConten
     val devices = state.devices
     val groups = state.groups
     var filter by rememberSaveable { mutableStateOf("") }
-    val listState = rememberLazyListState()
     val query = filter.trim()
     val visibleDevices = remember(devices, query) { filterDevices(devices, query) }
     val groupsById = remember(groups) { groups.associateBy(Group::id) }
@@ -306,28 +307,51 @@ internal fun DevicesContent(state: DevicesContentState, onAction: (DevicesConten
         }
         HorizontalDivider()
 
-        when {
-            devices.isEmpty() && !state.loading -> EmptyState(
-                Icons.Default.Devices,
-                "暂无设备",
-                "使用动态码绑定，或让设备首次接入后再查看"
-            )
+        DevicesBody(state, visibleDevices, groupNames, onAction)
+    }
+}
 
-            visibleDevices.isEmpty() -> EmptyState(Icons.Default.Search, "没有匹配的设备", "换一个名称、呼号或 SSID 试试")
+@Composable
+private fun DevicesBody(
+    state: DevicesContentState,
+    visibleDevices: List<Device>,
+    groupNames: Map<Int, String>,
+    onAction: (DevicesContentAction) -> Unit
+) {
+    when {
+        state.devices.isEmpty() && state.loading -> PageFeedback(
+            kind = PageFeedbackKind.LOADING,
+            title = "正在加载设备",
+            detail = "正在同步设备与默认群组",
+            modifier = Modifier.fillMaxSize()
+        )
 
-            else -> LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 16.dp)
-            ) {
-                items(visibleDevices, key = Device::id) { device ->
-                    DeviceListRow(
-                        device = device,
-                        groupName = groupNames[device.groupId].orEmpty(),
-                        onClick = { onAction(DevicesContentAction.OpenDevice(device)) }
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(start = 76.dp))
-                }
+        state.devices.isEmpty() -> EmptyState(
+            Icons.Default.Devices,
+            "暂无设备",
+            "使用动态码绑定，或让设备首次接入后再查看",
+            modifier = Modifier.fillMaxSize()
+        )
+
+        visibleDevices.isEmpty() -> EmptyState(
+            Icons.Default.Search,
+            "没有匹配的设备",
+            "换一个名称、呼号或 SSID 试试",
+            modifier = Modifier.fillMaxSize()
+        )
+
+        else -> LazyColumn(
+            state = rememberLazyListState(),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            items(visibleDevices, key = Device::id) { device ->
+                DeviceListRow(
+                    device = device,
+                    groupName = groupNames[device.groupId].orEmpty(),
+                    onClick = { onAction(DevicesContentAction.OpenDevice(device)) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(start = 76.dp))
             }
         }
     }
