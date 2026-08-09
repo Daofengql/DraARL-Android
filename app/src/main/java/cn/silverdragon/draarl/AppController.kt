@@ -73,8 +73,11 @@ import cn.silverdragon.draarl.update.AppUpdateStatus
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 class AppController internal constructor(application: Application, ioDispatcher: CoroutineDispatcher) :
     AndroidViewModel(application) {
@@ -131,7 +134,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
     val tools: ToolsController
         get() = toolsDelegate.value
     private val appUpdateManager by lazy { AppUpdateManager(appContext, api) }
-    private val appDataRefresher by lazy { AppDataRefresher(ApiAppDataSource(api), executor) }
+    private val appDataRefresher by lazy { AppDataRefresher(ApiAppDataSource(api), ioDispatcher) }
+    private var refreshAllJob: Job? = null
     private val deviceManagementDelegate = lazy {
         DeviceManagementController(
             api = api,
@@ -582,52 +586,58 @@ class AppController internal constructor(application: Application, ioDispatcher:
 
     private fun startRefreshAll(generation: Int) {
         if (disposed.get() || api.currentSession() == null) {
-            refreshAllCoordinator.cancel()
+            cancelRefreshAll()
             contentLoading = false
             return
         }
-        appDataRefresher.refresh(
-            AppDataFallback(
-                devices = devices,
-                groups = groups,
-                trend = dashboard.communicationTrend
-            )
-        ).whenComplete { snapshot, error ->
-            mainHandler.post {
-                if (disposed.get()) return@post
-                val decision = refreshAllCoordinator.complete(generation)
-                if (decision.applyResults && api.currentSession() != null && error == null && snapshot != null) {
-                    devices = snapshot.devices
-                    groups = snapshot.groups
-                    if (snapshot.defaultDeviceGroup.isSuccess) {
-                        deviceManagement.applyDefaultGroup(snapshot.defaultDeviceGroup.getOrNull())
-                    }
-                    snapshot.user?.let {
-                        session.acceptUser(it)
-                        api.acceptCurrentUser(it)
-                    }
-                    radioSession.onAvailableGroupsChanged(
-                        snapshot.groups,
-                        session.uiState.user?.lastGroupId ?: 999
+        refreshAllJob = viewModelScope.launch {
+            val result = runCatching {
+                appDataRefresher.refresh(
+                    AppDataFallback(
+                        devices = devices,
+                        groups = groups,
+                        trend = dashboard.communicationTrend
                     )
-                    syncPttOverlay()
-                    dashboard = DashboardData(
-                        devices = snapshot.devices.size,
-                        onlineDevices = snapshot.devices.count(Device::online),
-                        groups = snapshot.groups.size,
-                        communications = snapshot.stats?.totalCount ?: dashboard.communications,
-                        communicationDurationMs =
-                            snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs,
-                        communicationTrend = snapshot.trend
-                    )
-                    session.uiState.user?.id?.let { dashboardStore.save(it, dashboard) }
+                )
+            }
+            result.exceptionOrNull()?.let { failure ->
+                if (failure is CancellationException) throw failure
+            }
+            if (disposed.get()) return@launch
+            val decision = refreshAllCoordinator.complete(generation)
+            val snapshot = result.getOrNull()
+            if (decision.applyResults && api.currentSession() != null && snapshot != null) {
+                devices = snapshot.devices
+                groups = snapshot.groups
+                if (snapshot.defaultDeviceGroup.isSuccess) {
+                    deviceManagement.applyDefaultGroup(snapshot.defaultDeviceGroup.getOrNull())
                 }
-                val nextGeneration = decision.nextGeneration
-                if (nextGeneration != null && api.currentSession() != null) {
-                    startRefreshAll(nextGeneration)
-                } else if (decision.isIdle || api.currentSession() == null) {
-                    contentLoading = false
+                snapshot.user?.let {
+                    session.acceptUser(it)
+                    api.acceptCurrentUser(it)
                 }
+                radioSession.onAvailableGroupsChanged(
+                    snapshot.groups,
+                    session.uiState.user?.lastGroupId ?: 999
+                )
+                syncPttOverlay()
+                dashboard = DashboardData(
+                    devices = snapshot.devices.size,
+                    onlineDevices = snapshot.devices.count(Device::online),
+                    groups = snapshot.groups.size,
+                    communications = snapshot.stats?.totalCount ?: dashboard.communications,
+                    communicationDurationMs =
+                        snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs,
+                    communicationTrend = snapshot.trend
+                )
+                session.uiState.user?.id?.let { dashboardStore.save(it, dashboard) }
+            }
+            val nextGeneration = decision.nextGeneration
+            if (nextGeneration != null && api.currentSession() != null) {
+                startRefreshAll(nextGeneration)
+            } else if (decision.isIdle || api.currentSession() == null) {
+                refreshAllJob = null
+                contentLoading = false
             }
         }
     }
@@ -941,7 +951,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     override fun onCleared() {
         if (!disposed.compareAndSet(false, true)) return
         mainHandler.removeCallbacksAndMessages(null)
-        refreshAllCoordinator.cancel()
+        cancelRefreshAll()
         invalidateBackgroundRequests()
         if (toolsDelegate.isInitialized()) toolsDelegate.value.close()
         if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.close()
@@ -975,7 +985,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private fun clearSessionResources() {
         stopVoiceAutoPlay(stopCurrent = false)
         if (toolsDelegate.isInitialized()) toolsDelegate.value.reset()
-        refreshAllCoordinator.cancel()
+        cancelRefreshAll()
         invalidateBackgroundRequests()
         contentLoading = false
         radioSession.onAccountChanged(null)
@@ -1027,6 +1037,12 @@ class AppController internal constructor(application: Application, ioDispatcher:
         groupSwitchGeneration.incrementAndGet()
         syncingGroupCounts.set(false)
         pendingOnlineDevicesSync.set(false)
+    }
+
+    private fun cancelRefreshAll() {
+        refreshAllCoordinator.cancel()
+        refreshAllJob?.cancel()
+        refreshAllJob = null
     }
 
     private fun Session.toRadioMessageAccount() = RadioMessageAccount(

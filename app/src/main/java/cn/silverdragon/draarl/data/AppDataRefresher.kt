@@ -1,8 +1,10 @@
 package cn.silverdragon.draarl.data
 
 import cn.silverdragon.draarl.network.ApiClient
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.Executor
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 interface AppDataSource {
     fun devices(): List<Device>
@@ -19,39 +21,36 @@ class ApiAppDataSource(private val api: ApiClient) : AppDataSource {
     override fun defaultDeviceGroup() = api.getDefaultDeviceGroup()
     override fun communicationStats() = api.getCommunicationStats()
     override fun communicationTrend() = api.getCommunicationTrend()
+
     // The coordinator owns state application. Avoid letting an older refresh mutate
     // the persisted session before its generation has been accepted.
     override fun currentUser() = api.getMe(updateSession = false)
 }
 
-class AppDataRefresher(private val source: AppDataSource, private val executor: Executor) {
-    fun refresh(fallback: AppDataFallback): CompletableFuture<AppDataSnapshot> {
-        val devices = supply { runCatching(source::devices).getOrDefault(fallback.devices) }
-        val groups = supply { runCatching(source::groups).getOrDefault(fallback.groups) }
-        val defaultGroup = supply { runCatching(source::defaultDeviceGroup) }
-        val stats = supply { runCatching(source::communicationStats).getOrNull() }
-        val trend = supply { runCatching(source::communicationTrend).getOrDefault(fallback.trend) }
-        val user = supply { runCatching(source::currentUser).getOrNull() }
-        return CompletableFuture.allOf(devices, groups, defaultGroup, stats, trend, user).thenApply {
-            AppDataSnapshot(
-                devices = devices.join(),
-                groups = groups.join(),
-                defaultDeviceGroup = defaultGroup.join(),
-                stats = stats.join(),
-                trend = trend.join(),
-                user = user.join(),
-            )
-        }
+class AppDataRefresher(private val source: AppDataSource, private val ioDispatcher: CoroutineDispatcher) {
+    suspend fun refresh(fallback: AppDataFallback): AppDataSnapshot = coroutineScope {
+        val devices = async(ioDispatcher) { capture(source::devices).getOrDefault(fallback.devices) }
+        val groups = async(ioDispatcher) { capture(source::groups).getOrDefault(fallback.groups) }
+        val defaultGroup = async(ioDispatcher) { capture(source::defaultDeviceGroup) }
+        val stats = async(ioDispatcher) { capture(source::communicationStats).getOrNull() }
+        val trend = async(ioDispatcher) { capture(source::communicationTrend).getOrDefault(fallback.trend) }
+        val user = async(ioDispatcher) { capture(source::currentUser).getOrNull() }
+        AppDataSnapshot(
+            devices = devices.await(),
+            groups = groups.await(),
+            defaultDeviceGroup = defaultGroup.await(),
+            stats = stats.await(),
+            trend = trend.await(),
+            user = user.await()
+        )
     }
 
-    private fun <T> supply(block: () -> T): CompletableFuture<T> = CompletableFuture.supplyAsync(block, executor)
+    private fun <T> capture(block: () -> T): Result<T> = runCatching(block).onFailure { failure ->
+        if (failure is CancellationException) throw failure
+    }
 }
 
-data class AppDataFallback(
-    val devices: List<Device>,
-    val groups: List<Group>,
-    val trend: List<DailyCommunicationStats>,
-)
+data class AppDataFallback(val devices: List<Device>, val groups: List<Group>, val trend: List<DailyCommunicationStats>)
 
 data class AppDataSnapshot(
     val devices: List<Device>,
@@ -59,5 +58,5 @@ data class AppDataSnapshot(
     val defaultDeviceGroup: Result<Int?>,
     val stats: CommunicationStats?,
     val trend: List<DailyCommunicationStats>,
-    val user: User?,
+    val user: User?
 )
