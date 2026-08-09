@@ -47,8 +47,9 @@ internal data class GroupDto(
             type = data.optInt("type"),
             status = data.optInt("status", 1),
             note = data.optStringClean("note"),
-            ownerId = data.optInt("ower_id"),
-            ownerCallsign = data.optStringClean("ower_callsign"),
+            ownerId = data.optInt("owner_id", data.optInt("ower_id")),
+            ownerCallsign = data.optStringClean("owner_callsign")
+                .ifBlank { data.optStringClean("ower_callsign") },
             joined = data.optBoolean("is_joined"),
             owner = data.optBoolean("is_owner"),
             requiresPassword = data.optBoolean("require_password"),
