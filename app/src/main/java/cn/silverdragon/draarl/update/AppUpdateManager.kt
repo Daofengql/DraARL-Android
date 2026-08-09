@@ -11,7 +11,8 @@ import cn.silverdragon.draarl.data.ClientResourceArtifact
 import cn.silverdragon.draarl.data.ClientResourceKeys
 import cn.silverdragon.draarl.data.ClientResourceManifest
 import cn.silverdragon.draarl.data.ClientResourceRelease
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.ClientResourceManifestQuery
+import cn.silverdragon.draarl.network.UpdatesApi
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -26,7 +27,7 @@ enum class AppUpdateStatus {
     DOWNLOADING,
     READY_TO_INSTALL,
     INSTALL_PERMISSION_REQUIRED,
-    ERROR,
+    ERROR
 }
 
 data class AppUpdateInfo(
@@ -36,7 +37,7 @@ data class AppUpdateInfo(
     val forceUpdate: Boolean,
     val artifact: ClientResourceArtifact,
     val currentVersionName: String,
-    val currentVersion: String,
+    val currentVersion: String
 ) {
     val displayTitle: String get() = title.ifBlank { "DraARL $version" }
 }
@@ -45,10 +46,7 @@ class AppUpdateInstallPermissionException : Exception("需要允许本应用安�
 
 class AppUpdateServerContractException(message: String) : Exception(message)
 
-class AppUpdateManager(
-    private val context: Context,
-    private val api: ApiClient,
-) {
+class AppUpdateManager(private val context: Context, private val api: UpdatesApi) {
     private val appContext = context.applicationContext
 
     val currentVersionName: String get() = resolveCurrentVersionName(appContext)
@@ -57,11 +55,13 @@ class AppUpdateManager(
     fun checkForUpdate(channel: String = "stable"): AppUpdateInfo? {
         val semver = currentVersion
         val manifest = api.getClientResourceManifest(
-            platform = "android",
-            arch = preferredAndroidResourceArch(),
-            clientVersion = compatibleClientVersionForResourceQuery(semver),
-            channel = channel,
-            androidApi = Build.VERSION.SDK_INT,
+            ClientResourceManifestQuery(
+                platform = "android",
+                arch = preferredAndroidResourceArch(),
+                clientVersion = compatibleClientVersionForResourceQuery(semver),
+                channel = channel,
+                androidApi = Build.VERSION.SDK_INT
+            )
         )
         if (manifest.schemaVersion != CLIENT_RESOURCE_SCHEMA_VERSION) {
             error("服务器资源清单版本暂不支持")
@@ -83,7 +83,7 @@ class AppUpdateManager(
             forceUpdate = item.release.forceUpdate,
             artifact = artifact,
             currentVersionName = currentVersionName,
-            currentVersion = semver,
+            currentVersion = semver
         )
     }
 
@@ -112,9 +112,8 @@ class AppUpdateManager(
         appContext.startActivity(intent)
     }
 
-    fun canRequestPackageInstalls(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || appContext.packageManager.canRequestPackageInstalls()
-    }
+    fun canRequestPackageInstalls(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || appContext.packageManager.canRequestPackageInstalls()
 
     fun openInstallPermissionSettings() {
         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -135,12 +134,13 @@ class AppUpdateManager(
         url: String,
         target: File,
         artifact: ClientResourceArtifact,
-        onProgress: (Float) -> Unit,
+        onProgress: (Float) -> Unit
     ): File {
         target.parentFile?.mkdirs()
         val part = File(target.absolutePath + PART_SUFFIX)
         val expectedSize = artifact.fileSize
-        val existingBytes = part.takeIf { it.isFile }?.length()?.takeIf { expectedSize <= 0L || it in 1 until expectedSize } ?: 0L
+        val existingBytes =
+            part.takeIf { it.isFile }?.length()?.takeIf { expectedSize <= 0L || it in 1 until expectedSize } ?: 0L
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = DOWNLOAD_CONNECT_TIMEOUT_MS
             readTimeout = DOWNLOAD_READ_TIMEOUT_MS
@@ -229,7 +229,7 @@ internal fun compatibleClientVersionForResourceQuery(version: String): String =
 
 internal fun requireCompatibleAppUpdateServerContract(
     manifest: ClientResourceManifest,
-    release: ClientResourceRelease,
+    release: ClientResourceRelease
 ) {
     val minServerVersion = release.minServerVersion.trim()
     if (minServerVersion.isNotEmpty()) {
@@ -247,7 +247,7 @@ internal fun requireCompatibleAppUpdateServerContract(
     }
     if (manifest.protocolVersion < release.requiredProtocolVersion) {
         throw AppUpdateServerContractException(
-            "服务器幽灵协议版本 ${manifest.protocolVersion} 低于更新要求 ${release.requiredProtocolVersion}",
+            "服务器幽灵协议版本 ${manifest.protocolVersion} 低于更新要求 ${release.requiredProtocolVersion}"
         )
     }
     val requiredCapabilities = release.requiredCapabilities.map { it.trim() }.filter(String::isNotEmpty).toSet()
@@ -255,7 +255,9 @@ internal fun requireCompatibleAppUpdateServerContract(
         throw AppUpdateServerContractException("客户端更新的协议能力约束无效")
     }
     val availableCapabilities = manifest.capabilities.map { it.trim().lowercase() }.filter(String::isNotEmpty).toSet()
-    val missingCapabilities = requiredCapabilities.map { it.lowercase() }.filterNot(availableCapabilities::contains).sorted()
+    val missingCapabilities = requiredCapabilities.map {
+        it.lowercase()
+    }.filterNot(availableCapabilities::contains).sorted()
     if (missingCapabilities.isNotEmpty()) {
         throw AppUpdateServerContractException("服务器缺少更新所需能力：${missingCapabilities.joinToString()}")
     }
@@ -274,12 +276,8 @@ internal fun compareSemver(left: String, right: String): Int {
     return leftVersion.compareTo(rightVersion)
 }
 
-private data class ParsedSemver(
-    val major: Int,
-    val minor: Int,
-    val patch: Int,
-    val preRelease: List<String>,
-) : Comparable<ParsedSemver> {
+private data class ParsedSemver(val major: Int, val minor: Int, val patch: Int, val preRelease: List<String>) :
+    Comparable<ParsedSemver> {
     override fun compareTo(other: ParsedSemver): Int {
         compareValuesBy(this, other, ParsedSemver::major, ParsedSemver::minor, ParsedSemver::patch)
             .takeIf { it != 0 }
@@ -304,7 +302,7 @@ private data class ParsedSemver(
                 major = match.groupValues[1].toIntOrNull() ?: 0,
                 minor = match.groupValues[2].toIntOrNull() ?: 0,
                 patch = match.groupValues[3].toIntOrNull() ?: 0,
-                preRelease = match.groupValues[4].takeIf(String::isNotBlank)?.split('.') ?: emptyList(),
+                preRelease = match.groupValues[4].takeIf(String::isNotBlank)?.split('.') ?: emptyList()
             )
         }
     }
@@ -321,17 +319,15 @@ private fun comparePreReleaseIdentifier(left: String, right: String): Int {
     }
 }
 
-private fun resolveCurrentVersionName(context: Context): String {
-    return runCatching {
-        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getPackageInfo(context.packageName, 0)
-        }
-        packageInfo.versionName.orEmpty()
-    }.getOrDefault("0.0.0").ifBlank { "0.0.0" }
-}
+private fun resolveCurrentVersionName(context: Context): String = runCatching {
+    val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+    } else {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageInfo(context.packageName, 0)
+    }
+    packageInfo.versionName.orEmpty()
+}.getOrDefault("0.0.0").ifBlank { "0.0.0" }
 
 private fun File.sha256(): String {
     val digest = MessageDigest.getInstance("SHA-256")
@@ -348,5 +344,5 @@ private fun File.sha256(): String {
 
 private val SEMVER_REGEX = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$""")
 private val STRICT_SEMVER_REGEX = Regex(
-    """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$""",
+    """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"""
 )

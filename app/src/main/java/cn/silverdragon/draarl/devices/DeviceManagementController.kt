@@ -9,20 +9,20 @@ import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
 import cn.silverdragon.draarl.data.DevicePasswordInfo
 import cn.silverdragon.draarl.data.Group
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.DevicesApi
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class DeviceManagementController(
-    private val api: ApiClient,
+    private val api: DevicesApi,
     private val executor: Executor,
     private val mainHandler: Handler,
     private val currentDevices: () -> List<Device>,
     private val updateDevices: (List<Device>) -> Unit,
     private val refreshAll: () -> Unit,
     private val showNotice: (String) -> Unit,
-    private val friendlyError: (Throwable) -> String,
+    private val friendlyError: (Throwable) -> String
 ) {
     private val closed = AtomicBoolean(false)
     private val generation = AtomicInteger(0)
@@ -51,7 +51,7 @@ class DeviceManagementController(
         onSuccess = { saved ->
             defaultDeviceGroupId = saved
             showNotice(if (saved == null) "已清除新设备默认群组" else "新设备默认群组已保存")
-        },
+        }
     )
 
     fun updateDevice(
@@ -59,14 +59,14 @@ class DeviceManagementController(
         name: String? = null,
         disableSend: Boolean? = null,
         disableReceive: Boolean? = null,
-        onSuccess: () -> Unit = {},
+        onSuccess: () -> Unit = {}
     ) = launch(
         operation = { api.updateDevice(device.id, name, disableSend, disableReceive) },
         onSuccess = {
             showNotice("设备设置已保存")
             onSuccess()
             refreshAll()
-        },
+        }
     )
 
     fun switchGroup(device: Device, group: Group, password: String = "", onSuccess: () -> Unit = {}) {
@@ -80,7 +80,7 @@ class DeviceManagementController(
                 showNotice("设备已切换到 ${group.name}")
                 onSuccess()
                 refreshAll()
-            },
+            }
         )
     }
 
@@ -90,7 +90,7 @@ class DeviceManagementController(
             updateDevices(currentDevices().filterNot { it.id == device.id })
             showNotice("设备已删除")
             onSuccess()
-        },
+        }
     )
 
     fun loadConfig(deviceId: Int) {
@@ -98,7 +98,7 @@ class DeviceManagementController(
         config = emptyMap()
         launch(
             operation = { api.getDeviceConfig(deviceId) },
-            onSuccess = { loaded -> if (configDeviceId == deviceId) config = loaded },
+            onSuccess = { loaded -> if (configDeviceId == deviceId) config = loaded }
         )
     }
 
@@ -111,7 +111,7 @@ class DeviceManagementController(
             config = value
             showNotice(message)
             onSuccess()
-        },
+        }
     )
 
     fun closeConfig() {
@@ -121,7 +121,7 @@ class DeviceManagementController(
 
     fun loadPassword() = launch(
         operation = api::getDevicePassword,
-        onSuccess = { passwordInfo = it },
+        onSuccess = { passwordInfo = it }
     )
 
     fun regeneratePassword() = launch(
@@ -129,7 +129,7 @@ class DeviceManagementController(
         onSuccess = {
             passwordInfo = it
             showNotice("设备密码已刷新，旧密码已失效")
-        },
+        }
     )
 
     fun resetBinding() {
@@ -147,7 +147,7 @@ class DeviceManagementController(
             onSuccess = {
                 bindPreview = it
                 bindResult = null
-            },
+            }
         )
     }
 
@@ -162,7 +162,7 @@ class DeviceManagementController(
             onSuccess = {
                 bindResult = it
                 refreshAll()
-            },
+            }
         )
     }
 

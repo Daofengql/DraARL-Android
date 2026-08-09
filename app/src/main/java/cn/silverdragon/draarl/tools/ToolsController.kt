@@ -9,13 +9,13 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import cn.silverdragon.draarl.data.User
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.ToolsApi
 import cn.silverdragon.draarl.tools.ble.BleProvisionController
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-class ToolsController(context: Context, private val api: ApiClient) {
+class ToolsController(context: Context, private val api: ToolsApi) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "draarl-tools") }
     private val cache = ToolCacheStore(context.applicationContext)
@@ -91,6 +91,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
                 draft = cache.loadDraft(activeUserId)
                 if (logbooks.isEmpty()) loadLogbooks(reset = true)
             }
+
             else -> Unit
         }
         return true
@@ -176,7 +177,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
                 myQth = it.myQth,
                 myRadio = it.myRadio,
                 myAntenna = it.myAntenna,
-                notes = it.notes,
+                notes = it.notes
             )
         } ?: LogbookDraft(myCallsign = user?.callsign.orEmpty(), localTime = LogbookTime.nowLocal())
         draft?.let { cache.saveDraft(activeUserId, it) }
@@ -202,8 +203,8 @@ class ToolsController(context: Context, private val api: ApiClient) {
                 myPower = preset.power?.toString().orEmpty(),
                 myQth = preset.qth,
                 myRadio = preset.radio,
-                myAntenna = preset.antenna,
-            ),
+                myAntenna = preset.antenna
+            )
         )
     }
 
@@ -287,7 +288,7 @@ class ToolsController(context: Context, private val api: ApiClient) {
         presetOrderDirty = false
         runPresetMutation(
             block = { api.reorderRadioPresets(reordered.map { it.id to it.sortOrder }) },
-            onSuccess = { loadPresets() },
+            onSuccess = { loadPresets() }
         )
     }
 

@@ -5,7 +5,7 @@ import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageStore
 import cn.silverdragon.draarl.data.ServerTimeParser
 import cn.silverdragon.draarl.data.User
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.RadioApi
 
 internal data class RadioMessagePage(val messages: List<RadioMessage>, val nextCursor: String, val hasMore: Boolean)
 
@@ -17,7 +17,7 @@ internal interface RadioMessageRemoteDataSource {
     fun loadPublicProfile(username: String): User
 }
 
-internal class ApiRadioMessageRemoteDataSource(private val api: ApiClient) : RadioMessageRemoteDataSource {
+internal class ApiRadioMessageRemoteDataSource(private val api: RadioApi) : RadioMessageRemoteDataSource {
     override fun loadPage(groupId: Int, cursor: String, accountUser: User): RadioMessagePage {
         val page = api.getGroupMessages(groupId = groupId, cursor = cursor)
         return RadioMessagePage(

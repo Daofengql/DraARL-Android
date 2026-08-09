@@ -18,20 +18,19 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 153 个文件，约 2.53 万有效代码行；JVM 测试 54 个文件、196 个用例。
+- 生产 Kotlin 163 个文件，约 2.55 万有效代码行；JVM 测试 55 个文件、207 个用例。
 - Compose 截图测试 2 个文件、12 张参考图，覆盖应用壳层和五个一级页面的浅色/深色状态。
-- 复杂度主要集中在 `ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
+- 复杂度主要集中在 `UdpRadioClient`、`AppController` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
 - Spotless、Detekt、单元测试、截图验证、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
 
 ## P1：代码边界与状态所有权
 
-- [ ] **拆分 `ApiClient`**
+- [ ] **类型化 API 映射**
 
-- 按 auth、devices、groups、radio、profile、tools、updates 划分 API 接口。
 - 将 `JSONObject` 映射移动到独立 DTO/Mapper，逐步使用类型化序列化。
 
-验收：认证和各领域接口不感知传输实现，网络错误可定位到具体请求和映射阶段。
+验收：各领域响应先进入类型化 DTO，网络错误可定位到具体请求和映射阶段。
 
 - [ ] **明确 `UdpRadioClient` 状态机**
 
@@ -100,7 +99,7 @@
 - [ ] **补核心边界测试**
 
 - `AppController` 拆出的 reducer、协调器和退出清理。
-- `ApiClient` 领域映射。
+- 各领域 DTO/Mapper 的异常字段、缺失字段和兼容字段。
 - `UdpRadioClient` 状态转换、超时、重连、乱序包与资源释放。
 - `RadioConnectionService` 缓冲、绑定/解绑和前台状态。
 - `RadioMessageStore` 迁移、事务、分页与并发访问。
@@ -131,7 +130,7 @@
 ## 推荐执行顺序
 
 1. 分两到三个小批次改造壳层、列表/设置页和反馈容器。
-2. 拆分 `ApiClient` 并补 MockWebServer 测试。
+2. 完成各领域 DTO/Mapper 类型化和异常响应测试。
 3. 显式化 `UdpRadioClient` 状态机并补确定性测试。
 4. 处理 Compose 重组、Release/R8 和 Baseline Profile。
 5. 每个批次同步规模数据与文档，最后执行完整真机回归。

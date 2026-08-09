@@ -2,7 +2,7 @@ package cn.silverdragon.draarl.radio.session
 
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.SecureSessionStore
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.RadioApi
 
 internal interface RadioSessionRemoteDataSource {
     fun loadAccessPoints(): List<AccessPoint>
@@ -14,7 +14,7 @@ internal interface RadioSessionRemoteDataSource {
     fun updateRouting(sessionId: String, txGroupId: Int, rxGroupIds: Collection<Int>): RadioSessionRoutingResult
 }
 
-internal class ApiRadioSessionRemoteDataSource(private val api: ApiClient) : RadioSessionRemoteDataSource {
+internal class ApiRadioSessionRemoteDataSource(private val api: RadioApi) : RadioSessionRemoteDataSource {
     override fun loadAccessPoints(): List<AccessPoint> = api.getAccessPoints()
 
     override fun freshAccessToken(): String = api.freshAccessToken()

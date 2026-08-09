@@ -61,12 +61,14 @@ internal class ApiSessionManager(
     private val requests: ApiRequestExecutor,
     onSessionChanged: (Session?) -> Unit = {},
     clockMillis: () -> Long = System::currentTimeMillis
-) {
+) : ApiJsonRequester {
     private val state = ApiSessionState(storage, onSessionChanged)
     private val tokenRefresher = ApiTokenRefresher(state, requests, clockMillis)
     private val requester = AuthenticatedApiRequester(state, requests, tokenRefresher)
 
     fun currentSession(): Session? = state.current()
+
+    fun sessionExpectation(): ApiSessionExpectation? = state.expectation()
 
     fun prepareCurrentSession(baseUrl: String): Session? = state.prepare(baseUrl)
 
@@ -77,7 +79,7 @@ internal class ApiSessionManager(
 
     fun accessToken(forceRefresh: Boolean): String = tokenRefresher.accessToken(forceRefresh)
 
-    fun execute(method: String, path: String, body: JSONObject? = null, requiresAuth: Boolean = true): JSONObject =
+    override fun execute(method: String, path: String, body: JSONObject?, requiresAuth: Boolean): JSONObject =
         requester.execute(method, path, body, requiresAuth)
 
     fun detachSessionForLogout(expected: Session? = null): Session? = state.detach(expected)
@@ -93,13 +95,12 @@ internal class ApiSessionManager(
         Unit
     }
 
-    fun acceptUser(user: User) {
-        val current = currentSession() ?: return
-        if (current.user.id == user.id) state.replace(current.copy(user = user))
-    }
+    fun acceptUser(user: User, expected: ApiSessionExpectation? = null) = state.acceptUser(user, expected)
 
-    fun clearSession() = state.replace(null)
+    fun clearSession(expected: ApiSessionExpectation? = null) = state.clear(expected)
 }
+
+internal data class ApiSessionExpectation(val baseUrl: String, val userId: Int, val operationGeneration: Int)
 
 private class ApiSessionState(
     private val storage: ApiSessionStorage,
@@ -110,6 +111,10 @@ private class ApiSessionState(
     private val sessionRef = AtomicReference(storage.load())
 
     fun current(): Session? = sessionRef.get()
+
+    fun expectation(): ApiSessionExpectation? = locked { current ->
+        current?.let { ApiSessionExpectation(it.baseUrl, it.user.id, operationGeneration.get()) }
+    }
 
     fun prepare(baseUrl: String): Session? = locked { current ->
         val normalizedUrl = ApiClient.normalizeBaseUrl(baseUrl)
@@ -141,7 +146,26 @@ private class ApiSessionState(
         current?.also { replace(null) }
     }
 
+    fun acceptUser(user: User, expected: ApiSessionExpectation?) = locked { current ->
+        if (current == null) return@locked
+        val matchesUser = current.user.id == user.id
+        val matchesExpected = expected == null || expected.matches(current, operationGeneration.get())
+        if (!matchesUser || !matchesExpected) return@locked
+        if (current.user != user) replace(current.copy(user = user))
+    }
+
+    fun clear(expected: ApiSessionExpectation?) = locked { current ->
+        if (expected != null && !expected.matches(current, operationGeneration.get())) return@locked
+        operationGeneration.incrementAndGet()
+        if (current != null) replace(null)
+    }
+
     fun <T> locked(block: (Session?) -> T): T = synchronized(lock) { block(current()) }
+}
+
+private fun ApiSessionExpectation.matches(session: Session?, generation: Int): Boolean {
+    if (session == null) return false
+    return operationGeneration == generation && baseUrl == session.baseUrl && userId == session.user.id
 }
 
 private class ApiTokenRefresher(

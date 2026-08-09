@@ -53,7 +53,6 @@
     <ID>CognitiveComplexMethod:RadioStatusStrip.kt:@Composable fun RadioStatusStrip</ID>
     <ID>CognitiveComplexMethod:RegisterForm.kt:@Composable internal fun RegisterFormStepped</ID>
     <ID>CognitiveComplexMethod:SystemSettingsScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun SystemSettingsScreen</ID>
-    <ID>ComplexCondition:ApiClient.kt:ApiClient$code == 401 &amp;&amp; requiresAuth &amp;&amp; allowRefresh &amp;&amp; refreshSession(token.orEmpty())</ID>
     <ID>ComplexCondition:AppController.kt:AppController$decision.applyResults &amp;&amp; api.currentSession() != null &amp;&amp; error == null &amp;&amp; snapshot != null</ID>
     <ID>ComplexCondition:AppController.kt:AppController$disposed.get() || generation != accessPointDiscoveryGeneration.get() || user?.id != userId || !authenticated</ID>
     <ID>ComplexCondition:AppController.kt:AppController$disposed.get() || generation != groupCountsGeneration.get() || user?.id != userId || !authenticated</ID>
@@ -97,7 +96,6 @@
     <ID>InjectDispatcher:AmapPlaceService.kt:AmapPlaceService$IO</ID>
     <ID>InjectDispatcher:AprsIsClient.kt:AprsIsClient$IO</ID>
     <ID>InjectDispatcher:AprsService.kt:AprsService$IO</ID>
-    <ID>LargeClass:ApiClient.kt:ApiClient</ID>
     <ID>LargeClass:AppController.kt:AppController : AndroidViewModel</ID>
     <ID>LargeClass:UdpRadioClient.kt:UdpRadioClient</ID>
     <ID>LongMethod:AccountSecurityScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AccountSecurityScreen</ID>
@@ -126,10 +124,6 @@
     <ID>LongMethod:StorageSettingsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun StorageSettingsScreen</ID>
     <ID>LongMethod:SystemSettingsScreen.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun SystemSettingsScreen</ID>
     <ID>LongMethod:UdpRadioClient.kt:UdpRadioClient$private fun establish</ID>
-    <ID>LongParameterList:ApiClient.kt:ApiClient$fun getClientResourceManifest: ClientResourceManifest</ID>
-    <ID>LongParameterList:ApiClient.kt:ApiClient$fun register: RegistrationResult</ID>
-    <ID>LongParameterList:ApiClient.kt:ApiClient$fun updateGroup: Group</ID>
-    <ID>LongParameterList:ApiClient.kt:ApiClient$fun updateProfile: User</ID>
     <ID>LongParameterList:AuthComponents.kt:@Composable internal fun CaptchaRow</ID>
     <ID>LongParameterList:AuthComponents.kt:@Composable internal fun PasswordField</ID>
     <ID>LongParameterList:CaptchaInput.kt:@Composable fun CaptchaInput</ID>
@@ -166,30 +160,10 @@
     <ID>LongParameterList:SystemSettingsScreen.kt:@Composable private fun SettingsToggleRow</ID>
     <ID>LongParameterList:UdpRadioClient.kt:UdpRadioClient$private fun handleVoice</ID>
     <ID>LongParameterList:UdpRadioClient.kt:UdpRadioClient$private fun streamPcmPackets</ID>
-    <ID>LoopWithTooManyJumpStatements:ApiClient.kt:ApiClient$while</ID>
     <ID>LoopWithTooManyJumpStatements:AprsIsClient.kt:AprsIsClient$while</ID>
     <ID>LoopWithTooManyJumpStatements:UdpRadioClient.kt:UdpRadioClient$while</ID>
     <ID>MagicNumber:AccessPointSelector.kt:AccessPointSelector$1_000_000L</ID>
     <ID>MagicNumber:AccessPointSelector.kt:AccessPointSelector$500L</ID>
-    <ID>MagicNumber:ApiClient.kt:200</ID>
-    <ID>MagicNumber:ApiClient.kt:299</ID>
-    <ID>MagicNumber:ApiClient.kt:500</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$100</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$10_800L</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$1_209_600L</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$200</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$299</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$300</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$30_000</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$400</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$401</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$403</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$500</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$600</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$60_000L</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$65535</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient$999</ID>
-    <ID>MagicNumber:ApiClient.kt:ApiClient.Companion$400</ID>
     <ID>MagicNumber:AppController.kt:AppController$403</ID>
     <ID>MagicNumber:AppController.kt:AppController$404</ID>
     <ID>MagicNumber:AppController.kt:AppController$405</ID>
@@ -400,8 +374,6 @@
     <ID>MatchingDeclarationName:LogbookPlacePickerScreen.kt:LogbookPlaceSelection</ID>
     <ID>MatchingDeclarationName:RadioStatusStrip.kt:RadioStatusStripState</ID>
     <ID>MatchingDeclarationName:UiListDerivations.kt:VisibleGroupSections</ID>
-    <ID>MaxLineLength:ApiClient.kt:ApiClient$"Content-Disposition: form-data; name=\"file_type\"$lineEnd$lineEnd$fileType$lineEnd--$boundary--$lineEnd".toByteArray()</ID>
-    <ID>MaxLineLength:ApiClient.kt:ApiClient$artifacts = (item.optJSONArray("artifacts") ?: JSONArray()).objects().map(::parseClientResourceArtifact)</ID>
     <ID>MaxLineLength:AppController.kt:AppController$communicationDurationMs = snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs</ID>
     <ID>MaxLineLength:AppController.kt:AppController$if</ID>
     <ID>MaxLineLength:AppController.kt:AppController$if (message.mine || currentClientMessage) currentUser?.callsign.orEmpty() else online?.callsign.orEmpty()</ID>
@@ -561,7 +533,6 @@
     <ID>NoNameShadowing:DeviceManagementController.kt:DeviceManagementController${ it.id == device.id }</ID>
     <ID>NoNameShadowing:GroupManagementController.kt:GroupManagementController${ it.id == device.id }</ID>
     <ID>NoNameShadowing:GroupManagementController.kt:GroupManagementController${ it.id == group.id }</ID>
-    <ID>ReturnCount:ApiClient.kt:ApiClient$fun acceptCurrentUser</ID>
     <ID>ReturnCount:AppController.kt:AppController$fun checkAppUpdate</ID>
     <ID>ReturnCount:AppController.kt:AppController$fun connectRadio</ID>
     <ID>ReturnCount:AppController.kt:AppController$fun downloadAndInstallAppUpdate</ID>
@@ -616,16 +587,9 @@
     <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$private fun scheduleReconnect</ID>
     <ID>ReturnCount:UdpRadioClient.kt:UdpRadioClient$private fun send: Boolean</ID>
     <ID>ReturnCount:VoiceStreamPlaybackQueue.kt:VoiceStreamPlaybackQueue$fun onStream: Boolean</ID>
-    <ID>SwallowedException:ApiClient.kt:ApiClient$error: Exception</ID>
     <ID>SwallowedException:AvatarCropDialog.kt:e: Exception</ID>
-    <ID>ThrowsCount:ApiClient.kt:ApiClient$fun freshAccessToken: String</ID>
-    <ID>ThrowsCount:ApiClient.kt:ApiClient$fun renewAccessToken: String</ID>
-    <ID>ThrowsCount:ApiClient.kt:ApiClient$fun restoreAndValidate: Session</ID>
-    <ID>ThrowsCount:ApiClient.kt:ApiClient$private fun rawRequest: JSONObject</ID>
-    <ID>ThrowsCount:ApiClient.kt:ApiClient.Companion$fun normalizeBaseUrl: String</ID>
     <ID>ThrowsCount:AppUpdateManager.kt:internal fun requireCompatibleAppUpdateServerContract</ID>
     <ID>ThrowsCount:UdpRadioClient.kt:UdpRadioClient$private fun establish</ID>
-    <ID>TooGenericExceptionCaught:ApiClient.kt:ApiClient$error: Exception</ID>
     <ID>TooGenericExceptionCaught:AprsMapPanel.kt:error: Throwable</ID>
     <ID>TooGenericExceptionCaught:AvatarCropDialog.kt:e: Exception</ID>
     <ID>TooGenericExceptionCaught:LocationMapScreen.kt:error: Throwable</ID>
@@ -634,8 +598,6 @@
     <ID>TooGenericExceptionCaught:OpusCaptureController.kt:OpusCaptureController$error: Exception</ID>
     <ID>TooGenericExceptionCaught:RadioScreen.kt:error: Throwable</ID>
     <ID>TooGenericExceptionCaught:UdpRadioClient.kt:UdpRadioClient$error: Exception</ID>
-    <ID>TooManyFunctions:ApiClient.kt:ApiClient</ID>
-    <ID>TooManyFunctions:ApiClient.kt:cn.silverdragon.draarl.network.ApiClient.kt</ID>
     <ID>TooManyFunctions:AppController.kt:AppController : AndroidViewModel</ID>
     <ID>TooManyFunctions:BleProvisionController.kt:BleProvisionController</ID>
     <ID>TooManyFunctions:BleProvisioningClient.kt:BleProvisioningClient</ID>
@@ -671,8 +633,6 @@
     <ID>UseCheckOrError:BleProvisioningClient.kt:BleProvisioningClient$throw IllegalStateException("设备尚未连接")</ID>
     <ID>UseCheckOrError:BleProvisioningClient.kt:BleProvisioningClient$throw IllegalStateException("该设备不支持蓝牙")</ID>
     <ID>UseCheckOrError:UdpRadioClient.kt:UdpRadioClient$throw IllegalStateException("UDP 认证超时")</ID>
-    <ID>UseOrEmpty:ApiClient.kt:ApiClient$connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""</ID>
-    <ID>UseOrEmpty:ApiClient.kt:optString(key).takeUnless { it == "null" } ?: ""</ID>
     <ID>UseOrEmpty:AppUpdateManager.kt:ParsedSemver.Companion$match.groupValues[4].takeIf(String::isNotBlank)?.split('.') ?: emptyList()</ID>
     <ID>UseOrEmpty:SecureSessionStore.kt:SecureSessionStore$preferences.getString(KEY_ACCESS_POINT, "") ?: ""</ID>
     <ID>UseOrEmpty:SecureSessionStore.kt:SecureSessionStore$preferences.getString(KEY_LAST_SERVER, "") ?: ""</ID>

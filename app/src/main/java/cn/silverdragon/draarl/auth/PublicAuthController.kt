@@ -7,17 +7,18 @@ import androidx.compose.runtime.setValue
 import cn.silverdragon.draarl.AppConfig
 import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.RegistrationResult
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.AuthApi
+import cn.silverdragon.draarl.network.RegistrationRequest
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class PublicAuthController(
-    private val api: ApiClient,
+    private val api: AuthApi,
     private val executor: Executor,
     private val mainHandler: Handler,
     private val showLoginError: (String) -> Unit,
-    private val friendlyError: (Throwable) -> String,
+    private val friendlyError: (Throwable) -> String
 ) {
     private val closed = AtomicBoolean(false)
     private val captchaGeneration = AtomicInteger(0)
@@ -102,12 +103,7 @@ class PublicAuthController(
         passwordResetComplete = false
     }
 
-    fun sendEmailCode(
-        email: String,
-        purpose: String,
-        captchaCode: String,
-        onSuccess: (EmailCodeSession) -> Unit,
-    ) {
+    fun sendEmailCode(email: String, purpose: String, captchaCode: String, onSuccess: (EmailCodeSession) -> Unit) {
         if (busy || closed.get()) return
         val trimmedEmail = email.trim()
         val submittedCaptchaId = captchaId
@@ -133,7 +129,7 @@ class PublicAuthController(
                     trimmedEmail,
                     normalizedPurpose,
                     submittedCaptchaId,
-                    captchaCode,
+                    captchaCode
                 )
             }.onSuccess { session ->
                 mainHandler.post {
@@ -164,7 +160,7 @@ class PublicAuthController(
         confirmPassword: String,
         sessionId: String,
         emailCode: String,
-        onSuccess: (RegistrationResult) -> Unit,
+        onSuccess: (RegistrationResult) -> Unit
     ) {
         if (busy || closed.get()) return
         val trimmedUsername = username.trim()
@@ -173,13 +169,20 @@ class PublicAuthController(
         val trimmedPhone = phone.trim()
         val validationError = when {
             !trimmedUsername.matches(USERNAME_PATTERN) -> "用户名必须是 3-20 位字母、数字或下划线"
+
             !normalizedCallsign.matches(CALLSIGN_PATTERN) -> "呼号格式不正确，应以字母开头，3-10 个字符"
+
             !trimmedEmail.matches(EMAIL_PATTERN) -> "请输入正确的邮箱地址"
+
             trimmedPhone.isNotBlank() && !trimmedPhone.matches(PHONE_PATTERN) -> "手机号格式不正确"
+
             password.length < 6 -> "密码长度至少 6 位"
+
             password != confirmPassword -> "两次输入的密码不一致"
+
             registrationRequiresEmailVerification && (sessionId.isBlank() || emailCode.isBlank()) ->
                 "请先获取并填写邮箱验证码"
+
             else -> null
         }
         if (validationError != null) {
@@ -192,15 +195,17 @@ class PublicAuthController(
         executor.execute {
             runCatching {
                 api.register(
-                    baseUrl = AppConfig.BASE_URL,
-                    username = trimmedUsername,
-                    password = password,
-                    callsign = normalizedCallsign,
-                    phone = trimmedPhone,
-                    nickname = nickname.trim().ifBlank { trimmedUsername },
-                    email = trimmedEmail,
-                    sessionId = if (registrationRequiresEmailVerification) sessionId else "",
-                    emailCode = if (registrationRequiresEmailVerification) emailCode else "",
+                    RegistrationRequest(
+                        baseUrl = AppConfig.BASE_URL,
+                        username = trimmedUsername,
+                        password = password,
+                        callsign = normalizedCallsign,
+                        phone = trimmedPhone,
+                        nickname = nickname.trim().ifBlank { trimmedUsername },
+                        email = trimmedEmail,
+                        sessionId = if (registrationRequiresEmailVerification) sessionId else "",
+                        emailCode = if (registrationRequiresEmailVerification) emailCode else ""
+                    )
                 )
             }.onSuccess { result ->
                 mainHandler.post {
@@ -218,7 +223,7 @@ class PublicAuthController(
         emailCode: String,
         newPassword: String,
         confirmPassword: String,
-        onSuccess: () -> Unit,
+        onSuccess: () -> Unit
     ) {
         if (busy || closed.get()) return
         val validationError = when {

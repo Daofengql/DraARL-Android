@@ -171,6 +171,38 @@ class ApiSessionManagerTest {
         assertTrue(fixture.sessionChanges.isEmpty())
     }
 
+    @Test
+    fun staleProfileResultCannotMutateReplacementSession() = withServer { server ->
+        val original = session(server, accessToken = "original-token")
+        val fixture = fixture(server, session = original)
+        val expectation = fixture.manager.sessionExpectation()
+        val operation = fixture.manager.beginAuthOperation()
+        val replacement = session(server, accessToken = "replacement-token")
+        fixture.manager.completeAuthOperation(operation, replacement, "cancelled")
+
+        fixture.manager.acceptUser(original.user.copy(nickname = "stale"), expected = expectation)
+        fixture.manager.clearSession(expected = expectation)
+
+        assertEquals(replacement, fixture.manager.currentSession())
+        assertEquals(replacement, fixture.storage.current())
+        assertEquals(0, fixture.storage.clearCount.get())
+        assertEquals(1, fixture.storage.saveCount.get())
+    }
+
+    @Test
+    fun profileExpectationRemainsValidAcrossTokenRefresh() = withServer { server ->
+        server.enqueue(jsonResponse(200, refreshResponse("refreshed-token")))
+        val fixture = fixture(server, session = session(server))
+        val expectation = fixture.manager.sessionExpectation()
+
+        assertEquals("refreshed-token", fixture.manager.accessToken(forceRefresh = true))
+        fixture.manager.acceptUser(user = session(server).user.copy(nickname = "Updated"), expected = expectation)
+
+        assertEquals("refreshed-token", fixture.manager.currentSession()?.accessToken)
+        assertEquals("Updated", fixture.manager.currentSession()?.user?.nickname)
+        assertEquals("Updated", fixture.storage.current()?.user?.nickname)
+    }
+
     private fun fixture(
         server: MockWebServer,
         session: Session?,

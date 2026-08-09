@@ -5,19 +5,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import cn.silverdragon.draarl.data.User
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.ProfileApi
+import cn.silverdragon.draarl.network.ProfileUpdateRequest
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class ProfileController(
-    private val api: ApiClient,
+    private val api: ProfileApi,
     private val executor: Executor,
     private val mainHandler: Handler,
     private val currentUser: () -> User?,
     private val updateUser: (User) -> Unit,
     private val showNotice: (String) -> Unit,
-    private val friendlyError: (Throwable) -> String,
+    private val friendlyError: (Throwable) -> String
 ) {
     private val closed = AtomicBoolean(false)
     private val generation = AtomicInteger(0)
@@ -35,16 +36,18 @@ class ProfileController(
         dmrid: Int = 0,
         mdcid: String = "",
         alarmMsg: Boolean = false,
-        onSuccess: () -> Unit = {},
+        onSuccess: () -> Unit = {}
     ) = launch(
         operation = {
-            api.updateProfile(nickname, phone, address, introduction, birthday, sex, dmrid, mdcid, alarmMsg)
+            api.updateProfile(
+                ProfileUpdateRequest(nickname, phone, address, introduction, birthday, sex, dmrid, mdcid, alarmMsg)
+            )
         },
         onSuccess = {
             updateUser(it)
             showNotice("个人资料已保存")
             onSuccess()
-        },
+        }
     )
 
     fun uploadAvatar(fileBytes: ByteArray, fileName: String, onSuccess: () -> Unit = {}) = launch(
@@ -56,12 +59,12 @@ class ProfileController(
             updateUser(it)
             showNotice("头像已更新")
             onSuccess()
-        },
+        }
     )
 
     fun changePassword(oldPassword: String, newPassword: String) = launch(
         operation = { api.changePassword(oldPassword, newPassword) },
-        onSuccess = { showNotice("密码已修改") },
+        onSuccess = { showNotice("密码已修改") }
     )
 
     fun changeEmail(
@@ -69,7 +72,7 @@ class ProfileController(
         oldCode: String,
         newSessionId: String,
         newCode: String,
-        onSuccess: () -> Unit = {},
+        onSuccess: () -> Unit = {}
     ) {
         val user = currentUser() ?: return
         val validationError = EmailChangeValidation.validate(
@@ -77,7 +80,7 @@ class ProfileController(
             oldSessionId = oldSessionId,
             oldCode = oldCode,
             newSessionId = newSessionId,
-            newCode = newCode,
+            newCode = newCode
         )
         if (validationError != null) {
             showNotice(validationError)
@@ -89,7 +92,7 @@ class ProfileController(
                 updateUser(it)
                 showNotice("邮箱已更新")
                 onSuccess()
-            },
+            }
         )
     }
 
@@ -133,7 +136,7 @@ internal object EmailChangeValidation {
         oldSessionId: String,
         oldCode: String,
         newSessionId: String,
-        newCode: String,
+        newCode: String
     ): String? = when {
         hasVerifiedEmail && (oldSessionId.isBlank() || oldCode.isBlank()) -> "请先完成当前邮箱验证"
         newSessionId.isBlank() -> "请先向新邮箱发送验证码"

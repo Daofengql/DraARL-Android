@@ -6,20 +6,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.Group
-import cn.silverdragon.draarl.network.ApiClient
+import cn.silverdragon.draarl.network.GroupUpdateRequest
+import cn.silverdragon.draarl.network.GroupsApi
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class GroupManagementController(
-    private val api: ApiClient,
+    private val api: GroupsApi,
     private val executor: Executor,
     private val mainHandler: Handler,
     private val currentGroups: () -> List<Group>,
     private val updateGroups: (List<Group>) -> Unit,
     private val refreshAll: () -> Unit,
     private val showNotice: (String) -> Unit,
-    private val friendlyError: (Throwable) -> String,
+    private val friendlyError: (Throwable) -> String
 ) {
     private val closed = AtomicBoolean(false)
     private val generation = AtomicInteger(0)
@@ -46,14 +47,7 @@ class GroupManagementController(
         searchResults = emptyList()
     }
 
-    fun save(
-        editing: Group?,
-        name: String,
-        type: Int,
-        password: String,
-        note: String,
-        onSuccess: () -> Unit = {},
-    ) {
+    fun save(editing: Group?, name: String, type: Int, password: String, note: String, onSuccess: () -> Unit = {}) {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) {
             showNotice("请输入群组名称")
@@ -68,27 +62,31 @@ class GroupManagementController(
                 if (editing == null) {
                     api.createGroup(trimmedName, type, password, note.trim())
                 } else {
-                    api.updateGroup(editing.id, trimmedName, type, password, note.trim())
+                    api.updateGroup(
+                        GroupUpdateRequest(editing.id, trimmedName, type, password, note.trim())
+                    )
                 }
             },
             onSuccess = {
                 showNotice(if (editing == null) "群组已创建" else "群组设置已保存")
                 onSuccess()
                 refreshAll()
-            },
+            }
         )
     }
 
     fun setEnabled(group: Group, enabled: Boolean) = launch(
-        operation = { api.updateGroup(group.id, status = if (enabled) 1 else 0) },
+        operation = {
+            api.updateGroup(GroupUpdateRequest(groupId = group.id, status = if (enabled) 1 else 0))
+        },
         onSuccess = {
             updateGroups(
                 currentGroups().map { current ->
                     if (current.id == group.id) current.copy(status = if (enabled) 1 else 0) else current
-                },
+                }
             )
             showNotice(if (enabled) "群组已启用" else "群组已停用")
-        },
+        }
     )
 
     fun delete(group: Group, onSuccess: () -> Unit = {}) = launch(
@@ -98,7 +96,7 @@ class GroupManagementController(
             showNotice("群组已删除")
             onSuccess()
             refreshAll()
-        },
+        }
     )
 
     fun loadDevices(groupId: Int) {
@@ -106,7 +104,7 @@ class GroupManagementController(
         managedDevices = emptyList()
         launch(
             operation = { api.getGroupDevices(groupId) },
-            onSuccess = { if (managedGroupId == groupId) managedDevices = it },
+            onSuccess = { if (managedGroupId == groupId) managedDevices = it }
         )
     }
 
@@ -121,7 +119,7 @@ class GroupManagementController(
         groupId: Int,
         device: Device,
         disableSend: Boolean = device.disableSend,
-        disableReceive: Boolean = device.disableReceive,
+        disableReceive: Boolean = device.disableReceive
     ) = launch(
         operation = { api.updateGroupDeviceCommControl(groupId, device.id, disableSend, disableReceive) },
         onSuccess = { (sendDisabled, receiveDisabled) ->
@@ -132,7 +130,7 @@ class GroupManagementController(
                     current
                 }
             }
-        },
+        }
     )
 
     fun kickDevice(groupId: Int, device: Device) = launch(
@@ -141,7 +139,7 @@ class GroupManagementController(
             managedDevices = managedDevices.filterNot { it.id == device.id }
             showNotice("设备已移出群组")
             refreshAll()
-        },
+        }
     )
 
     fun reset() {
