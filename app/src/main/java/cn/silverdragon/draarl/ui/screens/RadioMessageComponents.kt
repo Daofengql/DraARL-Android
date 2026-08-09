@@ -85,6 +85,7 @@ internal fun OnlineDeviceStrip(devices: List<OnlineDevice>) {
 @Composable
 internal fun MessageItem(
     state: MessageItemState,
+    playing: Boolean,
     onToggleVoicePlayback: (RadioMessage) -> Unit,
     onOpenLocation: (Wgs84LocationMessage) -> Unit
 ) {
@@ -127,7 +128,7 @@ internal fun MessageItem(
             }
             MessageBubble(
                 message = message,
-                playing = state.playing,
+                playing = playing,
                 onToggleVoicePlayback = onToggleVoicePlayback,
                 onOpenLocation = onOpenLocation
             )
@@ -144,7 +145,6 @@ internal fun MessageItem(
 internal data class MessageItemState(
     val message: RadioMessage,
     val profile: User?,
-    val playing: Boolean,
     val sourceGroupName: String,
     val showTimeDivider: Boolean
 )

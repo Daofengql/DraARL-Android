@@ -21,11 +21,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -42,6 +45,7 @@ import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.LocationMessageKind
 import cn.silverdragon.draarl.data.RadioConnectionPhase
+import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
@@ -55,6 +59,42 @@ import kotlinx.coroutines.launch
 private enum class RadioContentMode {
     MAP,
     MESSAGES
+}
+
+@Composable
+private fun AutoPlayMessageScrollEffect(
+    controller: AppController,
+    selectedGroupId: Int,
+    messages: List<RadioMessage>,
+    listState: LazyListState
+) {
+    val autoPlaying = controller.voiceAutoPlayEnabled
+    val playingMessageId = controller.playingMessageId
+    LaunchedEffect(playingMessageId, autoPlaying, selectedGroupId) {
+        if (!autoPlaying) return@LaunchedEffect
+        val playingId = playingMessageId ?: return@LaunchedEffect
+        val playingIndex = messages.indexOfFirst { it.id == playingId }
+        if (playingIndex >= 0) listState.animateScrollToItem(playingIndex)
+    }
+}
+
+@Composable
+private fun ControllerMessageItem(
+    controller: AppController,
+    state: MessageItemState,
+    onOpenLocation: (Wgs84LocationMessage) -> Unit
+) {
+    val playing by remember(controller, state.message.id) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            controller.playingMessageId == state.message.id
+        }
+    }
+    MessageItem(
+        state = state,
+        playing = playing,
+        onToggleVoicePlayback = controller::toggleVoicePlayback,
+        onOpenLocation = onOpenLocation
+    )
 }
 
 @Composable
@@ -160,12 +200,7 @@ fun RadioScreen(
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
-    LaunchedEffect(controller.playingMessageId, controller.voiceAutoPlayEnabled, selectedGroupId) {
-        if (!controller.voiceAutoPlayEnabled) return@LaunchedEffect
-        val playingId = controller.playingMessageId ?: return@LaunchedEffect
-        val playingIndex = messages.indexOfFirst { it.id == playingId }
-        if (playingIndex >= 0) listState.animateScrollToItem(playingIndex)
-    }
+    AutoPlayMessageScrollEffect(controller, selectedGroupId, messages, listState)
     LaunchedEffect(messages.firstOrNull()?.id, messages.size, messageState.historyLoading) {
         if (messageState.historyLoading || historyAnchorId.isBlank()) return@LaunchedEffect
         val anchorIndex = messages.indexOfFirst { it.id == historyAnchorId }
@@ -289,7 +324,8 @@ fun RadioScreen(
                                     }
                                     itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
                                         val previousTimestamp = messages.getOrNull(index - 1)?.timestamp
-                                        MessageItem(
+                                        ControllerMessageItem(
+                                            controller = controller,
                                             state = MessageItemState(
                                                 message = message,
                                                 profile = if (message.mine) {
@@ -297,12 +333,10 @@ fun RadioScreen(
                                                 } else {
                                                     messageState.publicProfiles[message.senderUsername.lowercase()]
                                                 },
-                                                playing = controller.playingMessageId == message.id,
                                                 sourceGroupName = groupNames[message.groupId].orEmpty(),
                                                 showTimeDivider = previousTimestamp == null ||
                                                     message.timestamp - previousTimestamp >= RADIO_TIME_DIVIDER_MS
                                             ),
-                                            onToggleVoicePlayback = controller::toggleVoicePlayback,
                                             onOpenLocation = onOpenLocation
                                         )
                                     }

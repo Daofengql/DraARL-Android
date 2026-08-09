@@ -51,7 +51,7 @@
 
 - [ ] **缩小 Compose 重组范围**
 
-- 将连接瞬态和播放位置限制在最小 Composable 范围。
+- 将连接瞬态限制在最小 Composable 范围。
 - 页面订阅细粒度 `UiState`，列表项使用稳定 key 和不可变模型。
 - 使用 Layout Inspector 在真机记录剩余热点改造前后的重组结果。
 

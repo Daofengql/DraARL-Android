@@ -50,7 +50,22 @@
 Compose compiler 总量保持 889 个 Composable、881 个可重启和 600 个可跳过；`AppUpdateDialog.progress`
 从稳定 `Float` 参数变为稳定 `Function0<Float>` 参数，没有增加额外组合层级。
 
+## 消息播放状态边界
+
+改造前，`RadioScreen` 在自动连播滚动 effect 的 key 和每个消息项模型中直接读取 `playingMessageId`。播放开始、
+停止或切换时会使页面根作用域失效；所有可见消息项也订阅同一个状态，即使绝大多数项目始终为未播放状态。
+
+改造后：
+
+- `AutoPlayMessageScrollEffect` 独立读取播放 ID 和连播状态，播放切换只重启滚动 effect。
+- `MessageItemState` 只保留消息的低频展示数据，`playing` 作为独立参数传入消息组件。
+- 每个 `ControllerMessageItem` 使用带 `structuralEqualityPolicy()` 的 `derivedStateOf` 订阅播放 ID；只有旧播放项和
+  新播放项的布尔值实际变化，其他可见项保持 `false` 且不进入重组。
+
+Compose compiler 总量从 889 个 Composable、881 个可重启和 600 个可跳过，变为 891、883 和 602；新增的
+`AutoPlayMessageScrollEffect` 与 `ControllerMessageItem` 均为可重启、可跳过作用域，`RadioScreen` 本身继续可跳过。
+
 ## 验证边界
 
 本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。当前没有连接 Android 设备，因此尚未使用 Layout
-Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；连接瞬态和播放位置仍由 `TODO.md` 跟踪。
+Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；连接瞬态仍由 `TODO.md` 跟踪。
