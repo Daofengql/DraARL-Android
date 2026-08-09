@@ -38,10 +38,7 @@ import cn.silverdragon.draarl.tools.LogbookPage
 import cn.silverdragon.draarl.tools.RadioPreset
 import cn.silverdragon.draarl.tools.RelayStation
 import cn.silverdragon.draarl.tools.ToolApiJson
-import java.io.BufferedReader
-import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -52,10 +49,26 @@ class ApiException(
     val code: Int,
     override val message: String,
     val errorCode: String = "",
-    val retryAfterSeconds: Int? = null
-) : Exception(message)
+    val retryAfterSeconds: Int? = null,
+    cause: Throwable? = null
+) : Exception(message, cause)
 
-class ApiClient(private val sessionStore: SecureSessionStore, private val onSessionChanged: (Session?) -> Unit = {}) {
+class ApiClient private constructor(
+    private val sessionStore: SecureSessionStore,
+    private val onSessionChanged: (Session?) -> Unit,
+    private val transport: HttpTransport
+) {
+    constructor(
+        sessionStore: SecureSessionStore,
+        onSessionChanged: (Session?) -> Unit = {}
+    ) : this(sessionStore, onSessionChanged, OkHttpTransport())
+
+    internal constructor(
+        sessionStore: SecureSessionStore,
+        transport: HttpTransport,
+        onSessionChanged: (Session?) -> Unit = {}
+    ) : this(sessionStore, onSessionChanged, transport)
+
     private val refreshLock = Any()
     private val authOperationGeneration = AtomicInteger(0)
     private val sessionRef = AtomicReference(sessionStore.load())
@@ -827,51 +840,36 @@ class ApiClient(private val sessionStore: SecureSessionStore, private val onSess
     fun uploadFile(fileBytes: ByteArray, fileName: String, fileType: String): String {
         val session = currentSession() ?: throw ApiException(401, "请先登录")
         val baseUrl = normalizeBaseUrl(session.baseUrl)
-        val boundary = "----WebKitFormBoundary${System.currentTimeMillis()}"
-        val lineEnd = "\r\n"
-
-        val fileTypePart =
-            "Content-Disposition: form-data; name=\"file_type\"$lineEnd$lineEnd" +
-                "$fileType$lineEnd--$boundary--$lineEnd"
-        val body = buildString {
-            append("--$boundary$lineEnd")
-            append("Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"$lineEnd")
-            append("Content-Type: application/octet-stream$lineEnd")
-            append(lineEnd)
-        }.toByteArray() + fileBytes + "$lineEnd--$boundary$lineEnd".toByteArray() + fileTypePart.toByteArray()
-
-        val url = URL("${baseUrl.trimEnd('/')}/api/upload/file")
-        val connection = url.openConnection() as HttpURLConnection
-        connection.requestMethod = "POST"
-        connection.setRequestProperty("Authorization", "Bearer ${session.accessToken}")
-        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-        connection.connectTimeout = 30_000
-        connection.readTimeout = 30_000
-        connection.doOutput = true
-
-        try {
-            connection.outputStream.use { it.write(body) }
-
-            val responseCode = connection.responseCode
-            val responseText = if (responseCode in 200..299) {
-                connection.inputStream.bufferedReader().use { it.readText() }
-            } else {
-                connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-            }
-
-            if (responseCode != 200) {
-                throw ApiException(responseCode, "上传失败: $responseText")
-            }
-
-            val response = JSONObject(responseText)
-            val data = response.optJSONObject("data") ?: response
-            return resolveHttpsUrl(
-                baseUrl,
-                data.optStringClean("url").ifBlank { data.optStringClean("file_url") }
+        val response = transport.executeForApi(
+            HttpRequest(
+                url = "${baseUrl.trimEnd('/')}/api/upload/file",
+                method = "POST",
+                headers = mapOf("Authorization" to "Bearer ${session.accessToken}"),
+                body = HttpRequestBody.Multipart(
+                    listOf(
+                        HttpPart(
+                            name = "file",
+                            content = fileBytes,
+                            fileName = fileName,
+                            mediaType = "application/octet-stream"
+                        ),
+                        HttpPart(name = "file_type", content = fileType.toByteArray())
+                    )
+                ),
+                connectTimeoutMillis = UPLOAD_TIMEOUT_MILLIS,
+                readTimeoutMillis = UPLOAD_TIMEOUT_MILLIS,
+                writeTimeoutMillis = UPLOAD_TIMEOUT_MILLIS
             )
-        } finally {
-            connection.disconnect()
+        )
+        if (response.status !in 200..299) {
+            throw ApiException(response.status, "上传失败: ${response.bodyText()}")
         }
+        val responseJson = response.toApiJson()
+        val data = responseJson.optJSONObject("data") ?: responseJson
+        return resolveHttpsUrl(
+            baseUrl,
+            data.optStringClean("url").ifBlank { data.optStringClean("file_url") }
+        )
     }
 
     fun changePassword(oldPassword: String, newPassword: String) {
@@ -950,44 +948,22 @@ class ApiClient(private val sessionStore: SecureSessionStore, private val onSess
         accessToken: String?
     ): JSONObject {
         val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
-        val connection = URL(normalizedBaseUrl + path).openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = method
-            connection.connectTimeout = CONNECT_TIMEOUT_MS
-            connection.readTimeout = READ_TIMEOUT_MS
-            connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Cache-Control", "no-cache")
-            if (!accessToken.isNullOrBlank()) {
-                connection.setRequestProperty("Authorization", "Bearer $accessToken")
-            }
-            if (body != null) {
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            }
-            val status = connection.responseCode
-            val stream = if (status in 200..399) connection.inputStream else connection.errorStream
-            val text = stream?.bufferedReader()?.use(BufferedReader::readText).orEmpty()
-            val json = if (text.isBlank()) {
-                JSONObject()
-            } else {
-                runCatching { JSONObject(text) }.getOrElse {
-                    throw ApiException(status, "服务器返回了无法识别的数据")
-                }
-            }
-            connection.getHeaderField("Retry-After")?.trim()?.toIntOrNull()?.takeIf { it > 0 }?.let {
-                json.put(HTTP_RETRY_AFTER_SECONDS, it)
-            }
-            if (!json.has("code")) json.put("code", status)
-            if (status !in 200..299 && json.optInt("code") < 400) json.put("code", status)
-            return json
-        } catch (error: ApiException) {
-            throw error
-        } catch (error: Exception) {
-            throw ApiException(0, error.message ?: "无法连接服务器")
-        } finally {
-            connection.disconnect()
+        val headers = buildMap {
+            put("Accept", "application/json")
+            put("Cache-Control", "no-cache")
+            if (!accessToken.isNullOrBlank()) put("Authorization", "Bearer $accessToken")
         }
+        val requestBody = body?.toString()?.toByteArray(Charsets.UTF_8)?.let {
+            HttpRequestBody.Bytes(it, "application/json; charset=utf-8")
+        }
+        return transport.executeForApi(
+            HttpRequest(
+                url = normalizedBaseUrl + path,
+                method = method,
+                headers = headers,
+                body = requestBody
+            )
+        ).toApiJson()
     }
 
     private fun updateSession(session: Session?) = synchronized(refreshLock) {
@@ -1203,9 +1179,7 @@ class ApiClient(private val sessionStore: SecureSessionStore, private val onSess
         private const val AUTH_OPERATION_CANCELLED = 409
         private const val GROUP_PAGE_SIZE = 100
         private const val MAX_GROUP_PAGES = 100
-        private const val CONNECT_TIMEOUT_MS = 10_000
-        private const val READ_TIMEOUT_MS = 15_000
-        private const val HTTP_RETRY_AFTER_SECONDS = "_http_retry_after_seconds"
+        private const val UPLOAD_TIMEOUT_MILLIS = 30_000L
 
         fun normalizeBaseUrl(value: String): String {
             val trimmed = value.trim().trimEnd('/')
@@ -1236,6 +1210,12 @@ class ApiClient(private val sessionStore: SecureSessionStore, private val onSess
         if (value.isBlank() || baseUrl.isBlank()) return ""
         return runCatching { resolveHttpsUrl(baseUrl, value) }.getOrDefault("")
     }
+}
+
+private fun HttpTransport.executeForApi(request: HttpRequest): HttpResponse = try {
+    execute(request)
+} catch (error: HttpTransportException) {
+    throw ApiException(0, error.message ?: "无法连接服务器", cause = error)
 }
 
 private fun urlEncode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
