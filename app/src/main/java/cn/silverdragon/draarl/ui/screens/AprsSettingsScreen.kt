@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -49,6 +48,8 @@ import cn.silverdragon.draarl.aprs.AprsUiState
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlIconButtonOptions
 import cn.silverdragon.draarl.ui.components.DraarlSettings
 import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
 import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
@@ -263,17 +264,19 @@ internal fun AprsSettingsContent(state: AprsSettingsContentState, onAction: (Apr
             TopAppBar(
                 title = { Text("APRS 设置") },
                 navigationIcon = {
-                    IconButton(onClick = { onAction(AprsSettingsContentAction.Back) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = { onAction(AprsSettingsContentAction.Back) }
+                    )
                 },
                 actions = {
-                    IconButton(
+                    DraarlIconButton(
+                        icon = Icons.Default.Save,
+                        label = "保存",
                         onClick = { onAction(AprsSettingsContentAction.Save) },
-                        enabled = !state.saving
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = "保存")
-                    }
+                        options = DraarlIconButtonOptions(enabled = !state.saving)
+                    )
                 }
             )
         }

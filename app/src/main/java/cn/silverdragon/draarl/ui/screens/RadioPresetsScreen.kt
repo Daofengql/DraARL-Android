@@ -2,8 +2,8 @@ package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -51,6 +50,7 @@ import cn.silverdragon.draarl.tools.ToolsController
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -72,17 +72,21 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("电台预设") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack
+                    )
                 },
                 actions = {
-                    IconButton(onClick = { creating = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "新增预设")
-                    }
-                },
+                    DraarlIconButton(
+                        icon = Icons.Default.Add,
+                        label = "新增预设",
+                        onClick = { creating = true }
+                    )
+                }
             )
-        },
+        }
     ) { innerPadding ->
         Column(Modifier.fillMaxSize().padding(innerPadding)) {
             if (tools.presetErrorMessage.isNotBlank()) {
@@ -92,7 +96,7 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (!tools.presetBusy && tools.presets.isEmpty()) item { Text("暂无电台预设") }
                 items(tools.presets.size, key = { tools.presets[it].id }) { index ->
@@ -104,23 +108,47 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
                             .animateItem()
                             .zIndex(if (isDragging) 1f else 0f)
                             .graphicsLayer { translationY = if (isDragging) draggedOffset else 0f },
-                        shape = MaterialTheme.shapes.small,
+                        shape = MaterialTheme.shapes.small
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(
+                                start = 14.dp,
+                                end = 4.dp,
+                                top = 10.dp,
+                                bottom = 10.dp
+                            ),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(preset.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text(listOf(preset.radio, preset.antenna).filter(String::isNotBlank).joinToString(" · "))
                                 Text(
-                                    listOfNotNull(preset.power?.let { "${it}W" }, preset.qth.takeIf(String::isNotBlank)).joinToString(" · "),
+                                    preset.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    listOf(preset.radio, preset.antenna).filter(String::isNotBlank).joinToString(" · ")
+                                )
+                                Text(
+                                    listOfNotNull(
+                                        preset.power?.let {
+                                            "${it}W"
+                                        },
+                                        preset.qth.takeIf(String::isNotBlank)
+                                    ).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            IconButton(onClick = { editing = preset }) { Icon(Icons.Default.Edit, contentDescription = "编辑") }
-                            IconButton(onClick = { deleting = preset }) { Icon(Icons.Default.Delete, contentDescription = "删除") }
+                            DraarlIconButton(
+                                icon = Icons.Default.Edit,
+                                label = "编辑预设",
+                                onClick = { editing = preset }
+                            )
+                            DraarlIconButton(
+                                icon = Icons.Default.Delete,
+                                label = "删除预设",
+                                onClick = { deleting = preset }
+                            )
                             Box(
                                 modifier = Modifier
                                     .size(48.dp)
@@ -140,7 +168,8 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
                                                 val draggedInfo = layoutInfo.visibleItemsInfo
                                                     .firstOrNull { it.key == preset.id }
                                                     ?: return@detectDragGesturesAfterLongPress
-                                                val draggedCenter = draggedInfo.offset + draggedOffset + draggedInfo.size / 2f
+                                                val draggedCenter =
+                                                    draggedInfo.offset + draggedOffset + draggedInfo.size / 2f
                                                 val targetInfo = layoutInfo.visibleItemsInfo.firstOrNull { item ->
                                                     item.key != preset.id &&
                                                         draggedCenter >= item.offset &&
@@ -178,15 +207,15 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
                                                 draggedPresetId = null
                                                 draggedOffset = 0f
                                                 tools.commitPresetOrder()
-                                            },
+                                            }
                                         )
                                     },
-                                contentAlignment = Alignment.Center,
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     Icons.Default.DragHandle,
                                     contentDescription = "长按拖动排序",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -200,10 +229,16 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
         PresetEditorDialog(
             initial = editing ?: RadioPreset(name = "", radio = "", antenna = ""),
             busy = tools.presetBusy,
-            onDismiss = { creating = false; editing = null },
-            onSave = { value ->
-                tools.savePreset(value) { creating = false; editing = null }
+            onDismiss = {
+                creating = false
+                editing = null
             },
+            onSave = { value ->
+                tools.savePreset(value) {
+                    creating = false
+                    editing = null
+                }
+            }
         )
     }
     deleting?.let { preset ->
@@ -213,9 +248,12 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
             dismissAction = DraarlAction("取消", { deleting = null }),
             confirmAction = DraarlAction(
                 label = "删除",
-                onClick = { deleting = null; tools.deletePreset(preset.id) },
-                style = CommandStyle.DANGER,
-            ),
+                onClick = {
+                    deleting = null
+                    tools.deletePreset(preset.id)
+                },
+                style = CommandStyle.DANGER
+            )
         ) {
             Text("确定删除“${preset.name}”？", modifier = Modifier.padding(18.dp))
         }
@@ -227,7 +265,7 @@ private fun PresetEditorDialog(
     initial: RadioPreset,
     busy: Boolean,
     onDismiss: () -> Unit,
-    onSave: (RadioPreset) -> Unit,
+    onSave: (RadioPreset) -> Unit
 ) {
     var value by remember(initial.id) { mutableStateOf(initial) }
     var power by remember(initial.id) { mutableStateOf(initial.power?.toString().orEmpty()) }
@@ -239,16 +277,20 @@ private fun PresetEditorDialog(
             label = "保存",
             onClick = { onSave(value.copy(power = power.toIntOrNull())) },
             enabled = !busy && value.name.isNotBlank(),
-            style = CommandStyle.PRIMARY,
-        ),
+            style = CommandStyle.PRIMARY
+        )
     ) {
         Column(
             Modifier.fillMaxWidth().heightIn(max = 480.dp).padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             OutlinedTextField(value.name, { value = value.copy(name = it) }, label = { Text("名称") }, singleLine = true)
-            OutlinedTextField(value.radio, { value = value.copy(radio = it) }, label = { Text("电台") }, singleLine = true)
-            OutlinedTextField(value.antenna, { value = value.copy(antenna = it) }, label = { Text("天线") }, singleLine = true)
+            OutlinedTextField(value.radio, {
+                value = value.copy(radio = it)
+            }, label = { Text("电台") }, singleLine = true)
+            OutlinedTextField(value.antenna, {
+                value = value.copy(antenna = it)
+            }, label = { Text("天线") }, singleLine = true)
             OutlinedTextField(power, { power = it.filter(Char::isDigit) }, label = { Text("功率 W") }, singleLine = true)
             OutlinedTextField(value.qth, { value = value.copy(qth = it) }, label = { Text("QTH") }, singleLine = true)
         }

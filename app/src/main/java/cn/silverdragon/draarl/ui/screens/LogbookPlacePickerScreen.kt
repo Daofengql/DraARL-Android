@@ -23,7 +23,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -52,6 +51,7 @@ import cn.silverdragon.draarl.maps.LastMapLocationStore
 import cn.silverdragon.draarl.maps.MaidenheadLocator
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
@@ -192,15 +192,17 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
-                            IconButton(onClick = {
-                                searchGeneration++
-                                searchJob?.cancel()
-                                searchBusy = false
-                                query = ""
-                                results = emptyList()
-                            }) {
-                                Icon(Icons.Default.Close, contentDescription = "清除搜索")
-                            }
+                            DraarlIconButton(
+                                icon = Icons.Default.Close,
+                                label = "清除搜索",
+                                onClick = {
+                                    searchGeneration++
+                                    searchJob?.cancel()
+                                    searchBusy = false
+                                    query = ""
+                                    results = emptyList()
+                                }
+                            )
                         }
                     },
                     singleLine = true,

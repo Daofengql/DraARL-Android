@@ -20,7 +20,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +41,7 @@ import cn.silverdragon.draarl.tools.LogbookDraft
 import cn.silverdragon.draarl.tools.ToolsController
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 
 @Composable
 internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
@@ -277,9 +277,11 @@ private fun QthDraftField(value: String, onValueChange: (String) -> Unit, label:
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
         trailingIcon = {
-            IconButton(onClick = onPick) {
-                Icon(Icons.Default.Map, contentDescription = "在地图上选择$label")
-            }
+            DraarlIconButton(
+                icon = Icons.Default.Map,
+                label = "在地图上选择$label",
+                onClick = onPick
+            )
         }
     )
 }

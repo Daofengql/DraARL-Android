@@ -39,7 +39,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -66,6 +65,7 @@ import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.radio.TransmitTailTone
 import cn.silverdragon.draarl.settings.SettingsController
 import cn.silverdragon.draarl.settings.SettingsEvent
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import kotlin.math.roundToInt
@@ -144,9 +144,11 @@ fun SystemSettingsScreen(
             TopAppBar(
                 title = { Text("应用设置") },
                 navigationIcon = {
-                    IconButton(onClick = { onAction(SystemSettingsAction.Back) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = { onAction(SystemSettingsAction.Back) }
+                    )
                 }
             )
         }

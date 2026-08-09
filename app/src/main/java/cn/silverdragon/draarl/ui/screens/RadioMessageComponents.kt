@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -53,6 +52,8 @@ import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandIconButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlIconButtonOptions
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -300,12 +301,12 @@ private fun VoiceMessageContent(message: RadioMessage, playing: Boolean, onToggl
         modifier = Modifier.widthIn(min = 170.dp).padding(horizontal = 6.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onTogglePlayback, enabled = playable) {
-            Icon(
-                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                contentDescription = if (playing) "暂停语音" else "播放语音"
-            )
-        }
+        DraarlIconButton(
+            icon = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+            label = if (playing) "暂停语音" else "播放语音",
+            onClick = onTogglePlayback,
+            options = DraarlIconButtonOptions(enabled = playable)
+        )
         Row(
             modifier = Modifier.width(82.dp).height(24.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),

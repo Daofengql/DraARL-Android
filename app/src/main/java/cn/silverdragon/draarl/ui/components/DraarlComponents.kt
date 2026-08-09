@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -147,21 +146,23 @@ fun CommandIconButton(
         else -> CommandStyle.SECONDARY
     }
     val colors = commandColors(style, enabled)
-    Surface(
-        onClick = onClick,
-        modifier = modifier.semantics { role = Role.Button }.size(MaterialTheme.appDimensions.controlHeight),
-        enabled = enabled,
-        shape = MaterialTheme.shapes.small,
-        color = colors.container,
-        contentColor = colors.content,
-        border = colors.border?.let { BorderStroke(1.dp, it) }
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(MaterialTheme.appDimensions.iconLarge)
-            )
+    DraarlTooltip(contentDescription, modifier = modifier) {
+        Surface(
+            onClick = onClick,
+            modifier = Modifier.semantics { role = Role.Button }.size(MaterialTheme.appDimensions.controlHeight),
+            enabled = enabled,
+            shape = MaterialTheme.shapes.small,
+            color = colors.container,
+            contentColor = colors.content,
+            border = colors.border?.let { BorderStroke(1.dp, it) }
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(MaterialTheme.appDimensions.iconLarge)
+                )
+            }
         }
     }
 }
@@ -239,13 +240,15 @@ fun InlineNotice(
             Box(Modifier.padding(top = 5.dp).size(7.dp).background(colors.content, CircleShape))
             Text(text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
             onDismiss?.let {
-                IconButton(onClick = it, modifier = Modifier.size(30.dp)) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "关闭提示",
-                        modifier = Modifier.size(18.dp)
+                DraarlIconButton(
+                    icon = Icons.Default.Close,
+                    label = "关闭提示",
+                    onClick = it,
+                    options = DraarlIconButtonOptions(
+                        modifier = Modifier.size(30.dp),
+                        iconModifier = Modifier.size(18.dp)
                     )
-                }
+                )
             }
         }
     }

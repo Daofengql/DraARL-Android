@@ -28,7 +28,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -56,6 +55,8 @@ import cn.silverdragon.draarl.tools.ToolsController
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlIconButtonOptions
 
 @Composable
 internal fun LogbookScreen(controller: AppController, tools: ToolsController, onBack: () -> Unit) {
@@ -91,39 +92,48 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
     Column(Modifier.fillMaxSize()) {
         ToolHeader("通联日志", onBack) {
             if (selectionMode) {
-                IconButton(onClick = {
-                    selectionMode = false
-                    selectedIds = emptySet()
-                }) {
-                    Icon(Icons.Default.Close, contentDescription = "退出批量选择")
-                }
-                IconButton(
+                DraarlIconButton(
+                    icon = Icons.Default.Close,
+                    label = "退出批量选择",
+                    onClick = {
+                        selectionMode = false
+                        selectedIds = emptySet()
+                    }
+                )
+                DraarlIconButton(
+                    icon = Icons.Default.Delete,
+                    label = "删除所选日志",
                     onClick = { confirmBatchDelete = true },
-                    enabled = selectedIds.isNotEmpty() && !tools.logbookBusy
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = "删除所选日志")
-                }
+                    options = DraarlIconButtonOptions(
+                        enabled = selectedIds.isNotEmpty() && !tools.logbookBusy
+                    )
+                )
             } else {
-                IconButton(onClick = { if (searchExpanded) closeSearch() else searchExpanded = true }) {
-                    Icon(
-                        Icons.Default.Search,
-                        contentDescription = if (searchExpanded) "收起搜索" else "搜索通联日志",
+                DraarlIconButton(
+                    icon = Icons.Default.Search,
+                    label = if (searchExpanded) "收起搜索" else "搜索通联日志",
+                    onClick = { if (searchExpanded) closeSearch() else searchExpanded = true },
+                    options = DraarlIconButtonOptions(
                         tint = if (searchExpanded) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurface
                         }
                     )
-                }
-                IconButton(onClick = {
-                    closeSearch()
-                    selectionMode = true
-                }) {
-                    Icon(Icons.Default.Checklist, contentDescription = "批量选择")
-                }
-                IconButton(onClick = { tools.editDraft(null, controller.session.uiState.user) }) {
-                    Icon(Icons.Default.Add, contentDescription = "新增通联日志")
-                }
+                )
+                DraarlIconButton(
+                    icon = Icons.Default.Checklist,
+                    label = "批量选择",
+                    onClick = {
+                        closeSearch()
+                        selectionMode = true
+                    }
+                )
+                DraarlIconButton(
+                    icon = Icons.Default.Add,
+                    label = "新增通联日志",
+                    onClick = { tools.editDraft(null, controller.session.uiState.user) }
+                )
             }
         }
         AnimatedVisibility(
@@ -142,15 +152,15 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (filter.isNotBlank()) {
-                        IconButton(
+                        DraarlIconButton(
+                            icon = Icons.Default.Close,
+                            label = "清除搜索",
                             onClick = {
                                 filter = ""
                                 tools.loadLogbooks(reset = true, callsign = "")
                             },
-                            enabled = !tools.logbookBusy
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "清除搜索")
-                        }
+                            options = DraarlIconButtonOptions(enabled = !tools.logbookBusy)
+                        )
                     }
                 },
                 singleLine = true,
@@ -269,8 +279,16 @@ private fun LogbookCard(
                     )
                 }
                 if (!selectionMode) {
-                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "编辑") }
-                    IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "删除") }
+                    DraarlIconButton(
+                        icon = Icons.Default.Edit,
+                        label = "编辑日志",
+                        onClick = onEdit
+                    )
+                    DraarlIconButton(
+                        icon = Icons.Default.Delete,
+                        label = "删除日志",
+                        onClick = onDelete
+                    )
                 }
             }
             Text("发射 ${entry.txFrequency} MHz   接收 ${entry.rxFrequency} MHz")

@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -42,6 +41,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.RegistrationResult
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 
 @Composable
 internal fun PasswordField(
@@ -50,7 +50,7 @@ internal fun PasswordField(
     label: String,
     visible: Boolean,
     onVisibleChange: (Boolean) -> Unit,
-    imeAction: ImeAction,
+    imeAction: ImeAction
 ) {
     OutlinedTextField(
         value = value,
@@ -59,16 +59,15 @@ internal fun PasswordField(
         label = { Text(label) },
         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
         trailingIcon = {
-            IconButton(onClick = { onVisibleChange(!visible) }) {
-                Icon(
-                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    contentDescription = if (visible) "隐藏密码" else "显示密码",
-                )
-            }
+            DraarlIconButton(
+                icon = if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                label = if (visible) "隐藏密码" else "显示密码",
+                onClick = { onVisibleChange(!visible) }
+            )
         },
         singleLine = true,
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = imeAction),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = imeAction)
     )
 }
 
@@ -80,7 +79,7 @@ internal fun CaptchaRow(
     loading: Boolean,
     enabled: Boolean,
     onRefresh: () -> Unit,
-    keyboardActions: KeyboardActions,
+    keyboardActions: KeyboardActions
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
@@ -90,31 +89,33 @@ internal fun CaptchaRow(
             label = { Text("图片验证码") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = keyboardActions,
+            keyboardActions = keyboardActions
         )
         Spacer(Modifier.width(12.dp))
         Surface(
             modifier = Modifier.width(150.dp).height(56.dp),
             shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.surfaceVariant,
+            color = MaterialTheme.colorScheme.surfaceVariant
         ) {
             Box(
                 modifier = Modifier.fillMaxSize().clickable(
                     enabled = enabled && !loading,
                     role = Role.Button,
                     onClickLabel = "刷新图片验证码",
-                    onClick = onRefresh,
+                    onClick = onRefresh
                 ),
-                contentAlignment = Alignment.Center,
+                contentAlignment = Alignment.Center
             ) {
                 when {
                     loading -> CircularProgressIndicator(modifier = Modifier.height(22.dp), strokeWidth = 2.dp)
+
                     captchaBitmap != null -> Image(
                         bitmap = captchaBitmap,
                         contentDescription = "图片验证码",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
+                        contentScale = ContentScale.Fit
                     )
+
                     else -> Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Refresh, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
@@ -132,14 +133,14 @@ internal fun RegistrationSuccess(result: RegistrationResult?, onLogin: () -> Uni
     Text(
         "账号已创建，请等待管理员审核。",
         modifier = Modifier.padding(top = 8.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     if (!result?.devicePassword.isNullOrBlank()) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("设备准入密码（仅显示一次）", fontWeight = FontWeight.SemiBold)
@@ -159,7 +160,7 @@ internal fun BusyButtonContent(busy: Boolean, text: String) {
         CircularProgressIndicator(
             modifier = Modifier.height(22.dp),
             strokeWidth = 2.dp,
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = MaterialTheme.colorScheme.onPrimary
         )
     } else {
         Text(text)
@@ -172,7 +173,7 @@ internal fun ErrorText(message: String) {
         text = message,
         color = MaterialTheme.colorScheme.error,
         style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 12.dp),
+        modifier = Modifier.padding(top = 12.dp)
     )
 }
 

@@ -5,11 +5,11 @@
 
 ## 规模结论
 
-这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.70 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
+这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.72 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 171 | 27,021 | 不含空行、生成目录和第三方源码 |
+| 生产 Kotlin | 174 | 27,218 | 不含空行、生成目录和第三方源码 |
 | JVM 单元测试 Kotlin | 55 | 4,050 | 215 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 4 | 791 | 24 张壳层、页面、状态和组件参考图 |
@@ -25,7 +25,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 | 包 | 文件数 | 职责 |
 | --- | ---: | --- |
-| `ui` | 57 | Compose 页面、导航和组件 |
+| `ui` | 60 | Compose 页面、导航和组件 |
 | `radio` | 31 | 消息状态与同步、会话、UDP、音频、重连、缓存和前台通信服务 |
 | `data` | 16 | 模型、本地存储、消息对账和路由 |
 | `tools` | 11 | BLE、中继、通联日志和预设 |
@@ -40,10 +40,10 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | 文件 | 行数 |
 | --- | ---: |
 | `radio/UdpRadioClient.kt` | 1,094 |
-| `ui/screens/DevicesScreen.kt` | 1,022 |
+| `ui/screens/DevicesScreen.kt` | 1,044 |
 | `AppController.kt` | 988 |
-| `ui/screens/GroupsScreen.kt` | 874 |
-| `ui/screens/LocationMapScreen.kt` | 674 |
+| `ui/screens/GroupsScreen.kt` | 899 |
+| `ui/screens/LocationMapScreen.kt` | 683 |
 
 ## 架构边界
 
@@ -81,6 +81,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 设置、账号安全和存储页已统一为细边框设置组、方形图标位和紧凑数据行，不再用默认 `Card` 叠加页面分区；危险清理使用统一弹窗与等宽动作区。
 - APRS 设置页已拆出不依赖定位权限和运行时 Controller 的内容层；链路、服务器、自动上报和测试区统一使用细边框设置组、命令按钮与状态提示，不再用默认 `Card` 叠加页面分区。
 - BLE 配网页的设备类型、连接状态、认证、Wi-Fi 与服务配置已统一为设置组、状态指示和命令按钮；设备类型弹窗使用可访问的单选行，不再在弹窗或页面分区中嵌套默认 `Card`。APRS 与 BLE 重写同时清理了 30 条已失效的 Detekt 行长豁免。
+- 图标命令统一由 `DraarlIconButton`、`CommandIconButton` 和 `DraarlTooltip` 承载；41 个原生图标按钮、20 个设备式命令图标按钮及 2 个地图浮动图标共用可见 tooltip 与 `contentDescription`，页面不再直接使用 Material `IconButton`。
 - 标准确认、表单和选择弹窗已统一到 `DraarlDialog` 外壳和动作区，危险确认使用统一语义；双操作按钮在 1.75 倍及以上字体下纵向排列，避免命令文案被截断。设备与群组的全屏管理覆盖层保留专用全屏 `Dialog`。
 - CW 与位置选择 Bottom Sheet 已统一到 `DraarlSheet` 外壳、拖拽把手与动作区。
 - 设备与群组页的页面级加载/空态已统一到 `PageFeedback`；工具类可恢复错误和蓝牙权限拒绝通过可关闭 `InlineNotice` 统一反馈层级。

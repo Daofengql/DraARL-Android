@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -73,6 +72,8 @@ import cn.silverdragon.draarl.maps.MapDistance
 import cn.silverdragon.draarl.maps.MapViewLifecycleController
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlTooltip
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
@@ -131,9 +132,11 @@ fun LocationMapScreen(
                 TopAppBar(
                     title = { Text("位置") },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                        }
+                        DraarlIconButton(
+                            icon = Icons.AutoMirrored.Filled.ArrowBack,
+                            label = "返回",
+                            onClick = onBack
+                        )
                     }
                 )
             }
@@ -236,9 +239,11 @@ fun LocationMapScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onBack
+                    )
                 }
             )
         }
@@ -260,13 +265,17 @@ fun LocationMapScreen(
                 onCoordinateSelected = { selectedGcj = it }
             )
             if (selectedGcj != null) {
-                SmallFloatingActionButton(
-                    onClick = { recenterRequest++ },
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary
+                DraarlTooltip(
+                    label = "居中标点",
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)
                 ) {
-                    Icon(Icons.Default.CenterFocusStrong, contentDescription = "居中标点")
+                    SmallFloatingActionButton(
+                        onClick = { recenterRequest++ },
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary
+                    ) {
+                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "居中标点")
+                    }
                 }
             }
             selectedGcj?.let { gcj ->

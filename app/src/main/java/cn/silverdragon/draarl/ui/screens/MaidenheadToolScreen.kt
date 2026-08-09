@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -44,6 +43,7 @@ import cn.silverdragon.draarl.maps.MaidenheadCell
 import cn.silverdragon.draarl.maps.MaidenheadLocator
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
@@ -186,9 +186,11 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         trailingIcon = {
-                            IconButton(onClick = ::locateInput) {
-                                Icon(Icons.Default.Search, contentDescription = "定位网格")
-                            }
+                            DraarlIconButton(
+                                icon = Icons.Default.Search,
+                                label = "定位网格",
+                                onClick = ::locateInput
+                            )
                         }
                     )
                     Row(

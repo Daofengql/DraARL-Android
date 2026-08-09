@@ -43,7 +43,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -83,6 +82,7 @@ import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.ui.components.EmptyState
 import cn.silverdragon.draarl.ui.components.PageFeedback
 import cn.silverdragon.draarl.ui.components.PageFeedbackKind
@@ -453,7 +453,11 @@ private fun DeviceDetailDialog(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onClose
+                    )
                     Text("设备资料", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -680,7 +684,11 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                     Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onClose
+                    )
                     Column(Modifier.weight(1f)) {
                         Text("参数配置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
@@ -859,12 +867,22 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = { visible = !visible }) {
-                        Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "显示或隐藏密码")
-                    }
-                    IconButton(onClick = {
-                        copyText(context, "设备密码", controller.deviceManagement.passwordInfo?.password.orEmpty())
-                    }) { Icon(Icons.Default.ContentCopy, "复制密码") }
+                    DraarlIconButton(
+                        icon = if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        label = if (visible) "隐藏密码" else "显示密码",
+                        onClick = { visible = !visible }
+                    )
+                    DraarlIconButton(
+                        icon = Icons.Default.ContentCopy,
+                        label = "复制密码",
+                        onClick = {
+                            copyText(
+                                context,
+                                "设备密码",
+                                controller.deviceManagement.passwordInfo?.password.orEmpty()
+                            )
+                        }
+                    )
                 }
             }
         }
@@ -1019,16 +1037,20 @@ private fun BindingResultContent(result: cn.silverdragon.draarl.data.DeviceBindR
     Text("UDP 账号", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(result.username, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-        IconButton(onClick = { copyText(context, "UDP 账号", result.username) }) {
-            Icon(Icons.Default.ContentCopy, "复制账号")
-        }
+        DraarlIconButton(
+            icon = Icons.Default.ContentCopy,
+            label = "复制账号",
+            onClick = { copyText(context, "UDP 账号", result.username) }
+        )
     }
     Text("设备密码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(result.devicePassword, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-        IconButton(onClick = { copyText(context, "设备密码", result.devicePassword) }) {
-            Icon(Icons.Default.ContentCopy, "复制密码")
-        }
+        DraarlIconButton(
+            icon = Icons.Default.ContentCopy,
+            label = "复制密码",
+            onClick = { copyText(context, "设备密码", result.devicePassword) }
+        )
     }
     if (result.dmrId > 0) Text("DMR ID ${result.dmrId}")
 }

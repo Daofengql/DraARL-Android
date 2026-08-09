@@ -40,6 +40,7 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 - 页面级空态、加载、错误和权限反馈使用统一的 `PageFeedback` 语义、居中层级与状态色；可恢复的工具错误使用可关闭 `InlineNotice`，按钮内进度保持紧凑反馈。
 - APRS 设置使用细边框设置组组织链路、登录参数、后台上报和链路测试；状态反馈复用 `StatusTone`，不再以默认 Card 和裸状态文本建立层级。
 - BLE 配网使用相同设置组组织设备类型、认证和配置表单；扫描、断开与写入使用命令按钮，连接阶段使用 `StatusIndicator`，设备类型弹窗使用单选行而非嵌套 Card。
+- 图标命令通过 `DraarlTooltip` 统一长按/悬停提示，提示文案同时作为 `contentDescription`；TopAppBar、表单尾部、列表动作、通信控制和地图浮动图标不再直接使用裸 `IconButton`。
 
 浅色和深色主题的 12 组关键前景/背景组合均按 WCAG 对比度公式检查，最低结果为 5.98:1。
 
@@ -60,6 +61,7 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 | `Card` | `RadioMessageComponents.kt`、`LogbookScreen.kt`、`RadioPresetsScreen.kt`、`RelaySearchScreen.kt` | 消息、日志、预设和中继结果对象 | 只保留独立或可比较的数据对象；页面分区不使用 Card |
 | `Surface` | `DraarlBottomBar.kt`、`DraarlComponents.kt`、`DraarlContainers.kt`、`DraarlSettings.kt`、`DraarlSegmentedControl.kt`、`RadioStatusStrip.kt`、`CommunicationTrendChart.kt` 和 `ProfileOverview.kt`，以及设备、群组、地图、消息、登录和工具页面 | 背景、状态容器、可点击行、统计对象、弹层和控制面 | 保留承载语义、状态色、细边框或点击反馈的 Surface；纯页面分区不增加浮层和阴影 |
 | 圆角按钮 | 认证、设备/群组管理、地图、日志编辑、资料与设置页面中的 `Button`、`OutlinedButton`、`TextButton` | 明确提交、确认、取消和危险操作 | 命令按钮保留；图标已有通用语义时使用图标按钮；普通行入口不使用胶囊按钮 |
+| 图标命令 | `DraarlIconButton.kt`、`DraarlComponents.kt`、地图控制和各页面工具栏 | 返回、搜索、复制、编辑、删除、播放与地图控制 | 标准图标、tooltip 与 `contentDescription` 使用同一文案；危险操作保留独立状态色 |
 | 分段控件 | `DraarlSegmentedControl.kt`、`AprsMapPanel.kt`、`SystemSettingsScreen.kt` | PTT 地图/日志模式与设置选项 | 只用于同级互斥模式，保持紧凑 0-6 dp 圆角，不扩展为页面导航 |
 | 状态色 | `Theme.kt`、`DraarlComponents.kt`、`RadioStatusStrip.kt`、设备/群组/PTT/APRS/设置页面 | 连接、接收、发射、在线、等待、离线和错误 | 所有业务状态从 `appColors` 或 `StatusTone` 获取；页面不得直接发明新的成功/警告色 |
 

@@ -64,6 +64,7 @@ import cn.silverdragon.draarl.maps.LastMapLocationStore
 import cn.silverdragon.draarl.maps.MapDistance
 import cn.silverdragon.draarl.ui.components.DraarlSegment
 import cn.silverdragon.draarl.ui.components.DraarlSegmentedControl
+import cn.silverdragon.draarl.ui.components.DraarlTooltip
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -367,21 +368,22 @@ private fun MapControlButton(
     description: String,
     selected: Boolean = false
 ) {
-    SmallFloatingActionButton(
-        onClick = onClick,
-        modifier = Modifier.size(MAP_CONTROL_SIZE),
-        containerColor = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
-        } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
-        },
-        contentColor = if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurface
+    DraarlTooltip(description, modifier = Modifier.size(MAP_CONTROL_SIZE)) {
+        SmallFloatingActionButton(
+            onClick = onClick,
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
+            } else {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+            },
+            contentColor = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
+        ) {
+            Icon(icon, contentDescription = description)
         }
-    ) {
-        Icon(icon, contentDescription = description)
     }
 }
 

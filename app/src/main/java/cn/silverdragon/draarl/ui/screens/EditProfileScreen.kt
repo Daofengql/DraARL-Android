@@ -16,7 +16,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -33,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,9 +66,11 @@ fun EditProfileScreen(controller: AppController) {
             TopAppBar(
                 title = { Text("编辑资料") },
                 navigationIcon = {
-                    IconButton(onClick = { controller.navigate(AppPage.PROFILE) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = { controller.navigate(AppPage.PROFILE) }
+                    )
                 }
             )
         }

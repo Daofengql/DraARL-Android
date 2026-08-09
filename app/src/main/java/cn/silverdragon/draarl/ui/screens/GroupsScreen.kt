@@ -45,7 +45,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -85,6 +84,8 @@ import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlIconButtonOptions
 import cn.silverdragon.draarl.ui.components.EmptyState
 import cn.silverdragon.draarl.ui.components.PageFeedback
 import cn.silverdragon.draarl.ui.components.PageFeedbackKind
@@ -299,9 +300,11 @@ private fun GroupSearchToolbar(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onClose) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "退出搜索")
-        }
+        DraarlIconButton(
+            icon = Icons.AutoMirrored.Filled.ArrowBack,
+            label = "退出搜索",
+            onClick = onClose
+        )
         OutlinedTextField(
             value = filter,
             onValueChange = onFilterChange,
@@ -309,9 +312,11 @@ private fun GroupSearchToolbar(
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (filter.isNotBlank()) {
-                    IconButton(onClick = { onFilterChange("") }) {
-                        Icon(Icons.Default.Close, contentDescription = "清除搜索")
-                    }
+                    DraarlIconButton(
+                        icon = Icons.Default.Close,
+                        label = "清除搜索",
+                        onClick = { onFilterChange("") }
+                    )
                 }
             },
             singleLine = true,
@@ -507,7 +512,11 @@ private fun GroupDetailDialog(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onClose
+                    )
                     Text("群资料", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -621,11 +630,12 @@ private fun GroupSearchDialog(controller: AppController, onClose: () -> Unit, on
                 placeholder = { Text("输入群组 ID 或名称") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
-                    IconButton(onClick = {
-                        controller.groupManagement.search(keyword)
-                    }, enabled = !controller.groupManagement.busy) {
-                        Icon(Icons.Default.Search, contentDescription = "搜索")
-                    }
+                    DraarlIconButton(
+                        icon = Icons.Default.Search,
+                        label = "搜索",
+                        onClick = { controller.groupManagement.search(keyword) },
+                        options = DraarlIconButtonOptions(enabled = !controller.groupManagement.busy)
+                    )
                 },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -787,7 +797,11 @@ private fun GroupDevicesDialog(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    DraarlIconButton(
+                        icon = Icons.AutoMirrored.Filled.ArrowBack,
+                        label = "返回",
+                        onClick = onClose
+                    )
                     Column(Modifier.weight(1f)) {
                         Text("群内设备", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
@@ -796,7 +810,12 @@ private fun GroupDevicesDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = onRefresh, enabled = !busy) { Icon(Icons.Default.Router, "刷新设备") }
+                    DraarlIconButton(
+                        icon = Icons.Default.Router,
+                        label = "刷新设备",
+                        onClick = onRefresh,
+                        options = DraarlIconButtonOptions(enabled = !busy)
+                    )
                 }
             }
         ) { padding ->
@@ -850,9 +869,15 @@ private fun GroupDevicesDialog(
                                     onCheckedChange = { onCommControl(device, device.disableSend, it) },
                                     enabled = !busy
                                 )
-                                IconButton(onClick = { kickTarget = device }, enabled = !busy) {
-                                    Icon(Icons.Default.PersonOff, "移出群组", tint = MaterialTheme.colorScheme.error)
-                                }
+                                DraarlIconButton(
+                                    icon = Icons.Default.PersonOff,
+                                    label = "移出群组",
+                                    onClick = { kickTarget = device },
+                                    options = DraarlIconButtonOptions(
+                                        enabled = !busy,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                )
                             }
                         }
                         HorizontalDivider()
