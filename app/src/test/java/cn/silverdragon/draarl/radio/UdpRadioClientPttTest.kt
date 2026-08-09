@@ -9,10 +9,12 @@ import cn.silverdragon.draarl.protocol.DraarlProtocol
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -20,6 +22,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UdpRadioClientPttTest {
+    @Test
+    fun `incoming voice plays live and settles when session disconnects`() {
+        val fixture = fixture()
+        try {
+            fixture.connect()
+            val payload = DraarlProtocol.mergeOpusFrames(List(2) { byteArrayOf(7, 8, 9) })
+
+            fixture.transport.enqueue(voicePacket(payload))
+            assertTrue(fixture.audio.streamPlayed.await(2, TimeUnit.SECONDS))
+            fixture.client.disconnect()
+            assertTrue(fixture.listener.messageReceived.await(2, TimeUnit.SECONDS))
+
+            assertArrayEquals(payload, fixture.audio.streamed.single().second)
+            val message = fixture.listener.messages.single()
+            assertEquals("BG0REMOTE", message.senderCallsign)
+            assertEquals(102, message.senderSsid)
+            assertEquals(7, message.groupId)
+            assertEquals(120L, message.durationMs)
+            assertNotNull(fixture.store.entries[message.audioCacheKey])
+            assertEquals(listOf(VoiceStreamKey(7, "BG0REMOTE", 102).playbackKey), fixture.audio.endedStreams)
+        } finally {
+            fixture.client.release()
+        }
+    }
+
     @Test
     fun `ptt sends captured opus and stores completed local message`() {
         val fixture = fixture()
@@ -140,6 +167,15 @@ class UdpRadioClientPttTest {
         )
     }
 
+    private fun voicePacket(payload: ByteArray): ByteArray = DraarlProtocol.encode(
+        type = DraarlProtocol.TYPE_OPUS_16K,
+        data = payload,
+        username = "remote",
+        ssid = 102,
+        callsign = "BG0REMOTE",
+        reserved = 7
+    )
+
     private data class Fixture(
         val client: UdpRadioClient,
         val listener: RecordingListener,
@@ -151,6 +187,7 @@ class UdpRadioClientPttTest {
 
     private class RecordingListener : UdpRadioListener {
         val connected = CountDownLatch(1)
+        val messageReceived = CountDownLatch(1)
         val messages = CopyOnWriteArrayList<RadioMessage>()
 
         override fun onStatus(status: RadioStatus) {
@@ -159,6 +196,7 @@ class UdpRadioClientPttTest {
 
         override fun onMessage(message: RadioMessage) {
             messages += message
+            messageReceived.countDown()
         }
 
         override fun onPlaybackState(messageId: String?) = Unit
@@ -187,6 +225,9 @@ class UdpRadioClientPttTest {
         private var packetCallback: ((ByteArray) -> Unit)? = null
         private var errorCallback: ((String) -> Unit)? = null
         var releaseCount = 0
+        val streamPlayed = CountDownLatch(1)
+        val streamed = CopyOnWriteArrayList<Pair<String, ByteArray>>()
+        val endedStreams = CopyOnWriteArrayList<String>()
 
         override val capture = object : RadioAudioCapture {
             override fun start(onPacket: (ByteArray) -> Unit, onError: (String) -> Unit): Boolean {
@@ -200,8 +241,13 @@ class UdpRadioClientPttTest {
 
         override val playback = object : RadioAudioPlayback {
             override fun playLocal(mergedFrames: ByteArray, onError: (String) -> Unit) = Unit
-            override fun playStream(streamKey: String, mergedFrames: ByteArray, onError: (String) -> Unit) = Unit
-            override fun endStream(streamKey: String) = Unit
+            override fun playStream(streamKey: String, mergedFrames: ByteArray, onError: (String) -> Unit) {
+                streamed += streamKey to mergedFrames.copyOf()
+                streamPlayed.countDown()
+            }
+            override fun endStream(streamKey: String) {
+                endedStreams += streamKey
+            }
             override fun playRecording(
                 audioCacheKey: String,
                 audioUrl: String,
@@ -226,7 +272,7 @@ class UdpRadioClientPttTest {
 
     private class FakeUdpTransport(private val authentication: ByteArray) : UdpTransport {
         private val authenticationPending = AtomicBoolean(true)
-        private val closedLatch = CountDownLatch(1)
+        private val incoming = LinkedBlockingQueue<ByteArray>()
         val sent = CopyOnWriteArrayList<ByteArray>()
 
         @Volatile private var closed = false
@@ -244,13 +290,20 @@ class UdpRadioClientPttTest {
                 authentication.copyInto(buffer)
                 return authentication.size
             }
-            closedLatch.await(2, TimeUnit.SECONDS)
+            while (!closed) {
+                val payload = incoming.poll(100, TimeUnit.MILLISECONDS) ?: continue
+                payload.copyInto(buffer)
+                return payload.size
+            }
             return null
+        }
+
+        fun enqueue(payload: ByteArray) {
+            incoming += payload
         }
 
         override fun close() {
             closed = true
-            closedLatch.countDown()
         }
     }
 

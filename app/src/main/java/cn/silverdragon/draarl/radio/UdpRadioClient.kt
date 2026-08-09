@@ -95,13 +95,17 @@ class UdpRadioClient internal constructor(
         },
         maxCachedVoiceBytes = MAX_CACHED_VOICE_BYTES
     )
+    private val incomingVoiceAssembler = IncomingVoiceAssembler(
+        maxStreams = MAX_INCOMING_VOICE_STREAMS,
+        maxPayloadBytes = MAX_CACHED_VOICE_BYTES,
+        endTimeoutMillis = VOICE_END_TIMEOUT_MS
+    )
     private val connectionState = UdpConnectionStateMachine()
     private val authenticationReceiver = UdpAuthenticationReceiver(AUTH_TOTAL_TIMEOUT_MS, clock::nowMillis)
     private val cwTransmitActive = AtomicBoolean(false)
     private val cwPreviewActive = AtomicBoolean(false)
     private val sendLock = Any()
     private val statusLock = Any()
-    private val voiceSessionLock = Any()
     private val cwVoiceLock = Any()
 
     @Volatile private var transport: UdpTransport? = null
@@ -125,8 +129,6 @@ class UdpRadioClient internal constructor(
     @Volatile private var sessionSsid = DraarlProtocol.SSID_ANDROID
 
     @Volatile private var status = RadioStatus()
-    private val incomingVoiceStreams = LinkedHashMap<VoiceStreamKey, IncomingVoiceStream>()
-    private val voicePlaybackQueue = VoiceStreamPlaybackQueue()
     private var cwVoiceBuffer = ByteArrayOutputStream()
 
     @Synchronized
@@ -620,48 +622,24 @@ class UdpRadioClient internal constructor(
         currentGeneration: Int
     ) {
         if (payload.isEmpty() || status.transmitting) return
-        val identity = callsign.ifBlank { username }
-        val speaker = formatRadioIdentity(identity, ssid)
-        val speakerKey = VoiceStreamKey(groupId, identity, ssid)
-        val now = clock.nowMillis()
-        var startingSession = false
-        var playImmediately = false
-        var evictedMessage: RadioMessage? = null
-        synchronized(voiceSessionLock) {
-            var stream = incomingVoiceStreams[speakerKey]
-            if (stream == null) {
-                if (incomingVoiceStreams.size >= MAX_INCOMING_VOICE_STREAMS) {
-                    val oldest = voicePlaybackQueue.evictOldestPending()
-                        ?: incomingVoiceStreams.minByOrNull { it.value.lastPacketAt }?.key
-                    oldest?.let { key ->
-                        evictedMessage = finishIncomingVoiceLocked(key)
-                    }
-                }
-                stream = IncomingVoiceStream(
+        val result = incomingVoiceAssembler.accept(
+            IncomingVoicePacket(
+                source = IncomingVoiceSource(
                     username = username,
                     callsign = callsign,
                     ssid = ssid,
-                    groupId = groupId,
-                    startedAt = now,
-                    lastPacketAt = now
-                )
-                incomingVoiceStreams[speakerKey] = stream
-                startingSession = voicePlaybackQueue.active == null
-                voicePlaybackQueue.onStream(speakerKey)
-            }
-            stream.lastPacketAt = now
-            appendVoiceData(stream.buffer, payload)
-            playImmediately = voicePlaybackQueue.active == speakerKey
+                    groupId = groupId
+                ),
+                payload = payload,
+                receivedAt = clock.nowMillis()
+            )
+        )
+        result.actions.filterIsInstance<IncomingVoiceAction.Complete>().forEach { action ->
+            listener.onMessage(completeIncomingVoice(action.voice))
         }
-        evictedMessage?.let(listener::onMessage)
-        if (startingSession) {
-            stopPlayback()
-        }
-        if (playImmediately) {
-            updateStatusIfActive(currentGeneration) { it.copy(speaker = speaker) }
-            audioEngine.playback.playStream(speakerKey.playbackKey, payload) { message ->
-                reportNonFatal(message, currentGeneration)
-            }
+        if (result.startsPlaybackSession) stopPlayback()
+        result.actions.filterIsInstance<IncomingVoiceAction.Play>().forEach { action ->
+            playIncomingVoice(action, currentGeneration)
         }
     }
 
@@ -818,10 +796,19 @@ class UdpRadioClient internal constructor(
     }
 
     private fun expireIncomingVoice(now: Long, currentGeneration: Int) {
-        val completedMessages = finishExpiredAndAdvanceVoiceQueue(now, currentGeneration)
+        val result = incomingVoiceAssembler.expire(now)
+        val completedMessages = mutableListOf<RadioMessage>()
+        result.actions.forEach { action ->
+            when (action) {
+                is IncomingVoiceAction.Complete -> completedMessages += completeIncomingVoice(action.voice)
+                is IncomingVoiceAction.Play -> playIncomingVoice(action, currentGeneration)
+            }
+        }
         completedMessages.forEach(listener::onMessage)
         if (completedMessages.isNotEmpty()) {
-            val activeSpeaker = activeIncomingSpeaker()
+            val activeSpeaker = result.activeSpeaker?.let { speaker ->
+                formatRadioIdentity(speaker.identity, speaker.ssid)
+            }.orEmpty()
             updateStatusIfActive(currentGeneration) { it.copy(speaker = activeSpeaker) }
             if (activeSpeaker.isBlank()) playReceiveTailTone(currentGeneration)
         }
@@ -956,7 +943,7 @@ class UdpRadioClient internal constructor(
                 currentGeneration = currentGeneration,
                 shouldContinue = {
                     receiveTailToneEnabled &&
-                        !hasIncomingVoice() &&
+                        !incomingVoiceAssembler.hasStreams() &&
                         !status.transmitting &&
                         status.speaker.isBlank()
                 },
@@ -972,74 +959,35 @@ class UdpRadioClient internal constructor(
         }
     }
 
-    private fun finishExpiredAndAdvanceVoiceQueue(now: Long, currentGeneration: Int): List<RadioMessage> =
-        synchronized(voiceSessionLock) {
-            val completed = mutableListOf<RadioMessage>()
-            val activeKey = voicePlaybackQueue.active
-            val active = activeKey?.let(incomingVoiceStreams::get)
-            if (activeKey != null && (active == null || now - active.lastPacketAt > VOICE_END_TIMEOUT_MS)) {
-                finishIncomingVoiceLocked(activeKey)?.let(completed::add)
-            }
+    private fun finishAllIncomingVoices(): List<RadioMessage> =
+        incomingVoiceAssembler.finishAll().map(::completeIncomingVoice)
 
-            var nextKey = voicePlaybackQueue.advance()
-            while (nextKey != null) {
-                val next = incomingVoiceStreams[nextKey]
-                if (next == null) {
-                    voicePlaybackQueue.remove(nextKey)
-                    nextKey = voicePlaybackQueue.advance()
-                    continue
-                }
-                val backlog = next.buffer.toByteArray()
-                if (backlog.isNotEmpty()) {
-                    audioEngine.playback.playStream(nextKey.playbackKey, backlog) { message ->
-                        reportNonFatal(message, currentGeneration)
-                    }
-                }
-                if (now - next.lastPacketAt > VOICE_END_TIMEOUT_MS) {
-                    finishIncomingVoiceLocked(nextKey)?.let(completed::add)
-                    nextKey = voicePlaybackQueue.advance()
-                } else {
-                    break
-                }
-            }
-            completed
-        }
-
-    private fun finishAllIncomingVoices(): List<RadioMessage> = synchronized(voiceSessionLock) {
-        val messages = incomingVoiceStreams.keys.toList().mapNotNull(::finishIncomingVoiceLocked)
-        voicePlaybackQueue.clear()
-        messages
-    }
-
-    private fun finishIncomingVoiceLocked(key: VoiceStreamKey): RadioMessage? {
-        val stream = incomingVoiceStreams.remove(key) ?: return null
-        voicePlaybackQueue.remove(key)
-        audioEngine.playback.endStream(key.playbackKey)
-        val networkPayload = stream.buffer.toByteArray()
-        val endedAt = stream.lastPacketAt + VOICE_PACKET_DURATION_MS
+    private fun completeIncomingVoice(voice: CompletedIncomingVoice): RadioMessage {
+        audioEngine.playback.endStream(voice.key.playbackKey)
+        val endedAt = voice.lastPacketAt + VOICE_PACKET_DURATION_MS
         val messageId = UUID.randomUUID().toString()
-        val message = RadioMessage(
+        return RadioMessage(
             id = messageId,
             type = RadioMessageType.VOICE,
-            senderCallsign = stream.callsign.ifBlank { stream.username },
-            senderSsid = stream.ssid,
-            senderUsername = stream.username,
+            senderCallsign = voice.source.identity,
+            senderSsid = voice.source.ssid,
+            senderUsername = voice.source.username,
             content = "语音",
-            timestamp = stream.startedAt,
+            timestamp = voice.startedAt,
             mine = false,
-            durationMs = (endedAt - stream.startedAt).coerceAtLeast(VOICE_PACKET_DURATION_MS),
-            audioCacheKey = cacheNetworkRecording(messageId, networkPayload),
-            groupId = stream.groupId
+            durationMs = (endedAt - voice.startedAt).coerceAtLeast(VOICE_PACKET_DURATION_MS),
+            audioCacheKey = cacheNetworkRecording(messageId, voice.networkPayload),
+            groupId = voice.source.groupId
         )
-        return message
     }
 
-    private fun hasIncomingVoice(): Boolean = synchronized(voiceSessionLock) { incomingVoiceStreams.isNotEmpty() }
-
-    private fun activeIncomingSpeaker(): String = synchronized(voiceSessionLock) {
-        val stream = voicePlaybackQueue.active?.let(incomingVoiceStreams::get)
-            ?: return@synchronized ""
-        formatRadioIdentity(stream.callsign.ifBlank { stream.username }, stream.ssid)
+    private fun playIncomingVoice(action: IncomingVoiceAction.Play, currentGeneration: Int) {
+        updateStatusIfActive(currentGeneration) { current ->
+            current.copy(speaker = formatRadioIdentity(action.speaker.identity, action.speaker.ssid))
+        }
+        audioEngine.playback.playStream(action.key.playbackKey, action.payload) { message ->
+            reportNonFatal(message, currentGeneration)
+        }
     }
 
     private fun appendVoiceData(buffer: ByteArrayOutputStream, payload: ByteArray) {
@@ -1072,16 +1020,6 @@ class UdpRadioClient internal constructor(
             listener.onPlaybackState(null)
         }
     }
-
-    private data class IncomingVoiceStream(
-        val username: String,
-        val callsign: String,
-        val ssid: Int,
-        val groupId: Int,
-        val startedAt: Long,
-        var lastPacketAt: Long,
-        val buffer: ByteArrayOutputStream = ByteArrayOutputStream()
-    )
 
     private fun formatDuration(milliseconds: Long): String {
         val seconds = (milliseconds / 1_000.0).coerceAtLeast(0.1)
