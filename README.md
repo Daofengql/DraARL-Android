@@ -34,7 +34,8 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 - `app/src/main/cpp`：RNNoise 的 JNI/CMake 接入及第三方源码
 
 当前规模、代码分布和维护重点见 [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)，自动截图范围与
-控件收敛规则见 [`docs/UI_VISUAL_BASELINE.md`](docs/UI_VISUAL_BASELINE.md)。
+控件收敛规则见 [`docs/UI_VISUAL_BASELINE.md`](docs/UI_VISUAL_BASELINE.md)，实时电台的状态、资源所有权和
+关闭顺序见 [`docs/UDP_CONNECTION_LIFECYCLE.md`](docs/UDP_CONNECTION_LIFECYCLE.md)。
 
 ## 构建
 

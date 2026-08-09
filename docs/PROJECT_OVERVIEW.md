@@ -9,8 +9,8 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 174 | 27,218 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 55 | 4,050 | 215 个测试用例 |
+| 生产 Kotlin | 176 | 27,434 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 57 | 4,272 | 231 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 4 | 791 | 24 张壳层、页面、状态和组件参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -26,7 +26,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | 包 | 文件数 | 职责 |
 | --- | ---: | --- |
 | `ui` | 60 | Compose 页面、导航和组件 |
-| `radio` | 31 | 消息状态与同步、会话、UDP、音频、重连、缓存和前台通信服务 |
+| `radio` | 33 | 消息状态与同步、会话、UDP、音频、重连、缓存和前台通信服务 |
 | `data` | 16 | 模型、本地存储、消息对账和路由 |
 | `tools` | 11 | BLE、中继、通联日志和预设 |
 | `maps` / `aprs` | 13 | 地图、坐标换算、网格和 APRS-IS |
@@ -54,14 +54,14 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - `RadioMessageController` 独占消息列表、缓存写入、游标分页、服务端对账和公开资料预加载；消息列表读取不可变 `RadioMessageUiState`，旧账户和旧群组结果不会覆盖当前状态。
 - `RadioSessionController` 独占节点发现、连接准备、频道路由、连接状态和 Service Binder 生命周期；电台页面读取不可变 `RadioSessionUiState`，账户切换会取消旧连接与路由结果。
 - 设备、群组、工具和个人页已拆出只接收页面数据与回调的内容层，可脱离 `AppController` 生成稳定截图。
-- HTTP 连接、超时、Header、响应体和 multipart 集中在 `HttpTransport`；`ApiSessionManager` 在传输层之上合并并发 401、刷新 Token 并持久化会话；149 行的 `ApiClient.kt` 只保留公共异常/URL 规则与 auth、devices、groups、radio、profile、tools、updates 七组窄接口组合。实时通信由 `UdpRadioClient` 和 `RadioConnectionService` 承担。
+- HTTP 连接、超时、Header、响应体和 multipart 集中在 `HttpTransport`；`ApiSessionManager` 在传输层之上合并并发 401、刷新 Token 并持久化会话；149 行的 `ApiClient.kt` 只保留公共异常/URL 规则与 auth、devices、groups、radio、profile、tools、updates 七组窄接口组合。实时通信由 `UdpRadioClient` 和 `RadioConnectionService` 承担；UDP 连接代次、目标配置和阶段由 `UdpConnectionStateMachine` 统一管理，认证响应解析与总超时读取已形成可独立测试的边界。
 - 设备、群组、资料、工具、更新和电台 DataSource/Controller 只依赖对应领域 API，不再依赖完整 `ApiClient`。
 - SQLite/SharedPreferences 分别保存消息历史、仪表盘/工具缓存、会话和客户端设置。
 - 原生层仅承担 RNNoise；Opus 编解码主要通过 Concentus 在 JVM 层实现。
 
 ## 维护重点
 
-1. `UdpRadioClient` 和 `DevicesScreen` 仍超过 1,000 行，是当前修改冲突和回归风险最集中的位置。`AppController` 已降至 988 行，后续重点转向 UDP 状态机、异步任务所有权和大型页面。
+1. `UdpRadioClient` 和 `DevicesScreen` 仍超过 1,000 行，是当前修改冲突和回归风险最集中的位置。UDP 状态与认证边界已经独立，但 Socket 传输、调度、PTT 和语音组装仍需继续拆分；`AppController` 已降至 988 行，后续重点是异步任务所有权和大型页面。
 2. 自动化测试以 JVM 测试为主，仪器测试只有 3 个文件。BLE、定位、前台服务、弱网重连、后台麦克风和系统权限仍需要真机覆盖。
 3. CI 已固定 Android SDK 36.1、NDK 28.2 和 CMake 3.22，并执行静态检查、截图验证与 Debug 构建门禁；地图运行验收仍依赖注入高德 Key，Release 签名仍需发布环境显式配置。
 4. Android 客户端依赖同仓库之外的 DraARL Server API 与 UDP 协议文档。服务端契约变更时，应同时检查 README 的“服务端契约”、`DraarlProtocol`、`ApiClient` 和更新清单校验。
@@ -77,6 +77,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 登录、持久会话恢复、用户更新、会话失效和退出清理已集中到 `SessionController`，并由 9 个 JVM 用例覆盖失败、远端失效和退出竞态。
 - HTTP 连接、超时、HTTPS、Header、空响应、异常 JSON、multipart 和主动取消已集中到可注入的 `HttpTransport`，并由 9 个 MockWebServer 用例覆盖。
 - Token 刷新、会话持久化、认证请求重试和旧认证/资料结果丢弃已集中到 `ApiSessionManager`，并由 8 个 JVM 用例覆盖并发 401 合并、刷新失败、过期边界、Token 刷新和 Session 替换竞态。
+- UDP 连接、认证、在线、重连、错误、主动断开与关闭已建模为显式状态和事件，单一不可变快照取代分散的目标配置、手动断开、代次和重连原子量；16 个新增 JVM 用例覆盖状态顺序、陈旧事件、重复重连、认证响应和总超时，资源所有权与关闭顺序记录在 `docs/UDP_CONNECTION_LIFECYCLE.md`。
 - `ApiClient` 已成为兼容门面；Auth、Profile、Devices、Groups、Radio、Tools、Updates 及 Token 刷新响应先进入类型化 DTO，再由独立 Mapper 转成业务模型，映射异常携带请求方法、路径与失败阶段。17 个领域 API 用例和 3 个工具 DTO 用例覆盖代表性路径、兼容字段、异常字段、响应阶段和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
 - 设置、账号安全和存储页已统一为细边框设置组、方形图标位和紧凑数据行，不再用默认 `Card` 叠加页面分区；危险清理使用统一弹窗与等宽动作区。
 - APRS 设置页已拆出不依赖定位权限和运行时 Controller 的内容层；链路、服务器、自动上报和测试区统一使用细边框设置组、命令按钮与状态提示，不再用默认 `Card` 叠加页面分区。
