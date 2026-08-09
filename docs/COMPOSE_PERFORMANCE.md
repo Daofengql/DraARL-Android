@@ -65,7 +65,24 @@ Compose compiler 总量保持 889 个 Composable、881 个可重启和 600 个�
 Compose compiler 总量从 889 个 Composable、881 个可重启和 600 个可跳过，变为 891、883 和 602；新增的
 `AutoPlayMessageScrollEffect` 与 `ControllerMessageItem` 均为可重启、可跳过作用域，`RadioScreen` 本身继续可跳过。
 
+## 连接瞬态状态边界
+
+改造前，`RadioScreen` 根作用域读取完整 `RadioSessionUiState` 和 `RadioStatus`，连接阶段、收发状态、在线设备或
+弹窗数据变化都会使整个页面失效。连接面板也由页面向下传递完整会话状态。
+
+改造后：
+
+- 所选群组使用带结构相等策略的派生状态，其他会话字段变化不会使页面根作用域失效。
+- 连接刷新和自动连接副作用移入 `RadioConnectionEffects`，保持原有 effect key 和触发语义。
+- PTT、RX/TX 与 CW 可用性由不可变 `RadioTransmissionState` 派生，并限制在编辑器、展开面板或 CW Sheet 的
+  独立作用域。
+- 在线设备列表、连接面板和三个选择弹窗分别读取所需状态；派生展示模型会过滤不影响显示的复合状态更新。
+
+强制全量编译后，Compose compiler 总量从 891 个 Composable、883 个可重启和 602 个可跳过，变为
+900、892 和 611；新增的命名作用域及 `ConnectionPanel` 均为可重启、可跳过。
+
 ## 验证边界
 
 本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。当前没有连接 Android 设备，因此尚未使用 Layout
-Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；连接瞬态仍由 `TODO.md` 跟踪。
+Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；其余页面的细粒度订阅和真机运行时证据仍由
+`TODO.md` 跟踪。
