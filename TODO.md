@@ -23,6 +23,7 @@
 - 复杂度主要集中在 `UdpRadioClient`、`AppController` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
 - Spotless、Detekt、单元测试、截图验证、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
+- Release 已通过 AGP 9.3 优化接口启用 R8 与资源收缩，arm64 APK 从 41.91 MiB 降至 30.54 MiB；前后数据与 keep rules 验收记录在 `docs/RELEASE_OPTIMIZATION.md`。
 
 ## P1：代码边界与状态所有权
 
@@ -59,8 +60,7 @@
 
 - [ ] **优化 Release 构建**
 
-- 启用并验证 R8 与资源收缩，维护高德、JNI 和序列化所需 keep rules。
-- 记录 APK 体积、冷启动、首帧和运行内存的优化前后数据。
+- 记录冷启动、首帧和运行内存的优化前后数据。
 - 增加 Baseline Profile，覆盖启动、登录态恢复、进入 PTT 和设备列表。
 - Release 回归覆盖 RNNoise、地图、更新安装和前台服务。
 

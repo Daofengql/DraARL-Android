@@ -35,7 +35,8 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 
 当前规模、代码分布和维护重点见 [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)，自动截图范围与
 控件收敛规则见 [`docs/UI_VISUAL_BASELINE.md`](docs/UI_VISUAL_BASELINE.md)，实时电台的状态、资源所有权和
-关闭顺序见 [`docs/UDP_CONNECTION_LIFECYCLE.md`](docs/UDP_CONNECTION_LIFECYCLE.md)。
+关闭顺序见 [`docs/UDP_CONNECTION_LIFECYCLE.md`](docs/UDP_CONNECTION_LIFECYCLE.md)，Release 的 R8 配置、
+体积对照和静态验收见 [`docs/RELEASE_OPTIMIZATION.md`](docs/RELEASE_OPTIMIZATION.md)。
 
 ## 构建
 
@@ -46,11 +47,12 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 ```powershell
 .\gradlew.bat spotlessCheck detektDebug
 .\gradlew.bat testDebugUnitTest validateDebugScreenshotTest lintDebug assembleDebug assembleDebugAndroidTest
+.\gradlew.bat assembleRelease
 ```
 
 Spotless 只检查相对 `origin/main` 新增或修改的 Kotlin/Gradle 文件；Detekt 使用存量基线，并阻止新增的复杂方法、超长类、吞异常和无明确生命周期的通用线程池。GitHub Actions 对 `main` 和 Pull Request 执行同一组静态检查、截图验证、构建门禁和 Markdown 链接检查。
 
-调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
+调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。Release 默认通过 AGP 9.3 的优化接口启用 R8 与资源收缩，输出到 `app/build/outputs/apk/release/app-release.apk`；未提供 `keystore.properties` 时该 APK 不带发布签名。
 
 ## 服务端契约
 

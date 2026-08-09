@@ -1,0 +1,7 @@
+# AMap is distributed as plain JARs without consumer keep rules. Its map
+# renderer crosses reflection and native boundaries through these packages.
+-keep class com.amap.** { *; }
+-keep class com.autonavi.** { *; }
+
+# rnnoise_jni.cpp exports symbols using this Kotlin object's binary name.
+-keep class cn.silverdragon.draarl.radio.RnnoiseNative { *; }
