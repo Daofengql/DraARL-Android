@@ -88,6 +88,30 @@ fun DevicesEmptyDarkLargeTextBaseline() {
 }
 
 @PreviewTest
+@Preview(
+    name = "Devices Filter Empty Dark Large Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun DevicesFilterEmptyDarkLargeTextBaseline() {
+    BaselineScreen(selectedKey = "devices", darkTheme = true) {
+        DevicesContent(
+            state = DevicesContentState(
+                devices = SampleDevices,
+                groups = SampleGroups,
+                defaultGroupId = SampleGroups.first().id,
+                loading = false
+            ),
+            onAction = {},
+            initialFilter = "不存在的设备"
+        )
+    }
+}
+
+@PreviewTest
 @Preview(name = "Groups Light Narrow", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun GroupsLightBaseline() {

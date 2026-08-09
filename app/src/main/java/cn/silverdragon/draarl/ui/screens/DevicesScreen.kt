@@ -250,10 +250,14 @@ fun DevicesScreen(controller: AppController) {
 }
 
 @Composable
-internal fun DevicesContent(state: DevicesContentState, onAction: (DevicesContentAction) -> Unit) {
+internal fun DevicesContent(
+    state: DevicesContentState,
+    onAction: (DevicesContentAction) -> Unit,
+    initialFilter: String = ""
+) {
     val devices = state.devices
     val groups = state.groups
-    var filter by rememberSaveable { mutableStateOf("") }
+    var filter by rememberSaveable { mutableStateOf(initialFilter) }
     val query = filter.trim()
     val visibleDevices = remember(devices, query) { filterDevices(devices, query) }
     val groupsById = remember(groups) { groups.associateBy(Group::id) }
