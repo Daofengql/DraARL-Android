@@ -37,7 +37,8 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 控件收敛规则见 [`docs/UI_VISUAL_BASELINE.md`](docs/UI_VISUAL_BASELINE.md)，实时电台的状态、资源所有权和
 关闭顺序见 [`docs/UDP_CONNECTION_LIFECYCLE.md`](docs/UDP_CONNECTION_LIFECYCLE.md)，Release 的 R8 配置、
 体积对照和静态验收见 [`docs/RELEASE_OPTIMIZATION.md`](docs/RELEASE_OPTIMIZATION.md)，Compose 重组边界与
-编译器指标见 [`docs/COMPOSE_PERFORMANCE.md`](docs/COMPOSE_PERFORMANCE.md)。
+编译器指标见 [`docs/COMPOSE_PERFORMANCE.md`](docs/COMPOSE_PERFORMANCE.md)，依赖升级与 SDK 兼容边界见
+[`docs/DEPENDENCY_UPGRADES.md`](docs/DEPENDENCY_UPGRADES.md)。
 
 ## 构建
 
