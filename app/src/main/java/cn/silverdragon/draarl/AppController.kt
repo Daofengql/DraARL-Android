@@ -180,8 +180,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val publicAuthDelegate = lazy {
         PublicAuthController(
             api = api,
-            executor = executor,
-            mainHandler = mainHandler,
+            scope = viewModelScope,
+            ioDispatcher = ioDispatcher,
             showLoginError = session::reportLoginError,
             friendlyError = ::friendlyError
         )

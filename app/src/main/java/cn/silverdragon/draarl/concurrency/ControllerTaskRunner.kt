@@ -37,6 +37,11 @@ internal class ControllerTaskRunner(
         return true
     }
 
+    fun <T> replace(operation: () -> T, onSuccess: (T) -> Unit, onFailure: (Throwable) -> Unit) {
+        cancel()
+        launch(operation, onSuccess, onFailure)
+    }
+
     fun cancel() {
         generation++
         operationJob?.cancel()

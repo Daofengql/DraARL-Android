@@ -1,28 +1,25 @@
 package cn.silverdragon.draarl.auth
 
-import android.os.Handler
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import cn.silverdragon.draarl.AppConfig
+import cn.silverdragon.draarl.concurrency.ControllerTaskRunner
 import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.RegistrationResult
 import cn.silverdragon.draarl.network.AuthApi
 import cn.silverdragon.draarl.network.RegistrationRequest
-import java.util.concurrent.Executor
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 
 class PublicAuthController(
     private val api: AuthApi,
-    private val executor: Executor,
-    private val mainHandler: Handler,
+    scope: CoroutineScope,
+    ioDispatcher: CoroutineDispatcher,
     private val showLoginError: (String) -> Unit,
     private val friendlyError: (Throwable) -> String
 ) {
-    private val closed = AtomicBoolean(false)
-    private val captchaGeneration = AtomicInteger(0)
-    private val operationGeneration = AtomicInteger(0)
+    private var closed = false
 
     var busy by mutableStateOf(false)
         private set
@@ -40,71 +37,49 @@ class PublicAuthController(
         private set
     var captchaLoading by mutableStateOf(false)
         private set
+    private val operationTasks = ControllerTaskRunner(scope, ioDispatcher) { busy = it }
+    private val captchaTasks = ControllerTaskRunner(scope, ioDispatcher) { captchaLoading = it }
+    private val registrationConfigTasks = ControllerTaskRunner(scope, ioDispatcher) { registrationConfigLoading = it }
 
     fun loadCaptcha() {
-        if (closed.get()) return
-        val generation = captchaGeneration.incrementAndGet()
+        if (closed) return
         captchaId = ""
         captchaImageBase64 = ""
-        captchaLoading = true
-        executor.execute {
-            runCatching { api.getCaptcha(AppConfig.BASE_URL) }
-                .onSuccess { challenge ->
-                    mainHandler.post {
-                        if (closed.get() || generation != captchaGeneration.get()) return@post
-                        captchaId = challenge.id
-                        captchaImageBase64 = challenge.imageBase64
-                        captchaLoading = false
-                    }
-                }
-                .onFailure { failure ->
-                    mainHandler.post {
-                        if (closed.get() || generation != captchaGeneration.get()) return@post
-                        captchaId = ""
-                        captchaImageBase64 = ""
-                        captchaLoading = false
-                        showLoginError(friendlyError(failure))
-                    }
-                }
-        }
+        captchaTasks.replace(
+            operation = { api.getCaptcha(AppConfig.BASE_URL) },
+            onSuccess = { challenge ->
+                captchaId = challenge.id
+                captchaImageBase64 = challenge.imageBase64
+            },
+            onFailure = { failure ->
+                captchaId = ""
+                captchaImageBase64 = ""
+                showLoginError(friendlyError(failure))
+            }
+        )
     }
 
     fun loadRegistrationConfig() {
-        if (closed.get()) return
-        val generation = operationGeneration.get()
-        registrationConfigLoading = true
-        executor.execute {
-            runCatching { api.getRegistrationRequiresEmailVerification(AppConfig.BASE_URL) }
-                .onSuccess { required ->
-                    mainHandler.post {
-                        if (closed.get() || generation != operationGeneration.get()) return@post
-                        registrationConfigLoading = false
-                        registrationRequiresEmailVerification = required
-                    }
-                }
-                .onFailure {
-                    mainHandler.post {
-                        if (closed.get() || generation != operationGeneration.get()) return@post
-                        // The server remains authoritative during registration. A
-                        // failed public-config request should not trap users in an
-                        // email-verification flow that the server may have disabled.
-                        registrationConfigLoading = false
-                        registrationRequiresEmailVerification = false
-                    }
-                }
-        }
+        if (closed) return
+        registrationConfigTasks.replace(
+            operation = { api.getRegistrationRequiresEmailVerification(AppConfig.BASE_URL) },
+            onSuccess = { required -> registrationRequiresEmailVerification = required },
+            onFailure = {
+                // A failed public-config request must not force a flow the server may have disabled.
+                registrationRequiresEmailVerification = false
+            }
+        )
     }
 
     fun clearFlowState() {
-        operationGeneration.incrementAndGet()
-        busy = false
+        operationTasks.cancel()
+        registrationConfigTasks.cancel()
         error = ""
-        registrationConfigLoading = false
         passwordResetComplete = false
     }
 
     fun sendEmailCode(email: String, purpose: String, captchaCode: String, onSuccess: (EmailCodeSession) -> Unit) {
-        if (busy || closed.get()) return
+        if (busy || closed) return
         val trimmedEmail = email.trim()
         val submittedCaptchaId = captchaId
         val normalizedPurpose = purpose.trim()
@@ -119,11 +94,9 @@ class PublicAuthController(
             if (submittedCaptchaId.isBlank()) loadCaptcha()
             return
         }
-        val generation = operationGeneration.incrementAndGet()
-        busy = true
         error = ""
-        executor.execute {
-            runCatching {
+        operationTasks.launch(
+            operation = {
                 api.sendEmailCode(
                     AppConfig.BASE_URL,
                     trimmedEmail,
@@ -131,23 +104,17 @@ class PublicAuthController(
                     submittedCaptchaId,
                     captchaCode
                 )
-            }.onSuccess { session ->
-                mainHandler.post {
-                    if (closed.get() || generation != operationGeneration.get()) return@post
-                    busy = false
-                    error = ""
-                    onSuccess(session)
-                    loadCaptcha()
-                }
-            }.onFailure { failure ->
-                mainHandler.post {
-                    if (closed.get() || generation != operationGeneration.get()) return@post
-                    busy = false
-                    error = friendlyError(failure)
-                    loadCaptcha()
-                }
+            },
+            onSuccess = { session ->
+                error = ""
+                onSuccess(session)
+                loadCaptcha()
+            },
+            onFailure = { failure ->
+                error = friendlyError(failure)
+                loadCaptcha()
             }
-        }
+        )
     }
 
     fun register(
@@ -162,11 +129,12 @@ class PublicAuthController(
         emailCode: String,
         onSuccess: (RegistrationResult) -> Unit
     ) {
-        if (busy || closed.get()) return
+        if (busy || closed) return
         val trimmedUsername = username.trim()
         val normalizedCallsign = callsign.trim().uppercase()
         val trimmedEmail = email.trim()
         val trimmedPhone = phone.trim()
+        val requiresEmailVerification = registrationRequiresEmailVerification
         val validationError = when {
             !trimmedUsername.matches(USERNAME_PATTERN) -> "用户名必须是 3-20 位字母、数字或下划线"
 
@@ -180,7 +148,7 @@ class PublicAuthController(
 
             password != confirmPassword -> "两次输入的密码不一致"
 
-            registrationRequiresEmailVerification && (sessionId.isBlank() || emailCode.isBlank()) ->
+            requiresEmailVerification && (sessionId.isBlank() || emailCode.isBlank()) ->
                 "请先获取并填写邮箱验证码"
 
             else -> null
@@ -189,11 +157,9 @@ class PublicAuthController(
             error = validationError
             return
         }
-        val generation = operationGeneration.incrementAndGet()
-        busy = true
         error = ""
-        executor.execute {
-            runCatching {
+        operationTasks.launch(
+            operation = {
                 api.register(
                     RegistrationRequest(
                         baseUrl = AppConfig.BASE_URL,
@@ -203,19 +169,17 @@ class PublicAuthController(
                         phone = trimmedPhone,
                         nickname = nickname.trim().ifBlank { trimmedUsername },
                         email = trimmedEmail,
-                        sessionId = if (registrationRequiresEmailVerification) sessionId else "",
-                        emailCode = if (registrationRequiresEmailVerification) emailCode else ""
+                        sessionId = if (requiresEmailVerification) sessionId else "",
+                        emailCode = if (requiresEmailVerification) emailCode else ""
                     )
                 )
-            }.onSuccess { result ->
-                mainHandler.post {
-                    if (closed.get() || generation != operationGeneration.get()) return@post
-                    busy = false
-                    error = ""
-                    onSuccess(result)
-                }
-            }.onFailure { failure -> postOperationFailure(generation, failure) }
-        }
+            },
+            onSuccess = { result ->
+                error = ""
+                onSuccess(result)
+            },
+            onFailure = { failure -> error = friendlyError(failure) }
+        )
     }
 
     fun resetPassword(
@@ -225,7 +189,7 @@ class PublicAuthController(
         confirmPassword: String,
         onSuccess: () -> Unit
     ) {
-        if (busy || closed.get()) return
+        if (busy || closed) return
         val validationError = when {
             sessionId.isBlank() -> "请先获取邮箱验证码"
             emailCode.isBlank() -> "请输入邮箱验证码"
@@ -237,44 +201,36 @@ class PublicAuthController(
             error = validationError
             return
         }
-        val generation = operationGeneration.incrementAndGet()
-        busy = true
         error = ""
         passwordResetComplete = false
-        executor.execute {
-            runCatching { api.resetPassword(AppConfig.BASE_URL, sessionId, emailCode, newPassword) }
-                .onSuccess {
-                    mainHandler.post {
-                        if (closed.get() || generation != operationGeneration.get()) return@post
-                        busy = false
-                        error = ""
-                        passwordResetComplete = true
-                        onSuccess()
-                    }
-                }
-                .onFailure { failure -> postOperationFailure(generation, failure) }
-        }
+        operationTasks.launch(
+            operation = { api.resetPassword(AppConfig.BASE_URL, sessionId, emailCode, newPassword) },
+            onSuccess = {
+                error = ""
+                passwordResetComplete = true
+                onSuccess()
+            },
+            onFailure = { failure -> error = friendlyError(failure) }
+        )
     }
 
     fun reset() {
         clearFlowState()
-        captchaGeneration.incrementAndGet()
-        captchaLoading = false
+        captchaTasks.cancel()
         captchaId = ""
         captchaImageBase64 = ""
     }
 
     fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        reset()
-    }
-
-    private fun postOperationFailure(generation: Int, failure: Throwable) {
-        mainHandler.post {
-            if (closed.get() || generation != operationGeneration.get()) return@post
-            busy = false
-            error = friendlyError(failure)
-        }
+        if (closed) return
+        closed = true
+        operationTasks.close()
+        captchaTasks.close()
+        registrationConfigTasks.close()
+        error = ""
+        passwordResetComplete = false
+        captchaId = ""
+        captchaImageBase64 = ""
     }
 
     private companion object {
