@@ -1,6 +1,7 @@
 package cn.silverdragon.draarl.update
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import cn.silverdragon.draarl.concurrency.ControllerTaskRunner
@@ -40,8 +41,7 @@ internal interface AppUpdateEffects {
 data class AppUpdateUiState(
     val status: AppUpdateStatus = AppUpdateStatus.IDLE,
     val info: AppUpdateInfo? = null,
-    val message: String = "",
-    val progress: Float = 0f
+    val message: String = ""
 )
 
 class AppUpdateController internal constructor(
@@ -60,6 +60,8 @@ class AppUpdateController internal constructor(
 
     var uiState by mutableStateOf(AppUpdateUiState())
         private set
+    var progress by mutableFloatStateOf(0f)
+        private set
     val currentVersionName: String
         get() = gateway.currentVersionName
 
@@ -70,10 +72,10 @@ class AppUpdateController internal constructor(
             if (manual) effects.showNotice("请先登录后检查更新")
             return
         }
+        progress = 0f
         uiState = uiState.copy(
             status = AppUpdateStatus.CHECKING,
-            message = "正在检查客户端更新",
-            progress = 0f
+            message = "正在检查客户端更新"
         )
         checkTasks.launch(
             operation = gateway::checkForUpdate,
@@ -93,10 +95,10 @@ class AppUpdateController internal constructor(
         } else {
             val generation = ++downloadGeneration
             pendingInstallAfterPermission = false
+            progress = 0f
             uiState = uiState.copy(
                 status = AppUpdateStatus.DOWNLOADING,
-                message = "正在下载 ${update.version}",
-                progress = 0f
+                message = "正在下载 ${update.version}"
             )
             downloadTasks.launch(
                 operation = {
@@ -131,6 +133,7 @@ class AppUpdateController internal constructor(
         downloadGeneration++
         pendingInstallAfterPermission = false
         uiState = AppUpdateUiState()
+        progress = 0f
     }
 
     fun close() {
@@ -152,7 +155,7 @@ class AppUpdateController internal constructor(
         scope.launch {
             if (closed || generation != downloadGeneration) return@launch
             if (uiState.status == AppUpdateStatus.DOWNLOADING) {
-                uiState = uiState.copy(progress = progress)
+                this@AppUpdateController.progress = progress
             }
         }
     }
@@ -161,10 +164,10 @@ class AppUpdateController internal constructor(
         if (generation != downloadGeneration) return
         runCatching { gateway.installUpdate(apk) }
             .onSuccess {
+                progress = 1f
                 uiState = uiState.copy(
                     status = AppUpdateStatus.READY_TO_INSTALL,
-                    message = "已打开系统安装器",
-                    progress = 1f
+                    message = "已打开系统安装器"
                 )
                 effects.showNotice("已打开系统安装器")
             }

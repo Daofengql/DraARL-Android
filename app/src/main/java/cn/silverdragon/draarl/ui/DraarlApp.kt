@@ -388,7 +388,7 @@ private fun AppUpdateHost(controller: AppController) {
             update = update,
             status = status,
             message = controller.appUpdateMessage,
-            progress = controller.appUpdateProgress,
+            progress = { controller.appUpdateProgress },
             onUpdate = controller::downloadAndInstallAppUpdate,
             onDismiss = { dismissedVersion = update.version }
         )
@@ -400,7 +400,7 @@ private fun AppUpdateDialog(
     update: AppUpdateInfo,
     status: AppUpdateStatus,
     message: String,
-    progress: Float,
+    progress: () -> Float,
     onUpdate: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -449,7 +449,7 @@ private fun AppUpdateDialog(
             AppUpdateFeedback(status = status, message = message)
             if (busy) {
                 LinearProgressIndicator(
-                    progress = { progress },
+                    progress = progress,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

@@ -37,7 +37,20 @@
 `RadioConnectionPanel` 和 `RadioStatusStrip` 继续保持可跳过，参数也保持稳定。指标总量本身不代表运行时帧性能，
 本次收益来自状态读取位置和绘制阶段读取边界的变化。
 
+## 下载进度状态边界
+
+改造前，`AppUpdateController` 将下载进度与状态、更新信息和消息一起存放在单个
+`mutableStateOf(AppUpdateUiState)` 中。每个下载进度回调都会复制整个状态对象，使所有只关心状态或消息的订阅者
+失效；全局更新弹窗还会在 `AppUpdateHost` 中直接读取进度值。
+
+改造后，下载进度由独立 `mutableFloatStateOf` 持有，`AppUpdateUiState` 只在状态、更新信息或消息变化时替换。
+系统设置页和全局更新弹窗都将稳定的 `() -> Float` 直接交给 `LinearProgressIndicator`，进度读取限制在指示器内部。
+控制器测试同时断言进度从 0 更新到 0.25 时 `AppUpdateUiState` 保持同一对象引用。
+
+Compose compiler 总量保持 889 个 Composable、881 个可重启和 600 个可跳过；`AppUpdateDialog.progress`
+从稳定 `Float` 参数变为稳定 `Function0<Float>` 参数，没有增加额外组合层级。
+
 ## 验证边界
 
 本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。当前没有连接 Android 设备，因此尚未使用 Layout
-Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；连接瞬态、播放位置和下载进度仍由 `TODO.md` 跟踪。
+Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；连接瞬态和播放位置仍由 `TODO.md` 跟踪。

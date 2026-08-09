@@ -423,7 +423,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     val appUpdateMessage: String
         get() = appUpdateController.uiState.message
     val appUpdateProgress: Float
-        get() = appUpdateController.uiState.progress
+        get() = appUpdateController.progress
     private var appInForeground = true
     var playingMessageId by mutableStateOf<String?>(null)
         private set

@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -70,7 +71,9 @@ class AppUpdateControllerTest {
             fixture.controller.check()
             awaitCondition { fixture.controller.uiState.status == AppUpdateStatus.AVAILABLE }
             fixture.controller.downloadAndInstall()
-            awaitCondition { downloadStarted.count == 0L && fixture.controller.uiState.progress == 0.25f }
+            val downloadingState = fixture.controller.uiState
+            awaitCondition { downloadStarted.count == 0L && fixture.controller.progress == 0.25f }
+            assertSame(downloadingState, fixture.controller.uiState)
 
             fixture.controller.reset()
             releaseDownload.countDown()
@@ -78,6 +81,7 @@ class AppUpdateControllerTest {
             yield()
 
             assertEquals(AppUpdateUiState(), fixture.controller.uiState)
+            assertEquals(0f, fixture.controller.progress)
             assertEquals(0, gateway.installCalls.get())
         } finally {
             releaseDownload.countDown()
@@ -103,7 +107,7 @@ class AppUpdateControllerTest {
             awaitCondition { fixture.controller.uiState.status == AppUpdateStatus.READY_TO_INSTALL }
 
             assertEquals(1, gateway.installCalls.get())
-            assertEquals(1f, fixture.controller.uiState.progress)
+            assertEquals(1f, fixture.controller.progress)
         } finally {
             fixture.close()
         }
