@@ -29,7 +29,7 @@ data class DraarlAction(
     val label: String,
     val onClick: () -> Unit,
     val enabled: Boolean = true,
-    val style: CommandStyle = CommandStyle.SECONDARY,
+    val style: CommandStyle = CommandStyle.SECONDARY
 )
 
 @Composable
@@ -39,7 +39,7 @@ fun DraarlDialog(
     modifier: Modifier = Modifier,
     dismissAction: DraarlAction? = null,
     confirmAction: DraarlAction? = null,
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Dialog(onDismissRequest = onDismissRequest) {
         DraarlDialogContent(
@@ -47,7 +47,7 @@ fun DraarlDialog(
             modifier = modifier,
             dismissAction = dismissAction,
             confirmAction = confirmAction,
-            content = content,
+            content = content
         )
     }
 }
@@ -58,7 +58,7 @@ internal fun DraarlDialogContent(
     modifier: Modifier = Modifier,
     dismissAction: DraarlAction? = null,
     confirmAction: DraarlAction? = null,
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(
         modifier = modifier.fillMaxWidth().widthIn(max = 560.dp),
@@ -66,13 +66,13 @@ internal fun DraarlDialogContent(
         color = MaterialTheme.colorScheme.surfaceContainerLowest,
         contentColor = MaterialTheme.colorScheme.onSurface,
         border = BorderStroke(1.dp, MaterialTheme.appColors.divider),
-        shadowElevation = 12.dp,
+        shadowElevation = 12.dp
     ) {
         Column {
             Text(
                 text = title,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium
             )
             HorizontalDivider(color = MaterialTheme.appColors.divider)
             content()
@@ -92,7 +92,7 @@ fun DraarlSheet(
     modifier: Modifier = Modifier,
     dismissAction: DraarlAction? = null,
     confirmAction: DraarlAction? = null,
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -101,13 +101,13 @@ fun DraarlSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
-        dragHandle = { DraarlSheetHandle() },
+        dragHandle = { DraarlSheetHandle() }
     ) {
         DraarlSheetContent(
             title = title,
             dismissAction = dismissAction,
             confirmAction = confirmAction,
-            content = content,
+            content = content
         )
     }
 }
@@ -118,13 +118,13 @@ internal fun DraarlSheetContent(
     modifier: Modifier = Modifier,
     dismissAction: DraarlAction? = null,
     confirmAction: DraarlAction? = null,
-    content: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Column(modifier.fillMaxWidth()) {
         Text(
             text = title,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleMedium
         )
         HorizontalDivider(color = MaterialTheme.appColors.divider)
         content()
@@ -140,7 +140,7 @@ private fun DraarlActionRow(dismissAction: DraarlAction?, confirmAction: DraarlA
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         dismissAction?.let { action ->
             CommandButton(
@@ -148,7 +148,7 @@ private fun DraarlActionRow(dismissAction: DraarlAction?, confirmAction: DraarlA
                 onClick = action.onClick,
                 enabled = action.enabled,
                 style = action.style,
-                modifier = Modifier.widthIn(min = 88.dp),
+                modifier = if (confirmAction == null) Modifier.widthIn(min = 88.dp) else Modifier.weight(1f)
             )
         }
         if (dismissAction != null && confirmAction != null) {
@@ -160,7 +160,7 @@ private fun DraarlActionRow(dismissAction: DraarlAction?, confirmAction: DraarlA
                 onClick = action.onClick,
                 enabled = action.enabled,
                 style = action.style,
-                modifier = Modifier.widthIn(min = 88.dp),
+                modifier = if (dismissAction == null) Modifier.widthIn(min = 88.dp) else Modifier.weight(1f)
             )
         }
     }
@@ -171,7 +171,7 @@ private fun DraarlSheetHandle() {
     Box(
         modifier = Modifier.padding(vertical = 8.dp).size(width = 36.dp, height = 3.dp).background(
             color = MaterialTheme.colorScheme.outline,
-            shape = RoundedCornerShape(2.dp),
-        ),
+            shape = RoundedCornerShape(2.dp)
+        )
     )
 }

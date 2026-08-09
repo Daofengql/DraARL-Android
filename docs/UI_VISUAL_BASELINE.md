@@ -8,7 +8,7 @@
 `app/src/screenshotTestDebug/reference`。测试直接组合生产代码中的壳层和页面内容，不创建或启动
 `AppController`，因此不会触发会话恢复、服务绑定、网络请求或本地存储写入。
 
-当前参考图在 Windows 本地通过 JVM/Layoutlib 渲染，不依赖模拟器、真机或远程服务。
+当前 16 张参考图在 Windows 本地通过 JVM/Layoutlib 渲染，不依赖模拟器、真机或远程服务。
 
 | 场景 | 浅色 | 深色 | 额外覆盖 |
 | --- | --- | --- | --- |
@@ -18,6 +18,8 @@
 | PTT | 411 x 891 dp | 360 x 800 dp | 状态条、频道、空日志和发送控制 |
 | 工具 | 800 x 360 dp | 411 x 891 dp | 横屏与账号审核状态 |
 | 个人 | 411 x 891 dp | 360 x 800 dp | 长中文资料和 1.5 倍字体 |
+| 设置行 | 360 x 520 dp | 360 x 620 dp | 长说明、危险操作和 1.5 倍字体 |
+| 存储与危险弹窗 | 411 x 520 dp | 411 x 891 dp | 典型缓存数据、错误提示和双操作按钮 |
 
 PTT 基线使用生产代码中的通联日志模式。高德地图由运行时 `AndroidView` 和地图 SDK 渲染，不纳入
 Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
@@ -47,8 +49,8 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 
 | 类型 | 主要位置 | 当前用途 | 后续规则 |
 | --- | --- | --- | --- |
-| `Card` | `RadioMessageComponents.kt`，以及账号、APRS、BLE、日志、预设、设置和存储页 | 消息、配置对象和部分次级页面分区 | 只保留独立或可比较的数据对象；后续次级页面继续移除仅用于分组的 Card |
-| `Surface` | `DraarlBottomBar.kt`、`DraarlComponents.kt`、`DraarlContainers.kt`、`DraarlSegmentedControl.kt`、`RadioStatusStrip.kt`、`CommunicationTrendChart.kt` 和 `ProfileOverview.kt`，以及设备、群组、地图、消息、登录和工具页面 | 背景、状态容器、可点击行、统计对象、弹层和控制面 | 保留承载语义、状态色、细边框或点击反馈的 Surface；纯页面分区不增加浮层和阴影 |
+| `Card` | `RadioMessageComponents.kt`，以及 APRS、BLE、日志和预设页 | 消息、配置对象和可比较数据对象 | 只保留独立或可比较的数据对象；后续次级页面继续移除仅用于分组的 Card |
+| `Surface` | `DraarlBottomBar.kt`、`DraarlComponents.kt`、`DraarlContainers.kt`、`DraarlSettings.kt`、`DraarlSegmentedControl.kt`、`RadioStatusStrip.kt`、`CommunicationTrendChart.kt` 和 `ProfileOverview.kt`，以及设备、群组、地图、消息、登录和工具页面 | 背景、状态容器、可点击行、统计对象、弹层和控制面 | 保留承载语义、状态色、细边框或点击反馈的 Surface；纯页面分区不增加浮层和阴影 |
 | 圆角按钮 | 认证、设备/群组管理、地图、日志编辑、资料与设置页面中的 `Button`、`OutlinedButton`、`TextButton` | 明确提交、确认、取消和危险操作 | 命令按钮保留；图标已有通用语义时使用图标按钮；普通行入口不使用胶囊按钮 |
 | 分段控件 | `DraarlSegmentedControl.kt`、`AprsMapPanel.kt`、`SystemSettingsScreen.kt` | PTT 地图/日志模式与设置选项 | 只用于同级互斥模式，保持紧凑 0-6 dp 圆角，不扩展为页面导航 |
 | 状态色 | `Theme.kt`、`DraarlComponents.kt`、`RadioStatusStrip.kt`、设备/群组/PTT/APRS/设置页面 | 连接、接收、发射、在线、等待、离线和错误 | 所有业务状态从 `appColors` 或 `StatusTone` 获取；页面不得直接发明新的成功/警告色 |
@@ -58,5 +60,5 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 - UI 改造前后必须使用相同 Preview 名称、尺寸、主题和固定样本数据比较。
 - 参考图需要检查非空渲染、底栏与内容遮挡、长文本换行和状态色可辨识度。
 - 像素基线不能替代真机 Insets、软键盘、权限弹窗、地图和触摸目标检查。
-- 本文只证明一级页面静态基线已建立；空、错、加载、弹窗和 Bottom Sheet 的完整状态矩阵仍由
+- 本文证明一级页面及首批设置行、存储页、错误提示和危险弹窗静态基线已建立；空、错、加载和 Bottom Sheet 的完整状态矩阵仍由
   `TODO.md` 中“增加 UI 回归测试”跟踪。

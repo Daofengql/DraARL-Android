@@ -2,20 +2,19 @@ package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,9 +28,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
+import cn.silverdragon.draarl.data.User
+import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.DataRow
+import cn.silverdragon.draarl.ui.components.DraarlSettings
+import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
+import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
+import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
+import cn.silverdragon.draarl.ui.theme.appColors
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -55,68 +63,116 @@ fun AccountSecurityScreen(controller: AppController) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        SectionHeader(icon = Icons.Default.Lock, title = "修改密码")
-                        if (showChangePassword) {
-                            ChangePasswordSection(controller = controller, onDone = { showChangePassword = false })
-                        } else {
-                            Button(onClick = { showChangePassword = true }, modifier = Modifier.fillMaxWidth()) {
-                                Text("修改密码")
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        SectionHeader(icon = Icons.Default.Email, title = "邮箱")
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                DraarlSettingsSectionTitle("凭据", detail = "修改凭据后，当前设备会继续保持登录")
+                DraarlSettingsGroup {
+                    if (showChangePassword) {
+                        AccountSecurityForm(
+                            icon = Icons.Default.Lock,
+                            title = "修改登录密码",
+                            onClose = { showChangePassword = false }
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(user.email.ifBlank { "未设置" }, style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    if (user.email.isBlank()) "设置邮箱可用于找回密码" else "修改邮箱需要验证当前邮箱",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Button(onClick = { showChangeEmail = !showChangeEmail }) {
-                                Text(if (user.email.isBlank()) "设置邮箱" else "修改邮箱")
-                            }
+                            ChangePasswordSection(controller, onDone = { showChangePassword = false })
                         }
-                        if (showChangeEmail) {
-                            Spacer(Modifier.height(12.dp))
-                            ChangeEmailSection(controller = controller, onDone = { showChangeEmail = false })
+                    } else {
+                        DraarlSettingsRow(
+                            item = DraarlSettings(
+                                icon = Icons.Default.Lock,
+                                title = "登录密码",
+                                detail = "使用当前密码验证后设置新密码",
+                                onClick = { showChangePassword = true }
+                            ),
+                            showDivider = true
+                        )
+                    }
+
+                    if (showChangeEmail) {
+                        AccountSecurityForm(
+                            icon = Icons.Default.Email,
+                            title = if (user.email.isBlank()) "设置邮箱" else "修改邮箱",
+                            onClose = { showChangeEmail = false }
+                        ) {
+                            ChangeEmailSection(controller, onDone = { showChangeEmail = false })
                         }
+                    } else {
+                        DraarlSettingsRow(
+                            item = DraarlSettings(
+                                icon = Icons.Default.Email,
+                                title = user.email.ifBlank { "未设置邮箱" },
+                                detail = if (user.email.isBlank()) {
+                                    "设置邮箱后可用于找回密码"
+                                } else {
+                                    "修改邮箱需要验证当前邮箱"
+                                },
+                                onClick = { showChangeEmail = true }
+                            )
+                        )
                     }
                 }
             }
 
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp)) {
-                        SectionHeader(icon = Icons.Default.Person, title = "登录信息")
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            InfoRow("用户ID", user.id.toString())
-                            InfoRow("用户名", user.username)
-                            InfoRow("角色", if (user.role == "admin") "管理员" else "普通用户")
-                            InfoRow("状态", if (user.status == 1) "正常" else "已禁用")
-                            InfoRow("最后登录时间", user.lastLoginTime.ifBlank { "-" })
-                            InfoRow("登录IP", user.lastLoginIp.ifBlank { "-" })
-                            if (user.lastLoginIpLocation.isNotBlank()) {
-                                InfoRow("IP归属地", user.lastLoginIpLocation)
-                            }
-                        }
-                    }
+                DraarlSettingsSectionTitle("登录信息", detail = "用于核对当前账户与最近登录来源")
+                LoginInfoGroup(user)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AccountSecurityForm(
+    icon: ImageVector,
+    title: String,
+    onClose: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                title,
+                modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                style = MaterialTheme.typography.titleSmall
+            )
+            CommandIconButton(onClick = onClose, contentDescription = "关闭$title", icon = Icons.Default.Close)
+        }
+        HorizontalDivider(color = MaterialTheme.appColors.divider)
+        content()
+    }
+}
+
+@Composable
+private fun LoginInfoGroup(user: User) {
+    val rows = buildList {
+        add(Triple("用户 ID", user.id.toString(), true))
+        add(Triple("用户名", user.username, true))
+        add(Triple("角色", if (user.role == "admin") "管理员" else "普通用户", false))
+        add(Triple("状态", if (user.status == 1) "正常" else "已禁用", false))
+        add(Triple("最后登录时间", user.lastLoginTime.ifBlank { "-" }, true))
+        add(Triple("登录 IP", user.lastLoginIp.ifBlank { "-" }, true))
+        if (user.lastLoginIpLocation.isNotBlank()) add(Triple("IP 归属地", user.lastLoginIpLocation, false))
+    }
+    DraarlSettingsGroup {
+        rows.forEachIndexed { index, (label, value, technical) ->
+            DataRow(
+                label = label,
+                value = value,
+                technical = technical,
+                leadingIcon = if (index ==
+                    0
+                ) {
+                    Icons.Default.Person
+                } else {
+                    null
                 }
+            )
+            if (index < rows.lastIndex) {
+                HorizontalDivider(modifier = Modifier.padding(start = 12.dp), color = MaterialTheme.appColors.divider)
             }
         }
     }

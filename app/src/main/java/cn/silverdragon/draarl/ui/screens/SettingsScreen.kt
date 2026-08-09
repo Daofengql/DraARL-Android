@@ -1,38 +1,28 @@
 package cn.silverdragon.draarl.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.ui.components.DraarlSettings
+import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
+import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
+import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -43,66 +33,75 @@ fun SettingsScreen(onAction: (SettingsMenuAction) -> Unit) {
                 title = { Text("设置") },
                 navigationIcon = {
                     IconButton(onClick = { onAction(SettingsMenuAction.Back) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 }
             )
         }
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
-                SettingsSectionHeader("账户")
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    SettingsMenuItem(
-                        icon = Icons.Default.Lock,
-                        title = "账号与安全",
-                        subtitle = "密码、邮箱、登录信息",
-                        onClick = { onAction(SettingsMenuAction.OpenAccountSecurity) }
+                DraarlSettingsSectionTitle("账户")
+                DraarlSettingsGroup {
+                    DraarlSettingsRow(
+                        item = DraarlSettings(
+                            icon = Icons.Default.Lock,
+                            title = "账号与安全",
+                            detail = "密码、邮箱与登录信息",
+                            onClick = { onAction(SettingsMenuAction.OpenAccountSecurity) }
+                        )
                     )
                 }
             }
 
             item {
-                SettingsSectionHeader("应用")
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    SettingsMenuItem(
-                        icon = Icons.Default.Settings,
-                        title = "应用设置",
-                        subtitle = "外观、通联、音频、后台与更新",
-                        onClick = { onAction(SettingsMenuAction.OpenSystemSettings) }
+                DraarlSettingsSectionTitle("应用")
+                DraarlSettingsGroup {
+                    DraarlSettingsRow(
+                        item = DraarlSettings(
+                            icon = Icons.Default.Settings,
+                            title = "应用设置",
+                            detail = "外观、通联、音频、后台与更新",
+                            onClick = { onAction(SettingsMenuAction.OpenSystemSettings) }
+                        ),
+                        showDivider = true
                     )
-                    SettingsMenuItem(
-                        icon = Icons.Default.Storage,
-                        title = "存储管理",
-                        subtitle = "查看并清理语音、头像和消息缓存",
-                        onClick = { onAction(SettingsMenuAction.OpenStorageSettings) }
+                    DraarlSettingsRow(
+                        item = DraarlSettings(
+                            icon = Icons.Default.Storage,
+                            title = "存储管理",
+                            detail = "查看并清理语音、头像和消息缓存",
+                            onClick = { onAction(SettingsMenuAction.OpenStorageSettings) }
+                        ),
+                        showDivider = true
                     )
-                    SettingsMenuItem(
-                        icon = Icons.Default.MyLocation,
-                        title = "APRS 设置",
-                        subtitle = "APRS-IS 位置上报与自动上报",
-                        onClick = { onAction(SettingsMenuAction.OpenAprsSettings) }
+                    DraarlSettingsRow(
+                        item = DraarlSettings(
+                            icon = Icons.Default.MyLocation,
+                            title = "APRS 设置",
+                            detail = "APRS-IS 位置上报与自动上报",
+                            onClick = { onAction(SettingsMenuAction.OpenAprsSettings) }
+                        )
                     )
                 }
             }
 
             item {
-                SettingsSectionHeader("登录")
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    SettingsMenuItem(
-                        icon = Icons.AutoMirrored.Filled.ExitToApp,
-                        title = "退出登录",
-                        titleColor = MaterialTheme.colorScheme.error,
-                        onClick = { onAction(SettingsMenuAction.Logout) }
+                DraarlSettingsSectionTitle("会话")
+                DraarlSettingsGroup {
+                    DraarlSettingsRow(
+                        item = DraarlSettings(
+                            icon = Icons.AutoMirrored.Filled.ExitToApp,
+                            title = "退出登录",
+                            detail = "清除本机登录状态并断开当前通信会话",
+                            onClick = { onAction(SettingsMenuAction.Logout) },
+                            danger = true,
+                            showChevron = false
+                        )
                     )
                 }
             }
@@ -112,55 +111,5 @@ fun SettingsScreen(onAction: (SettingsMenuAction) -> Unit) {
 
 @Composable
 internal fun SettingsSectionHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-    )
-}
-
-@Composable
-private fun SettingsMenuItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String? = null,
-    titleColor: Color = MaterialTheme.colorScheme.onSurface,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = titleColor
-            )
-            if (subtitle != null) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
+    DraarlSettingsSectionTitle(title)
 }

@@ -1,15 +1,13 @@
 package cn.silverdragon.draarl.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,15 +16,12 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -39,9 +34,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import cn.silverdragon.draarl.data.StorageCategory
 import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.settings.SettingsController
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.DraarlSettings
+import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
+import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
+import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
+import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.dataTypography
 import java.util.Locale
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -63,168 +70,190 @@ fun StorageSettingsScreen(settings: SettingsController, onBack: () -> Unit) {
             )
         }
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Storage,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("缓存占用", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    formatBytes(state.storageUsage.totalBytes),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            if (state.storageBusy) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                        Text(
-                            "缓存只保存在本机，清理不会影响服务器上的通联记录。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            item {
-                StorageCategoryCard(
-                    icon = Icons.Default.GraphicEq,
-                    title = "语音缓存",
-                    description = "已下载的 raw 语音，用于离线回放",
-                    size = state.storageUsage.audioBytes,
-                    enabled = !state.storageBusy,
-                    onClear = { pendingClear = StorageCategory.AUDIO }
-                )
-            }
-            item {
-                StorageCategoryCard(
-                    icon = Icons.Default.Image,
-                    title = "头像缓存",
-                    description = "用户头像的内存和磁盘缓存",
-                    size = state.storageUsage.avatarBytes,
-                    enabled = !state.storageBusy,
-                    onClear = { pendingClear = StorageCategory.AVATARS }
-                )
-            }
-            item {
-                StorageCategoryCard(
-                    icon = Icons.AutoMirrored.Filled.Message,
-                    title = "消息记录缓存",
-                    description = "本地保存的通联记录和同步索引",
-                    size = state.storageUsage.messageBytes,
-                    enabled = !state.storageBusy,
-                    onClear = { pendingClear = StorageCategory.MESSAGES }
-                )
-            }
-            item {
-                OutlinedButton(
-                    onClick = { pendingClear = StorageCategory.ALL },
-                    enabled = !state.storageBusy,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("清理全部缓存")
-                }
-            }
-        }
+        StorageSettingsContent(
+            usage = state.storageUsage,
+            busy = state.storageBusy,
+            onClear = { pendingClear = it },
+            modifier = Modifier.padding(innerPadding)
+        )
     }
 
     pendingClear?.let { category ->
-        val isDestructive = category == StorageCategory.MESSAGES || category == StorageCategory.ALL
-        AlertDialog(
-            onDismissRequest = { pendingClear = null },
-            title = {
-                Text(
-                    if (category ==
-                        StorageCategory.ALL
-                    ) {
-                        "清理全部缓存？"
-                    } else {
-                        "清理${category.displayName()}？"
-                    }
-                )
-            },
-            text = {
-                Text(
-                    if (isDestructive) {
-                        "本地消息会被移除，之后进入 PTT 页面时会重新从服务器同步。登录信息不会被删除。"
-                    } else {
-                        "只会清理本机缓存，不会影响服务器数据。"
-                    }
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        pendingClear = null
-                        settings.clearStorage(category)
-                    }
-                ) { Text("清理") }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { pendingClear = null }) { Text("取消") }
+        StorageClearDialog(
+            category = category,
+            onDismiss = { pendingClear = null },
+            onConfirm = {
+                pendingClear = null
+                settings.clearStorage(category)
             }
         )
     }
 }
 
 @Composable
-private fun StorageCategoryCard(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    size: Long,
-    enabled: Boolean,
-    onClear: () -> Unit
+internal fun StorageSettingsContent(
+    usage: StorageUsage,
+    busy: Boolean,
+    onClear: (StorageCategory) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        item { StorageSummary(usage.totalBytes, busy) }
+        item {
+            DraarlSettingsSectionTitle("本机缓存", detail = "按数据类型查看占用并单独清理")
+            DraarlSettingsGroup {
+                StorageCategoryRow(
+                    item = StorageCategoryItem(
+                        Icons.Default.GraphicEq,
+                        StorageCategory.AUDIO,
+                        "已下载的 raw 语音，用于离线回放",
+                        usage.audioBytes
+                    ),
+                    enabled = !busy,
+                    showDivider = true,
+                    onClear = onClear
+                )
+                StorageCategoryRow(
+                    item = StorageCategoryItem(
+                        Icons.Default.Image,
+                        StorageCategory.AVATARS,
+                        "用户头像的内存和磁盘缓存",
+                        usage.avatarBytes
+                    ),
+                    enabled = !busy,
+                    showDivider = true,
+                    onClear = onClear
+                )
+                StorageCategoryRow(
+                    item = StorageCategoryItem(
+                        Icons.AutoMirrored.Filled.Message,
+                        StorageCategory.MESSAGES,
+                        "本地通联记录与同步索引",
+                        usage.messageBytes
+                    ),
+                    enabled = !busy,
+                    onClear = onClear
+                )
+            }
+        }
+        item {
+            CommandButton(
+                label = "清理全部缓存",
+                onClick = { onClear(StorageCategory.ALL) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !busy,
+                style = CommandStyle.DANGER,
+                supportingText = "登录信息与服务器数据不会被删除",
+                leadingIcon = Icons.Default.DeleteSweep
+            )
+        }
+    }
+}
+
+@Composable
+private fun StorageSummary(totalBytes: Long, busy: Boolean) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.appColors.divider)
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                icon,
+                Icons.Default.Storage,
                 contentDescription = null,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(28.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
+            Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                Text("本机缓存占用", style = MaterialTheme.typography.labelLarge)
                 Text(
-                    description,
+                    formatBytes(totalBytes),
+                    style = MaterialTheme.dataTypography.value.copy(fontSize = 24.sp, lineHeight = 30.sp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "清理不会影响服务器上的通联记录",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    formatBytes(size),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
             }
-            IconButton(onClick = onClear, enabled = enabled) {
-                Icon(Icons.Default.DeleteSweep, contentDescription = "清理$title")
-            }
+            if (busy) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
         }
+    }
+}
+
+@Composable
+private fun StorageCategoryRow(
+    item: StorageCategoryItem,
+    enabled: Boolean,
+    showDivider: Boolean = false,
+    onClear: (StorageCategory) -> Unit
+) {
+    DraarlSettingsRow(
+        item = DraarlSettings(
+            icon = item.icon,
+            title = item.category.displayName(),
+            detail = item.description,
+            showChevron = false
+        ),
+        enabled = enabled,
+        showDivider = showDivider,
+        trailing = {
+            Text(
+                formatBytes(item.size),
+                style = MaterialTheme.dataTypography.value,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            CommandIconButton(
+                onClick = { onClear(item.category) },
+                contentDescription = "清理${item.category.displayName()}",
+                icon = Icons.Default.DeleteSweep,
+                enabled = enabled,
+                danger = item.category == StorageCategory.MESSAGES,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
+    )
+}
+
+private data class StorageCategoryItem(
+    val icon: ImageVector,
+    val category: StorageCategory,
+    val description: String,
+    val size: Long
+)
+
+@Composable
+private fun StorageClearDialog(category: StorageCategory, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val isDestructive = category == StorageCategory.MESSAGES || category == StorageCategory.ALL
+    DraarlDialog(
+        title = if (category == StorageCategory.ALL) "清理全部缓存？" else "清理${category.displayName()}？",
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction("取消", onDismiss),
+        confirmAction = DraarlAction(
+            label = "清理",
+            onClick = onConfirm,
+            style = if (isDestructive) CommandStyle.DANGER else CommandStyle.PRIMARY
+        )
+    ) {
+        Text(
+            text = if (isDestructive) {
+                "本地消息会被移除，之后进入 PTT 页面时会重新从服务器同步。登录信息不会被删除。"
+            } else {
+                "只会清理本机缓存，不会影响服务器数据。"
+            },
+            modifier = Modifier.padding(18.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -236,13 +265,15 @@ private fun StorageCategory.displayName(): String = when (this) {
 }
 
 private fun formatBytes(bytes: Long): String {
-    if (bytes < 1_024L) return "$bytes B"
+    if (bytes < BYTES_PER_UNIT) return "$bytes B"
     val units = listOf("KB", "MB", "GB")
     var value = bytes.toDouble()
     var index = -1
-    while (value >= 1_024.0 && index < units.lastIndex) {
-        value /= 1_024.0
+    while (value >= BYTES_PER_UNIT && index < units.lastIndex) {
+        value /= BYTES_PER_UNIT
         index++
     }
     return String.format(Locale.CHINA, "%.1f %s", value, units[index])
 }
+
+private const val BYTES_PER_UNIT = 1_024L
