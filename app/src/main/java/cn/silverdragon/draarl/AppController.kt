@@ -67,8 +67,9 @@ import cn.silverdragon.draarl.settings.SettingsController
 import cn.silverdragon.draarl.settings.SettingsEffects
 import cn.silverdragon.draarl.settings.radioAudioSettings
 import cn.silverdragon.draarl.tools.ToolsController
+import cn.silverdragon.draarl.update.AppUpdateController
+import cn.silverdragon.draarl.update.AppUpdateEffects
 import cn.silverdragon.draarl.update.AppUpdateInfo
-import cn.silverdragon.draarl.update.AppUpdateInstallPermissionException
 import cn.silverdragon.draarl.update.AppUpdateManager
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import java.util.concurrent.Executors
@@ -93,8 +94,6 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val messageStore = RadioMessageStore(appContext)
     private val dashboardStore = DashboardCacheStore(appContext)
     private val disposed = AtomicBoolean(false)
-    private val checkingAppUpdate = AtomicBoolean(false)
-    private val downloadingAppUpdate = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
     private val onlineDevicesCoordinator = RefreshCoordinator()
     private val voiceAutoPlaySkippedIds = mutableSetOf<String>()
@@ -130,7 +129,25 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val toolsDelegate = lazy { ToolsController(appContext, api, viewModelScope, ioDispatcher) }
     val tools: ToolsController
         get() = toolsDelegate.value
-    private val appUpdateManager by lazy { AppUpdateManager(appContext, api) }
+    private val appUpdateControllerDelegate = lazy {
+        AppUpdateController(
+            gateway = AppUpdateManager(appContext, api),
+            parentScope = viewModelScope,
+            ioDispatcher = ioDispatcher,
+            effects = object : AppUpdateEffects {
+                override fun hasAuthenticatedSession(): Boolean = api.currentSession() != null
+
+                override fun automaticCheckEnabled(): Boolean = settings.uiState.autoCheckAppUpdate
+
+                override fun showNotice(message: String) {
+                    notice = message
+                }
+
+                override fun friendlyError(error: Throwable): String = this@AppController.friendlyError(error)
+            }
+        )
+    }
+    private val appUpdateController by appUpdateControllerDelegate
     private val appDataRefresher by lazy { AppDataRefresher(ApiAppDataSource(api), ioDispatcher) }
     private var refreshAllJob: Job? = null
     private val deviceManagementDelegate = lazy {
@@ -396,17 +413,16 @@ class AppController internal constructor(application: Application, ioDispatcher:
     var dashboard by mutableStateOf(DashboardData())
         private set
 
-    val currentAppVersionName: String get() = appUpdateManager.currentVersionName
-    var appUpdateStatus by mutableStateOf(AppUpdateStatus.IDLE)
-        private set
-    var appUpdateInfo by mutableStateOf<AppUpdateInfo?>(null)
-        private set
-    var appUpdateMessage by mutableStateOf("")
-        private set
-    var appUpdateProgress by mutableFloatStateOf(0f)
-        private set
+    val currentAppVersionName: String get() = appUpdateController.currentVersionName
+    val appUpdateStatus: AppUpdateStatus
+        get() = appUpdateController.uiState.status
+    val appUpdateInfo: AppUpdateInfo?
+        get() = appUpdateController.uiState.info
+    val appUpdateMessage: String
+        get() = appUpdateController.uiState.message
+    val appUpdateProgress: Float
+        get() = appUpdateController.uiState.progress
     private var appInForeground = true
-    private var pendingAppUpdateInstallAfterPermission = false
     var playingMessageId by mutableStateOf<String?>(null)
         private set
     var voiceAutoPlayEnabled by mutableStateOf(false)
@@ -452,125 +468,13 @@ class AppController internal constructor(application: Application, ioDispatcher:
         notice = message
     }
 
-    fun checkAppUpdate(manual: Boolean = true) {
-        if (!manual && !settings.uiState.autoCheckAppUpdate) return
-        if (api.currentSession() == null) {
-            if (manual) notice = "请先登录后检查更新"
-            return
-        }
-        if (!checkingAppUpdate.compareAndSet(false, true)) return
-        appUpdateStatus = AppUpdateStatus.CHECKING
-        appUpdateMessage = "正在检查客户端更新"
-        appUpdateProgress = 0f
-        executor.execute {
-            val result = runCatching { appUpdateManager.checkForUpdate() }
-            mainHandler.post {
-                checkingAppUpdate.set(false)
-                result
-                    .onSuccess { update ->
-                        if (update == null) {
-                            appUpdateInfo = null
-                            appUpdateStatus = AppUpdateStatus.UP_TO_DATE
-                            appUpdateMessage = "当前已是最新版本"
-                            if (manual) notice = "当前已是最新版本"
-                        } else {
-                            appUpdateInfo = update
-                            appUpdateStatus = AppUpdateStatus.AVAILABLE
-                            appUpdateMessage = buildString {
-                                append("发现新版本 ").append(update.version)
-                                if (update.forceUpdate) append("（强制更新）")
-                            }
-                            notice = appUpdateMessage
-                        }
-                    }
-                    .onFailure { error ->
-                        if (!manual && isClientUpdateUnsupported(error)) {
-                            appUpdateStatus = AppUpdateStatus.IDLE
-                            appUpdateMessage = ""
-                            return@onFailure
-                        }
-                        appUpdateStatus = AppUpdateStatus.ERROR
-                        appUpdateMessage = if (isClientUpdateUnsupported(error)) {
-                            "服务器暂不支持客户端更新"
-                        } else {
-                            friendlyError(error)
-                        }
-                        if (manual) notice = appUpdateMessage
-                    }
-            }
-        }
-    }
+    fun checkAppUpdate(manual: Boolean = true) = appUpdateController.check(manual)
 
-    fun downloadAndInstallAppUpdate() {
-        val update = appUpdateInfo ?: run {
-            checkAppUpdate(manual = true)
-            return
-        }
-        if (!appUpdateManager.canRequestPackageInstalls()) {
-            pendingAppUpdateInstallAfterPermission = true
-            appUpdateStatus = AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
-            appUpdateMessage = "需要允许本应用安装更新包，正在打开系统权限设置"
-            notice = appUpdateMessage
-            openAppUpdateInstallPermissionSettings()
-            return
-        }
-        if (!downloadingAppUpdate.compareAndSet(false, true)) return
-        pendingAppUpdateInstallAfterPermission = false
-        appUpdateStatus = AppUpdateStatus.DOWNLOADING
-        appUpdateMessage = "正在下载 ${update.version}"
-        appUpdateProgress = 0f
-        executor.execute {
-            val result = runCatching {
-                val apk = appUpdateManager.downloadUpdate(update) { progress ->
-                    mainHandler.post {
-                        if (appUpdateStatus == AppUpdateStatus.DOWNLOADING) {
-                            appUpdateProgress = progress
-                        }
-                    }
-                }
-                appUpdateManager.installUpdate(apk)
-            }
-            mainHandler.post {
-                downloadingAppUpdate.set(false)
-                result
-                    .onSuccess {
-                        appUpdateStatus = AppUpdateStatus.READY_TO_INSTALL
-                        appUpdateProgress = 1f
-                        appUpdateMessage = "已打开系统安装器"
-                        notice = "已打开系统安装器"
-                    }
-                    .onFailure { error ->
-                        if (error is AppUpdateInstallPermissionException) {
-                            pendingAppUpdateInstallAfterPermission = true
-                            appUpdateStatus = AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
-                            appUpdateMessage = "需要允许本应用安装更新包，正在打开系统权限设置"
-                            openAppUpdateInstallPermissionSettings()
-                        } else {
-                            appUpdateStatus = AppUpdateStatus.ERROR
-                            appUpdateMessage = "更新失败：${friendlyError(error)}"
-                        }
-                        notice = appUpdateMessage
-                    }
-            }
-        }
-    }
+    fun downloadAndInstallAppUpdate() = appUpdateController.downloadAndInstall()
 
-    fun openAppUpdateInstallPermissionSettings() {
-        runCatching { appUpdateManager.openInstallPermissionSettings() }
-            .onFailure { notice = "无法打开安装权限设置：${friendlyError(it)}" }
-    }
+    fun openAppUpdateInstallPermissionSettings() = appUpdateController.openInstallPermissionSettings()
 
-    fun resumePendingAppUpdateInstall() {
-        if (!pendingAppUpdateInstallAfterPermission) return
-        if (appUpdateInfo == null) {
-            pendingAppUpdateInstallAfterPermission = false
-            return
-        }
-        if (appUpdateManager.canRequestPackageInstalls()) {
-            pendingAppUpdateInstallAfterPermission = false
-            downloadAndInstallAppUpdate()
-        }
-    }
+    fun resumePendingAppUpdateInstall() = appUpdateController.resumePendingInstall()
 
     fun refreshAll() {
         if (api.currentSession() == null) return
@@ -949,6 +853,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         invalidateBackgroundRequests()
         groupCountsTasks.close()
         onlineDevicesTasks.close()
+        if (appUpdateControllerDelegate.isInitialized()) appUpdateController.close()
         if (toolsDelegate.isInitialized()) toolsDelegate.value.close()
         if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.close()
         if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.close()
@@ -1001,10 +906,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         transmitLevel = 0f
         cwTransmitting = false
         cwPreviewing = false
-        appUpdateStatus = AppUpdateStatus.IDLE
-        appUpdateInfo = null
-        appUpdateMessage = ""
-        appUpdateProgress = 0f
+        if (appUpdateControllerDelegate.isInitialized()) appUpdateController.reset()
         page = AppPage.RADIO
         syncPttOverlay()
     }
@@ -1051,9 +953,6 @@ class AppController internal constructor(application: Application, ioDispatcher:
         accessToken = accessToken,
         defaultGroupId = user.lastGroupId.takeIf { it > 0 } ?: 999
     )
-
-    private fun isClientUpdateUnsupported(error: Throwable): Boolean =
-        error is ApiException && error.code in setOf(404, 405)
 
     private fun friendlyError(error: Throwable): String = when (error) {
         is ApiException -> error.message

@@ -46,13 +46,14 @@ class AppUpdateInstallPermissionException : Exception("需要允许本应用安�
 
 class AppUpdateServerContractException(message: String) : Exception(message)
 
-class AppUpdateManager(private val context: Context, private val api: UpdatesApi) {
+internal class AppUpdateManager(private val context: Context, private val api: UpdatesApi) : AppUpdateGateway {
     private val appContext = context.applicationContext
 
-    val currentVersionName: String get() = resolveCurrentVersionName(appContext)
+    override val currentVersionName: String get() = resolveCurrentVersionName(appContext)
     val currentVersion: String get() = normalizeVersionForSemver(currentVersionName)
 
-    fun checkForUpdate(channel: String = "stable"): AppUpdateInfo? {
+    @Suppress("ReturnCount")
+    override fun checkForUpdate(channel: String): AppUpdateInfo? {
         val semver = currentVersion
         val manifest = api.getClientResourceManifest(
             ClientResourceManifestQuery(
@@ -87,7 +88,7 @@ class AppUpdateManager(private val context: Context, private val api: UpdatesApi
         )
     }
 
-    fun downloadUpdate(update: AppUpdateInfo, onProgress: (Float) -> Unit = {}): File {
+    override fun downloadUpdate(update: AppUpdateInfo, onProgress: (Float) -> Unit): File {
         val download = api.getClientResourceArtifactDownload(update.artifact.id)
         val url = download.downloadUrl.ifBlank { update.artifact.externalUrl }
         if (url.isBlank()) error("服务器没有返回下载地址")
@@ -99,7 +100,7 @@ class AppUpdateManager(private val context: Context, private val api: UpdatesApi
         return downloadToFile(url, target, update.artifact, onProgress)
     }
 
-    fun installUpdate(apk: File) {
+    override fun installUpdate(apk: File) {
         if (!apk.isFile) error("更新包不存在")
         if (!canRequestPackageInstalls()) {
             throw AppUpdateInstallPermissionException()
@@ -112,10 +113,10 @@ class AppUpdateManager(private val context: Context, private val api: UpdatesApi
         appContext.startActivity(intent)
     }
 
-    fun canRequestPackageInstalls(): Boolean =
+    override fun canRequestPackageInstalls(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.O || appContext.packageManager.canRequestPackageInstalls()
 
-    fun openInstallPermissionSettings() {
+    override fun openInstallPermissionSettings() {
         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${appContext.packageName}"))
         } else {
