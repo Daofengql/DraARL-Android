@@ -6,19 +6,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.filled.SettingsInputAntenna
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +28,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,9 +44,58 @@ import cn.silverdragon.draarl.aprs.AprsConfig
 import cn.silverdragon.draarl.aprs.AprsConnectionState
 import cn.silverdragon.draarl.aprs.AprsEvent
 import cn.silverdragon.draarl.aprs.AprsPosition
+import cn.silverdragon.draarl.aprs.AprsStatus
 import cn.silverdragon.draarl.aprs.AprsUiState
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlSettings
+import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
+import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
+import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
+import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.StatusTone
 import kotlinx.coroutines.launch
+
+@Immutable
+internal data class AprsSettingsContentState(
+    val enabled: Boolean,
+    val server: String,
+    val port: String,
+    val callsign: String,
+    val passcode: String,
+    val comment: String,
+    val autoReport: Boolean,
+    val stationaryIntervalSeconds: Float,
+    val locating: Boolean,
+    val sending: Boolean,
+    val saving: Boolean,
+    val status: AprsStatus
+)
+
+internal sealed interface AprsSettingsContentAction {
+    data object Back : AprsSettingsContentAction
+
+    data object Save : AprsSettingsContentAction
+
+    data object SendNow : AprsSettingsContentAction
+
+    data class SetEnabled(val enabled: Boolean) : AprsSettingsContentAction
+
+    data class SetServer(val server: String) : AprsSettingsContentAction
+
+    data class SetPort(val port: String) : AprsSettingsContentAction
+
+    data class SetCallsign(val callsign: String) : AprsSettingsContentAction
+
+    data class SetPasscode(val passcode: String) : AprsSettingsContentAction
+
+    data class SetComment(val comment: String) : AprsSettingsContentAction
+
+    data class SetAutoReport(val enabled: Boolean) : AprsSettingsContentAction
+
+    data class SetStationaryInterval(val seconds: Float) : AprsSettingsContentAction
+}
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -160,17 +208,70 @@ fun AprsSettingsScreen(
         )
     }
 
+    AprsSettingsContent(
+        state = AprsSettingsContentState(
+            enabled = enabled,
+            server = server,
+            port = port,
+            callsign = callsign,
+            passcode = passcode,
+            comment = comment,
+            autoReport = autoReport,
+            stationaryIntervalSeconds = stationaryInterval,
+            locating = locating,
+            sending = state.sending,
+            saving = state.saving,
+            status = state.status
+        ),
+        onAction = { action ->
+            when (action) {
+                AprsSettingsContentAction.Back -> onBack()
+
+                AprsSettingsContentAction.Save -> save()
+
+                AprsSettingsContentAction.SendNow -> sendNow()
+
+                is AprsSettingsContentAction.SetEnabled -> enabled = action.enabled
+
+                is AprsSettingsContentAction.SetServer -> server = action.server
+
+                is AprsSettingsContentAction.SetPort -> port = action.port.filter(Char::isDigit).take(5)
+
+                is AprsSettingsContentAction.SetCallsign -> callsign = action.callsign.uppercase()
+
+                is AprsSettingsContentAction.SetPasscode -> {
+                    passcode = action.passcode.filter(Char::isDigit).take(6)
+                }
+
+                is AprsSettingsContentAction.SetComment -> comment = action.comment.take(43)
+
+                is AprsSettingsContentAction.SetAutoReport -> autoReport = action.enabled
+
+                is AprsSettingsContentAction.SetStationaryInterval -> {
+                    stationaryInterval = action.seconds
+                }
+            }
+        }
+    )
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+internal fun AprsSettingsContent(state: AprsSettingsContentState, onAction: (AprsSettingsContentAction) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("APRS 设置") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { onAction(AprsSettingsContentAction.Back) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
-                    IconButton(onClick = ::save, enabled = !state.saving) {
+                    IconButton(
+                        onClick = { onAction(AprsSettingsContentAction.Save) },
+                        enabled = !state.saving
+                    ) {
                         Icon(Icons.Default.Save, contentDescription = "保存")
                     }
                 }
@@ -179,110 +280,161 @@ fun AprsSettingsScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("启用 APRS", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "位置包直接发送到 APRS-IS，不经过 DraARL 服务端",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(checked = enabled, onCheckedChange = { enabled = it })
-                    }
-                }
+            item { AprsLinkSection(state, onAction) }
+            item { AprsServerSection(state, onAction) }
+            item { AprsAutomaticReportSection(state, onAction) }
+            item { AprsLinkTestSection(state, onAction) }
+        }
+    }
+}
+
+@Composable
+private fun AprsLinkSection(state: AprsSettingsContentState, onAction: (AprsSettingsContentAction) -> Unit) {
+    DraarlSettingsSectionTitle("链路", detail = "APRS-IS 直连配置")
+    DraarlSettingsGroup {
+        DraarlSettingsRow(
+            item = DraarlSettings(
+                icon = Icons.Default.SettingsInputAntenna,
+                title = "启用 APRS",
+                detail = "位置包直接发送到 APRS-IS，不经过 DraARL 服务端"
+            ),
+            trailing = {
+                Switch(
+                    checked = state.enabled,
+                    onCheckedChange = { onAction(AprsSettingsContentAction.SetEnabled(it)) }
+                )
             }
-            item {
-                SettingsSectionHeader("服务器")
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(server, {
-                            server = it
-                        }, Modifier.fillMaxWidth(), label = {
-                            Text("APRS-IS 地址")
-                        }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(port, {
-                            port = it.filter(Char::isDigit).take(5)
-                        }, Modifier.fillMaxWidth(), label = { Text("端口") }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(callsign, {
-                            callsign = it.uppercase()
-                        }, Modifier.fillMaxWidth(), label = {
-                            Text("呼号（不含 SSID 也可以）")
-                        }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(passcode, {
-                            passcode = it.filter { char -> char.isDigit() }.take(6)
-                        }, Modifier.fillMaxWidth(), label = {
-                            Text("验证密码（留空自动计算）")
-                        }, singleLine = true, enabled = enabled)
-                        OutlinedTextField(comment, {
-                            comment = it.take(43)
-                        }, Modifier.fillMaxWidth(), label = { Text("位置包注释") }, singleLine = true, enabled = enabled)
-                    }
-                }
+        )
+    }
+}
+
+@Composable
+private fun AprsServerSection(state: AprsSettingsContentState, onAction: (AprsSettingsContentAction) -> Unit) {
+    DraarlSettingsSectionTitle("服务器", detail = "呼号与 APRS-IS 登录参数")
+    DraarlSettingsGroup {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedTextField(state.server, {
+                onAction(AprsSettingsContentAction.SetServer(it))
+            }, Modifier.fillMaxWidth(), label = {
+                Text("APRS-IS 地址")
+            }, singleLine = true, enabled = state.enabled)
+            OutlinedTextField(state.port, {
+                onAction(AprsSettingsContentAction.SetPort(it))
+            }, Modifier.fillMaxWidth(), label = { Text("端口") }, singleLine = true, enabled = state.enabled)
+            OutlinedTextField(state.callsign, {
+                onAction(AprsSettingsContentAction.SetCallsign(it))
+            }, Modifier.fillMaxWidth(), label = {
+                Text("呼号（不含 SSID 也可以）")
+            }, singleLine = true, enabled = state.enabled)
+            OutlinedTextField(state.passcode, {
+                onAction(AprsSettingsContentAction.SetPasscode(it))
+            }, Modifier.fillMaxWidth(), label = {
+                Text("验证密码（留空自动计算）")
+            }, singleLine = true, enabled = state.enabled)
+            OutlinedTextField(state.comment, {
+                onAction(AprsSettingsContentAction.SetComment(it))
+            }, Modifier.fillMaxWidth(), label = {
+                Text("位置包注释")
+            }, singleLine = true, enabled = state.enabled)
+        }
+    }
+}
+
+@Composable
+private fun AprsAutomaticReportSection(state: AprsSettingsContentState, onAction: (AprsSettingsContentAction) -> Unit) {
+    DraarlSettingsSectionTitle("自动上报", detail = "后台位置上报策略")
+    DraarlSettingsGroup {
+        DraarlSettingsRow(
+            item = DraarlSettings(
+                icon = Icons.Default.LocationOn,
+                title = "后台自动上报",
+                detail = "需要定位权限，并会显示系统常驻通知"
+            ),
+            showDivider = true,
+            enabled = state.enabled,
+            trailing = {
+                Switch(
+                    checked = state.autoReport,
+                    enabled = state.enabled,
+                    onCheckedChange = { onAction(AprsSettingsContentAction.SetAutoReport(it)) }
+                )
             }
-            item {
-                SettingsSectionHeader("自动上报")
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text("后台自动上报", style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "需要定位权限，并会显示系统常驻通知",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(checked = autoReport, enabled = enabled, onCheckedChange = { autoReport = it })
-                        }
-                        Text("静止间隔：${stationaryInterval.toInt()} 秒", style = MaterialTheme.typography.bodyMedium)
-                        Slider(
-                            value = stationaryInterval,
-                            onValueChange = { stationaryInterval = it },
-                            valueRange = 60f..3_600f,
-                            steps = 35,
-                            enabled = enabled && autoReport
-                        )
-                    }
-                }
-            }
-            item {
-                SettingsSectionHeader("测试")
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = ::sendNow,
-                            enabled = enabled && !locating && !state.sending,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.LocationOn, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(if (locating) "正在获取位置" else "立即上报当前位置")
-                        }
-                        if (state.status.message.isNotBlank()) {
-                            Text(
-                                state.status.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (state.status.state ==
-                                    AprsConnectionState.ERROR
-                                ) {
-                                    MaterialTheme.colorScheme.error
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
-                    }
-                }
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            AprsIntervalHeader(state.stationaryIntervalSeconds)
+            Slider(
+                value = state.stationaryIntervalSeconds,
+                onValueChange = { onAction(AprsSettingsContentAction.SetStationaryInterval(it)) },
+                valueRange = 60f..3_600f,
+                steps = 35,
+                enabled = state.enabled && state.autoReport
+            )
+        }
+    }
+}
+
+@Composable
+private fun AprsIntervalHeader(seconds: Float) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Default.Timer,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "静止间隔",
+            modifier = Modifier.weight(1f).padding(start = 10.dp),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            "${seconds.toInt()} 秒",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun AprsLinkTestSection(state: AprsSettingsContentState, onAction: (AprsSettingsContentAction) -> Unit) {
+    DraarlSettingsSectionTitle("链路测试", detail = "使用设备当前位置验证配置")
+    DraarlSettingsGroup {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CommandButton(
+                label = if (state.locating) "正在获取位置" else "立即上报当前位置",
+                onClick = { onAction(AprsSettingsContentAction.SendNow) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.enabled && !state.locating && !state.sending,
+                style = CommandStyle.PRIMARY,
+                supportingText = "发送一次实时位置到 APRS-IS",
+                leadingIcon = Icons.Default.LocationOn
+            )
+            if (state.status.message.isNotBlank()) {
+                InlineNotice(text = state.status.message, tone = state.status.state.toStatusTone())
             }
         }
     }
+}
+
+private fun AprsConnectionState.toStatusTone(): StatusTone = when (this) {
+    AprsConnectionState.CONNECTING,
+    AprsConnectionState.SENDING -> StatusTone.CONNECTING
+
+    AprsConnectionState.VERIFIED,
+    AprsConnectionState.SENT -> StatusTone.CONNECTED
+
+    AprsConnectionState.ERROR -> StatusTone.ERROR
+
+    AprsConnectionState.IDLE -> StatusTone.NEUTRAL
 }

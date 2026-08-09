@@ -16,6 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.aprs.AprsConnectionState
+import cn.silverdragon.draarl.aprs.AprsStatus
 import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
@@ -28,6 +30,8 @@ import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
 import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
 import cn.silverdragon.draarl.ui.components.InlineNotice
 import cn.silverdragon.draarl.ui.components.StatusTone
+import cn.silverdragon.draarl.ui.screens.AprsSettingsContent
+import cn.silverdragon.draarl.ui.screens.AprsSettingsContentState
 import cn.silverdragon.draarl.ui.screens.StorageSettingsContent
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
 import com.android.tools.screenshot.PreviewTest
@@ -68,6 +72,40 @@ fun StorageContentDarkBaseline() {
                 onClear = {}
             )
         }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "APRS Settings Light Medium Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.3f,
+    showBackground = true
+)
+@Composable
+fun AprsSettingsLightMediumTextBaseline() {
+    DraarlTheme(darkTheme = false) {
+        AprsSettingsContent(
+            state = AprsSettingsContentState(
+                enabled = true,
+                server = "rotate.aprs2.net",
+                port = "14580",
+                callsign = "BG0ABC-7",
+                passcode = "",
+                comment = "DraARL portable station",
+                autoReport = true,
+                stationaryIntervalSeconds = 600f,
+                locating = false,
+                sending = false,
+                saving = false,
+                status = AprsStatus(
+                    state = AprsConnectionState.SENT,
+                    message = "位置已发送到 APRS-IS"
+                )
+            ),
+            onAction = {}
+        )
     }
 }
 
