@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -36,13 +35,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.RegistrationResult
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
 import kotlinx.coroutines.delay
 
 @Composable
 internal fun RegisterFormStepped(
     controller: AppController,
     captchaBitmap: androidx.compose.ui.graphics.ImageBitmap?,
-    onLogin: () -> Unit,
+    onLogin: () -> Unit
 ) {
     val needsEmailCode = controller.publicAuth.registrationRequiresEmailVerification
     val steps = if (needsEmailCode) {
@@ -93,22 +94,25 @@ internal fun RegisterFormStepped(
             callsign = callsign,
             onCallsignChange = { callsign = it },
             nickname = nickname,
-            onNicknameChange = { nickname = it },
+            onNicknameChange = { nickname = it }
         )
+
         1 -> RegisterContactInfo(
             email = email,
             onEmailChange = { email = it },
             phone = phone,
-            onPhoneChange = { phone = it },
+            onPhoneChange = { phone = it }
         )
+
         2 -> RegisterPassword(
             password = password,
             onPasswordChange = { password = it },
             confirmPassword = confirmPassword,
             onConfirmPasswordChange = { confirmPassword = it },
             passwordVisible = passwordVisible,
-            onPasswordVisibleChange = { passwordVisible = it },
+            onPasswordVisibleChange = { passwordVisible = it }
         )
+
         3 -> RegisterEmailVerification(
             email = email,
             captchaBitmap = captchaBitmap,
@@ -125,26 +129,28 @@ internal fun RegisterFormStepped(
                     countdown = 60
                 }
             },
-            busy = controller.publicAuth.busy,
+            busy = controller.publicAuth.busy
         )
     }
 
-    if (stepError.isNotBlank()) ErrorText(stepError)
-    if (controller.publicAuth.error.isNotBlank()) ErrorText(controller.publicAuth.error)
+    if (stepError.isNotBlank()) AuthErrorNotice(stepError)
+    if (controller.publicAuth.error.isNotBlank()) AuthErrorNotice(controller.publicAuth.error)
 
     Spacer(Modifier.height(18.dp))
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         if (currentStep > 0) {
-            OutlinedButton(
+            CommandButton(
+                label = "上一步",
                 onClick = {
                     stepError = ""
                     currentStep--
                 },
-                modifier = Modifier.weight(1f).height(50.dp),
-            ) { Text("上一步") }
+                modifier = Modifier.weight(1f)
+            )
         }
         val isLastStep = currentStep == steps.lastIndex
-        Button(
+        CommandButton(
+            label = if (isLastStep) "完成注册" else "下一步",
             onClick = {
                 stepError = ""
                 when (currentStep) {
@@ -152,10 +158,12 @@ internal fun RegisterFormStepped(
                         stepError = RegistrationValidation.basicInfo(username, callsign).orEmpty()
                         if (stepError.isBlank()) currentStep++
                     }
+
                     1 -> {
                         stepError = RegistrationValidation.contactInfo(email, phone).orEmpty()
                         if (stepError.isBlank()) currentStep++
                     }
+
                     2 -> {
                         stepError = RegistrationValidation.password(password, confirmPassword).orEmpty()
                         if (stepError.isBlank()) {
@@ -163,6 +171,7 @@ internal fun RegisterFormStepped(
                             currentStep++
                         }
                     }
+
                     3 -> controller.publicAuth.register(
                         username = username,
                         callsign = callsign,
@@ -172,15 +181,15 @@ internal fun RegisterFormStepped(
                         password = password,
                         confirmPassword = confirmPassword,
                         sessionId = emailSessionId,
-                        emailCode = emailCode,
+                        emailCode = emailCode
                     ) { registered -> result = registered }
                 }
             },
             enabled = !controller.publicAuth.busy,
-            modifier = Modifier.weight(1f).height(50.dp),
-        ) {
-            BusyButtonContent(controller.publicAuth.busy, if (isLastStep) "完成注册" else "下一步")
-        }
+            loading = controller.publicAuth.busy,
+            style = CommandStyle.PRIMARY,
+            modifier = Modifier.weight(1f)
+        )
     }
     TextButton(onClick = onLogin, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
         Text("已有账号？返回登录")
@@ -194,7 +203,7 @@ private fun RegisterBasicInfo(
     callsign: String,
     onCallsignChange: (String) -> Unit,
     nickname: String,
-    onNicknameChange: (String) -> Unit,
+    onNicknameChange: (String) -> Unit
 ) {
     Text("基本信息", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(12.dp))
@@ -205,7 +214,7 @@ private fun RegisterBasicInfo(
         label = { Text("用户名") },
         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
     )
     Spacer(Modifier.height(10.dp))
     OutlinedTextField(
@@ -215,7 +224,7 @@ private fun RegisterBasicInfo(
         label = { Text("呼号") },
         leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
     )
     Spacer(Modifier.height(10.dp))
     OutlinedTextField(
@@ -225,7 +234,7 @@ private fun RegisterBasicInfo(
         label = { Text("昵称（可选）") },
         leadingIcon = { Icon(Icons.Default.AlternateEmail, contentDescription = null) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
     )
 }
 
@@ -234,7 +243,7 @@ private fun RegisterContactInfo(
     email: String,
     onEmailChange: (String) -> Unit,
     phone: String,
-    onPhoneChange: (String) -> Unit,
+    onPhoneChange: (String) -> Unit
 ) {
     Text("联系方式", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(12.dp))
@@ -245,7 +254,7 @@ private fun RegisterContactInfo(
         label = { Text("邮箱") },
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next)
     )
     Spacer(Modifier.height(10.dp))
     OutlinedTextField(
@@ -255,7 +264,7 @@ private fun RegisterContactInfo(
         label = { Text("手机号（可选）") },
         leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done)
     )
 }
 
@@ -266,13 +275,20 @@ private fun RegisterPassword(
     confirmPassword: String,
     onConfirmPasswordChange: (String) -> Unit,
     passwordVisible: Boolean,
-    onPasswordVisibleChange: (Boolean) -> Unit,
+    onPasswordVisibleChange: (Boolean) -> Unit
 ) {
     Text("设置密码", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(12.dp))
     PasswordField(password, onPasswordChange, "密码", passwordVisible, onPasswordVisibleChange, ImeAction.Next)
     Spacer(Modifier.height(10.dp))
-    PasswordField(confirmPassword, onConfirmPasswordChange, "确认密码", passwordVisible, onPasswordVisibleChange, ImeAction.Done)
+    PasswordField(
+        confirmPassword,
+        onConfirmPasswordChange,
+        "确认密码",
+        passwordVisible,
+        onPasswordVisibleChange,
+        ImeAction.Done
+    )
 }
 
 @Composable
@@ -287,7 +303,7 @@ private fun RegisterEmailVerification(
     captchaLoading: Boolean,
     onRefreshCaptcha: () -> Unit,
     onSendCode: () -> Unit,
-    busy: Boolean,
+    busy: Boolean
 ) {
     Text("邮箱验证", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Spacer(Modifier.height(12.dp))
@@ -298,7 +314,7 @@ private fun RegisterEmailVerification(
         label = { Text("邮箱") },
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
         singleLine = true,
-        enabled = false,
+        enabled = false
     )
     Spacer(Modifier.height(10.dp))
     CaptchaRow(
@@ -308,7 +324,7 @@ private fun RegisterEmailVerification(
         loading = captchaLoading,
         enabled = !busy,
         onRefresh = onRefreshCaptcha,
-        keyboardActions = KeyboardActions.Default,
+        keyboardActions = KeyboardActions.Default
     )
     Spacer(Modifier.height(10.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -318,13 +334,13 @@ private fun RegisterEmailVerification(
             modifier = Modifier.weight(1f),
             label = { Text("邮箱验证码") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
         )
         Spacer(Modifier.width(10.dp))
         OutlinedButton(
             onClick = onSendCode,
             enabled = !busy && countdown == 0 && captchaCode.isNotBlank(),
-            modifier = Modifier.height(56.dp),
+            modifier = Modifier.height(56.dp)
         ) { Text(if (countdown > 0) "${countdown}s" else "发验证码") }
     }
 }

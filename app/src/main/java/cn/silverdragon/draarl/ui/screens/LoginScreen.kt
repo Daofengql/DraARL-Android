@@ -18,7 +18,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -39,6 +38,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.silverdragon.draarl.AppController
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
 
 private enum class AuthMode { LOGIN, REGISTER, FORGOT }
 
@@ -176,19 +177,20 @@ private fun LoginForm(
         onRefresh = controller.publicAuth::loadCaptcha,
         keyboardActions = KeyboardActions(onDone = { submit() })
     )
-    if (sessionState.loginError.isNotBlank()) ErrorText(sessionState.loginError)
+    if (sessionState.loginError.isNotBlank()) AuthErrorNotice(sessionState.loginError)
     Spacer(Modifier.height(20.dp))
-    Button(
+    CommandButton(
+        label = "登录",
         onClick = submit,
         enabled = !sessionState.loginBusy &&
             username.isNotBlank() &&
             password.isNotBlank() &&
             controller.publicAuth.captchaId.isNotBlank() &&
             captchaCode.isNotBlank(),
-        modifier = Modifier.fillMaxWidth().height(50.dp)
-    ) {
-        BusyButtonContent(sessionState.loginBusy, "登录")
-    }
+        loading = sessionState.loginBusy,
+        style = CommandStyle.PRIMARY,
+        modifier = Modifier.fillMaxWidth()
+    )
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween

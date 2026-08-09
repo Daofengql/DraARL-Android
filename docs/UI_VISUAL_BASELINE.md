@@ -8,7 +8,7 @@
 `app/src/screenshotTestDebug/reference`。测试直接组合生产代码中的壳层和页面内容，不创建或启动
 `AppController`，因此不会触发会话恢复、服务绑定、网络请求或本地存储写入。
 
-当前 30 张参考图在 Windows 本地通过 JVM/Layoutlib 渲染，不依赖模拟器、真机或远程服务。
+当前 32 张参考图在 Windows 本地通过 JVM/Layoutlib 渲染，不依赖模拟器、真机或远程服务。
 
 | 场景 | 浅色 | 深色 | 额外覆盖 |
 | --- | --- | --- | --- |
@@ -18,6 +18,7 @@
 | PTT | 411 x 891 / 360 x 800 dp | 360 x 800 dp | 状态条、频道、空日志、1.5 倍字体同步失败态和发送控制 |
 | 工具 | 800 x 360 / 360 x 640 / 360 x 800 dp | 360 x 700 / 411 x 891 dp | 横屏、账号审核、工具子页加载态，以及 1.5 倍字体错误/空态 |
 | 个人 | 411 x 891 dp | 360 x 800 dp | 长中文资料和 1.5 倍字体 |
+| 认证反馈 | 360 x 560 dp | 360 x 300 dp | 1.3 倍字体注册成功/一次性密码，以及 1.5 倍字体错误/忙碌按钮 |
 | 设置行 | 360 x 520 dp | 360 x 620 dp | 长说明、危险操作和 1.5 倍字体 |
 | APRS 设置 | 360 x 800 dp | - | 服务器表单、自动上报入口和 1.3 倍字体 |
 | BLE 配网 | - | 360 x 800 dp | Wi-Fi 表单、写入命令和 1.5 倍字体 |
@@ -42,6 +43,7 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 - 地点选择和梅登海德网格页的可恢复错误复用 `ToolError` / `InlineNotice`；嵌入地图面板时沿用面板留白，不额外嵌套默认 Material 错误容器。
 - PTT 空日志和同步失败使用 `PageFeedback`，列表顶部的历史加载与同步失败使用 `InlineNotice`；截图直接覆盖生产反馈组件，不再手工拼装近似空态。
 - 应用级通知保留 `SnackbarHost` 的队列和可访问性语义，但内容统一渲染为可关闭的 `InlineNotice`，不再显示默认 Material Snackbar 外观。
+- 认证错误、注册成功和密码重置成功使用统一反馈层级；登录、注册和重置的主要动作使用支持忙碌态的命令按钮，一次性准入密码使用警告容器与等宽数据样式。
 - APRS 设置使用细边框设置组组织链路、登录参数、后台上报和链路测试；状态反馈复用 `StatusTone`，不再以默认 Card 和裸状态文本建立层级。
 - BLE 配网使用相同设置组组织设备类型、认证和配置表单；扫描、断开与写入使用命令按钮，连接阶段使用 `StatusIndicator`，设备类型弹窗使用单选行而非嵌套 Card。
 - 图标命令通过 `DraarlTooltip` 统一长按/悬停提示，提示文案同时作为 `contentDescription`；TopAppBar、表单尾部、列表动作、通信控制和地图浮动图标不再直接使用裸 `IconButton`。
@@ -64,7 +66,7 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 | --- | --- | --- | --- |
 | `Card` | `RadioMessageComponents.kt`、`LogbookScreen.kt`、`RadioPresetsScreen.kt`、`RelaySearchScreen.kt` | 消息、日志、预设和中继结果对象 | 只保留独立或可比较的数据对象；页面分区不使用 Card |
 | `Surface` | `DraarlBottomBar.kt`、`DraarlComponents.kt`、`DraarlContainers.kt`、`DraarlSettings.kt`、`DraarlSegmentedControl.kt`、`RadioStatusStrip.kt`、`CommunicationTrendChart.kt` 和 `ProfileOverview.kt`，以及设备、群组、地图、消息、登录和工具页面 | 背景、状态容器、可点击行、统计对象、弹层和控制面 | 保留承载语义、状态色、细边框或点击反馈的 Surface；纯页面分区不增加浮层和阴影 |
-| 圆角按钮 | 认证、设备/群组管理、地图、日志编辑、资料与设置页面中的 `Button`、`OutlinedButton`、`TextButton` | 明确提交、确认、取消和危险操作 | 命令按钮保留；图标已有通用语义时使用图标按钮；普通行入口不使用胶囊按钮 |
+| 圆角按钮 | 认证次级操作、设备/群组管理、地图、日志编辑、资料与设置页面中的 `Button`、`OutlinedButton`、`TextButton` | 明确确认、取消和危险操作 | 认证主要提交动作使用 `CommandButton`；图标已有通用语义时使用图标按钮；普通行入口不使用胶囊按钮 |
 | 图标命令 | `DraarlIconButton.kt`、`DraarlComponents.kt`、地图控制和各页面工具栏 | 返回、搜索、复制、编辑、删除、播放与地图控制 | 标准图标、tooltip 与 `contentDescription` 使用同一文案；危险操作保留独立状态色 |
 | 分段控件 | `DraarlSegmentedControl.kt`、`AprsMapPanel.kt`、`SystemSettingsScreen.kt` | PTT 地图/日志模式与设置选项 | 只用于同级互斥模式，保持紧凑 0-6 dp 圆角，不扩展为页面导航 |
 | 状态色 | `Theme.kt`、`DraarlComponents.kt`、`RadioStatusStrip.kt`、设备/群组/PTT/APRS/设置页面 | 连接、接收、发射、在线、等待、离线和错误 | 所有业务状态从 `appColors` 或 `StatusTone` 获取；页面不得直接发明新的成功/警告色 |
@@ -74,5 +76,5 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 - UI 改造前后必须使用相同 Preview 名称、尺寸、主题和固定样本数据比较。
 - 参考图需要检查非空渲染、底栏与内容遮挡、长文本换行和状态色可辨识度。
 - 像素基线不能替代真机 Insets、软键盘、权限弹窗、地图和触摸目标检查。
-- 本文证明一级页面及首批设置行、APRS、BLE 配网、存储页、工具子页、错误提示、弹窗和 Bottom Sheet 静态基线已建立；设备与群组空/加载态、PTT 同步错误、应用通知、工具加载与工具错误/空态已有首批页面状态基线，剩余状态矩阵仍由
+- 本文证明一级页面及首批认证反馈、设置行、APRS、BLE 配网、存储页、工具子页、错误提示、弹窗和 Bottom Sheet 静态基线已建立；设备与群组空/加载态、PTT 同步错误、应用通知、工具加载与工具错误/空态已有首批页面状态基线，剩余状态矩阵仍由
   `TODO.md` 中“增加 UI 回归测试”跟踪。

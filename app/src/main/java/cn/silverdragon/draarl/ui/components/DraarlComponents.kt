@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -75,6 +77,7 @@ fun CommandButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    loading: Boolean = false,
     style: CommandStyle = CommandStyle.SECONDARY,
     supportingText: String? = null,
     leadingIcon: ImageVector? = null,
@@ -101,30 +104,40 @@ fun CommandButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            leadingIcon?.let {
-                Icon(it, contentDescription = null, modifier = Modifier.size(MaterialTheme.appDimensions.icon))
-                Spacer(Modifier.width(8.dp))
-            }
-            Column(Modifier.weight(1f, fill = false), horizontalAlignment = Alignment.Start) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(MaterialTheme.appDimensions.iconSmall),
+                    strokeWidth = 2.dp,
+                    color = LocalContentColor.current
                 )
-                supportingText?.let {
+                Spacer(Modifier.width(8.dp))
+                Text(text = label, style = MaterialTheme.typography.labelLarge)
+            } else {
+                leadingIcon?.let {
+                    Icon(it, contentDescription = null, modifier = Modifier.size(MaterialTheme.appDimensions.icon))
+                    Spacer(Modifier.width(8.dp))
+                }
+                Column(Modifier.weight(1f, fill = false), horizontalAlignment = Alignment.Start) {
                     Text(
-                        text = it,
-                        style = MaterialTheme.dataTypography.compact,
-                        color = colors.secondaryContent,
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    supportingText?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.dataTypography.compact,
+                            color = colors.secondaryContent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            }
-            trailingIcon?.let {
-                Spacer(Modifier.width(8.dp))
-                Icon(it, contentDescription = null, modifier = Modifier.size(MaterialTheme.appDimensions.iconSmall))
+                trailingIcon?.let {
+                    Spacer(Modifier.width(8.dp))
+                    Icon(it, contentDescription = null, modifier = Modifier.size(MaterialTheme.appDimensions.iconSmall))
+                }
             }
         }
     }

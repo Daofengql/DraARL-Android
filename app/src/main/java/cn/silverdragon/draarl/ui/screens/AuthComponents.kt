@@ -3,6 +3,7 @@ package cn.silverdragon.draarl.ui.screens
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +41,13 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.RegistrationResult
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.StatusTone
+import cn.silverdragon.draarl.ui.theme.appColors
+import cn.silverdragon.draarl.ui.theme.dataTypography
 
 @Composable
 internal fun PasswordField(
@@ -129,51 +135,51 @@ internal fun CaptchaRow(
 
 @Composable
 internal fun RegistrationSuccess(result: RegistrationResult?, onLogin: () -> Unit) {
-    Text("注册成功", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-    Text(
-        "账号已创建，请等待管理员审核。",
-        modifier = Modifier.padding(top = 8.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+    AuthSuccessNotice(title = "注册成功", detail = "账号已创建，请等待管理员审核。")
     if (!result?.devicePassword.isNullOrBlank()) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.appColors.warningContainer,
+            contentColor = MaterialTheme.appColors.onWarningContainer,
+            border = BorderStroke(1.dp, MaterialTheme.appColors.warning)
         ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("设备准入密码（仅显示一次）", fontWeight = FontWeight.SemiBold)
-                Text(result?.devicePassword.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                Text(result?.devicePassword.orEmpty(), style = MaterialTheme.dataTypography.value)
                 Text("请立即保存，审核通过后可在设备管理中重新生成。")
             }
         }
     }
-    Button(onClick = onLogin, modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(50.dp)) {
-        Text("返回登录")
-    }
+    AuthLoginCommand(onLogin)
 }
 
 @Composable
-internal fun BusyButtonContent(busy: Boolean, text: String) {
-    if (busy) {
-        CircularProgressIndicator(
-            modifier = Modifier.height(22.dp),
-            strokeWidth = 2.dp,
-            color = MaterialTheme.colorScheme.onPrimary
-        )
-    } else {
-        Text(text)
-    }
+internal fun AuthSuccessNotice(title: String, detail: String) {
+    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+    InlineNotice(
+        text = detail,
+        modifier = Modifier.padding(top = 10.dp),
+        tone = StatusTone.CONNECTED
+    )
 }
 
 @Composable
-internal fun ErrorText(message: String) {
-    Text(
+internal fun AuthLoginCommand(onLogin: () -> Unit) {
+    CommandButton(
+        label = "返回登录",
+        onClick = onLogin,
+        modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+        style = CommandStyle.PRIMARY
+    )
+}
+
+@Composable
+internal fun AuthErrorNotice(message: String) {
+    InlineNotice(
         text = message,
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 12.dp)
+        modifier = Modifier.padding(top = 12.dp),
+        tone = StatusTone.ERROR
     )
 }
 

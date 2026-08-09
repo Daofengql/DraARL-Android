@@ -19,7 +19,7 @@
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
 - 生产 Kotlin 189 个文件，约 2.83 万有效代码行；JVM 测试 71 个文件、285 个用例。
-- Compose 截图测试 5 个文件、30 张参考图，覆盖应用壳层、五个一级页面、设置行、APRS、BLE 配网、存储页、工具子页、弹窗、Bottom Sheet 和首批页面反馈状态。
+- Compose 截图测试 6 个文件、32 张参考图，覆盖应用壳层、五个一级页面、认证反馈、设置行、APRS、BLE 配网、存储页、工具子页、弹窗、Bottom Sheet 和首批页面反馈状态。
 - 复杂度主要集中在 `UdpRadioClient`、`AppController` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
 - Spotless、Detekt、单元测试、截图验证、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
