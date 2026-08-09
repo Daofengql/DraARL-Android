@@ -40,10 +40,14 @@ internal fun ToolHeader(title: String, onBack: () -> Unit, action: (@Composable 
 }
 
 @Composable
-internal fun ToolError(message: String, onDismiss: () -> Unit) {
+internal fun ToolError(
+    message: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+) {
     InlineNotice(
         text = message,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = modifier,
         tone = StatusTone.ERROR,
         onDismiss = onDismiss
     )

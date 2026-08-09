@@ -274,7 +274,13 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
+                        if (error.isNotBlank()) {
+                            ToolError(
+                                message = error,
+                                onDismiss = { error = "" },
+                                modifier = Modifier
+                            )
+                        }
                         Button(
                             onClick = {
                                 val placeName = selectedPlace?.name.orEmpty().ifBlank {
@@ -295,9 +301,11 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
                     }
                 }
             } else if (error.isNotBlank()) {
-                Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), tonalElevation = 6.dp) {
-                    Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
-                }
+                ToolError(
+                    message = error,
+                    onDismiss = { error = "" },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp)
+                )
             }
         }
     }

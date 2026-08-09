@@ -107,7 +107,9 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                 }
             }
         }
-        if (permissionError.isNotBlank()) item { ToolError(permissionError) { permissionError = "" } }
+        if (permissionError.isNotBlank()) {
+            item { ToolError(permissionError, onDismiss = { permissionError = "" }) }
+        }
         if (ble.error.isNotBlank()) item { ToolError(ble.error, ble::clearFeedback) }
         if (ble.message.isNotBlank()) {
             item {

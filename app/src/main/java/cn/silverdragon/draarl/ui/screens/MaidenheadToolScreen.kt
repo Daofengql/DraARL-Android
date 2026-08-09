@@ -207,7 +207,11 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
                         }
                     }
                     if (error.isNotBlank()) {
-                        Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        ToolError(
+                            message = error,
+                            onDismiss = { error = "" },
+                            modifier = Modifier
+                        )
                     }
                 }
             }
