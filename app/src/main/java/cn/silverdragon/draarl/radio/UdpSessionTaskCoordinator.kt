@@ -1,38 +1,8 @@
 package cn.silverdragon.draarl.radio
 
 internal class UdpSessionTaskCoordinator(private val scheduler: RadioScheduler) {
-    private var heartbeatTask: RadioScheduledTask? = null
-    private var watchdogTask: RadioScheduledTask? = null
     private var reconnectTask: RadioScheduledTask? = null
     private var pttTimeoutTask: RadioScheduledTask? = null
-
-    @Synchronized
-    fun startSession(
-        heartbeatIntervalMillis: Long,
-        watchdogIntervalMillis: Long,
-        heartbeat: () -> Unit,
-        watchdog: () -> Unit
-    ) {
-        stopSessionLocked()
-        heartbeatTask = scheduler.scheduleWithFixedDelay(
-            initialDelayMillis = 0,
-            delayMillis = heartbeatIntervalMillis,
-            task = heartbeat
-        )
-        watchdogTask = runCatching {
-            scheduler.scheduleWithFixedDelay(
-                initialDelayMillis = watchdogIntervalMillis,
-                delayMillis = watchdogIntervalMillis,
-                task = watchdog
-            )
-        }.getOrElse { error ->
-            stopSessionLocked()
-            throw error
-        }
-    }
-
-    @Synchronized
-    fun stopSession() = stopSessionLocked()
 
     fun execute(task: () -> Unit) = scheduler.execute(task)
 
@@ -74,7 +44,7 @@ internal class UdpSessionTaskCoordinator(private val scheduler: RadioScheduler) 
 
     @Synchronized
     fun close() {
-        stopSessionLocked()
+        cancelPttTimeout()
         cancelReconnect()
         scheduler.close()
     }
@@ -86,15 +56,6 @@ internal class UdpSessionTaskCoordinator(private val scheduler: RadioScheduler) 
 
     @Synchronized
     private fun clearPttTimeoutTask() {
-        pttTimeoutTask = null
-    }
-
-    private fun stopSessionLocked() {
-        heartbeatTask?.cancel()
-        watchdogTask?.cancel()
-        pttTimeoutTask?.cancel()
-        heartbeatTask = null
-        watchdogTask = null
         pttTimeoutTask = null
     }
 }

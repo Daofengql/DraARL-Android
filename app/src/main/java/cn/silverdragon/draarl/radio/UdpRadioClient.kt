@@ -49,6 +49,13 @@ class UdpRadioClient internal constructor(
     private val connectionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-udp-connect")
     }
+    private val sessionMonitor = UdpSessionMonitor(
+        scheduler = scheduler,
+        clock = clock,
+        heartbeatIntervalMillis = HEARTBEAT_INTERVAL_MS,
+        watchdogIntervalMillis = WATCHDOG_INTERVAL_MS,
+        serverSilenceTimeoutMillis = SERVER_SILENCE_TIMEOUT_MS
+    )
     private val sessionTasks = UdpSessionTaskCoordinator(scheduler)
     private val connectionState = UdpConnectionStateMachine()
     private val authenticationReceiver = UdpAuthenticationReceiver(AUTH_TOTAL_TIMEOUT_MS, clock::nowMillis)
@@ -61,10 +68,6 @@ class UdpRadioClient internal constructor(
     private val outgoingVoiceLock = Any()
 
     @Volatile private var transport: UdpTransport? = null
-
-    @Volatile private var lastServerPacketAt = 0L
-
-    @Volatile private var lastPacketSentAt = 0L
 
     @Volatile private var preferredLocalPort = 0
 
@@ -100,7 +103,7 @@ class UdpRadioClient internal constructor(
         listener.onCwPreviewState(false)
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
-        sessionTasks.stopSession()
+        stopSessionTasks()
         audioEngine.capture.stop()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
@@ -120,7 +123,7 @@ class UdpRadioClient internal constructor(
         listener.onCwPreviewState(false)
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
-        sessionTasks.stopSession()
+        stopSessionTasks()
         audioEngine.capture.stop()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
@@ -452,7 +455,7 @@ class UdpRadioClient internal constructor(
         if (isActive(currentGeneration)) {
             startReceiver(activeTransport, currentGeneration)
         } else {
-            sessionTasks.stopSession()
+            stopSessionTasks()
             closeTransport(activeTransport)
         }
     }
@@ -460,7 +463,7 @@ class UdpRadioClient internal constructor(
     private fun prepareAttempt(attempt: UdpConnectionAttempt): Boolean {
         val activeBeforeCleanup = isActive(attempt.generation)
         if (activeBeforeCleanup) {
-            sessionTasks.stopSession()
+            stopSessionTasks()
             audioEngine.capture.stop()
             closeTransport()
         }
@@ -538,7 +541,7 @@ class UdpRadioClient internal constructor(
         sessionUsername = response.username
         sessionSsid = authenticated.ssid
         activeTransport.receiveTimeoutMillis = RECEIVE_SOCKET_TIMEOUT_MS
-        lastServerPacketAt = clock.nowMillis()
+        sessionMonitor.recordServerPacket()
         val activated = connectionState.dispatch(UdpConnectionEvent.Authenticated(currentGeneration)) &&
             updateStatusIfActive(currentGeneration) { current ->
                 current.copy(
@@ -574,7 +577,7 @@ class UdpRadioClient internal constructor(
                 val length = activeTransport.receive(buffer) ?: continue
                 val packet = DraarlProtocol.decode(buffer, length) ?: continue
                 if (!isActive(currentGeneration)) return
-                lastServerPacketAt = clock.nowMillis()
+                sessionMonitor.recordServerPacket()
                 when (packet.type) {
                     DraarlProtocol.TYPE_TEXT -> handleText(
                         packet.username,
@@ -811,22 +814,18 @@ class UdpRadioClient internal constructor(
 
     private fun startTasks(currentGeneration: Int) {
         if (!isActive(currentGeneration)) return
-        sessionTasks.startSession(
-            heartbeatIntervalMillis = HEARTBEAT_INTERVAL_MS,
-            watchdogIntervalMillis = WATCHDOG_INTERVAL_MS,
-            heartbeat = { heartbeat(currentGeneration) },
-            watchdog = { watchdog(currentGeneration) }
+        sessionMonitor.start(
+            heartbeat = {
+                if (isActive(currentGeneration) && status.connected) {
+                    send(sessionHeartbeat(), currentGeneration)
+                }
+            },
+            watchdog = { now -> expireIncomingVoice(now, currentGeneration) },
+            onServerSilence = { scheduleReconnect("服务器心跳超时", currentGeneration) }
         )
     }
 
-    private fun heartbeat(currentGeneration: Int) {
-        if (isActive(currentGeneration) && status.connected) {
-            send(sessionHeartbeat(), currentGeneration)
-        }
-    }
-
-    private fun watchdog(currentGeneration: Int) {
-        val now = clock.nowMillis()
+    private fun expireIncomingVoice(now: Long, currentGeneration: Int) {
         val completedMessages = finishExpiredAndAdvanceVoiceQueue(now, currentGeneration)
         completedMessages.forEach(listener::onMessage)
         if (completedMessages.isNotEmpty()) {
@@ -834,9 +833,11 @@ class UdpRadioClient internal constructor(
             updateStatusIfActive(currentGeneration) { it.copy(speaker = activeSpeaker) }
             if (activeSpeaker.isBlank()) playReceiveTailTone(currentGeneration)
         }
-        if (status.connected && now - lastServerPacketAt > SERVER_SILENCE_TIMEOUT_MS) {
-            scheduleReconnect("服务器心跳超时", currentGeneration)
-        }
+    }
+
+    private fun stopSessionTasks() {
+        sessionMonitor.stop()
+        sessionTasks.cancelPttTimeout()
     }
 
     private fun scheduleReconnect(reason: String, expectedGeneration: Int = connectionState.generation()) {
@@ -846,7 +847,7 @@ class UdpRadioClient internal constructor(
         listener.onCwPreviewState(false)
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
-        sessionTasks.stopSession()
+        stopSessionTasks()
         audioEngine.capture.stop()
         finishAllIncomingVoices().forEach(listener::onMessage)
         closeTransport()
@@ -857,7 +858,7 @@ class UdpRadioClient internal constructor(
             return
         }
         val retryDelay = RadioReconnectPolicy.retryDelayMillis(
-            lastPacketSentAt = lastPacketSentAt,
+            lastPacketSentAt = sessionMonitor.lastPacketSentAt(),
             now = clock.nowMillis()
         )
         runCatching {
@@ -917,7 +918,7 @@ class UdpRadioClient internal constructor(
 
     private fun sendRaw(activeTransport: UdpTransport, bytes: ByteArray) {
         activeTransport.send(bytes)
-        lastPacketSentAt = clock.nowMillis()
+        sessionMonitor.recordPacketSent()
     }
 
     private fun schedulePttTimeout(expectedGeneration: Int) {
