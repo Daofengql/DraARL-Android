@@ -45,4 +45,19 @@ Compose UI Test 在该版本中弃用 `androidx.compose.ui.test.junit4.createCom
 完整本地门禁通过 288 个 JVM 测试和 38 张 Compose 截图；迁移后的 AndroidTest Kotlin 强制重新编译且无新增
 弃用警告，Debug Lint、APK 和 AndroidTest APK 构建继续通过。
 
-后续仍需升级 Android JUnit 与 Espresso 测试库，并检查是否存在可删除的未使用直接依赖。
+## Android 测试库与直接依赖审计
+
+| 依赖 | 升级前 | 当前 | Maven 最新稳定版 |
+| --- | --- | --- | --- |
+| `androidx.test.ext:junit` | 1.1.5 | 1.3.0 | 1.3.0 |
+| `androidx.test.espresso:espresso-core` | 3.5.1（直接声明） | 删除直接声明 | 3.7.0 |
+
+仪器测试直接使用 AndroidX JUnit runner 和 Compose UI Test，没有任何 `androidx.test.espresso` API 引用。
+删除显式 Espresso 后，依赖分析确认 `ui-test-junit4` 会传递解析其所需的 Espresso Core；AndroidTest APK 和完整
+门禁继续通过，因此不再由应用版本目录人为覆盖该内部实现依赖。
+
+其余直接依赖均有明确所有权：生产源码直接使用 AndroidX、Compose、Coil、OkHttp、Concentus 和高德 API；
+`coil-network-okhttp` 提供头像网络加载运行时能力；测试依赖分别承载 JVM JSON、MockWebServer、Layoutlib 截图和
+Compose/SQLite 仪器测试。未发现可继续删除的直接依赖。
+
+四个版本组均使用独立提交和完整本地门禁验证；当前依赖来源、SDK 兼容限制和升级影响已可追踪。
