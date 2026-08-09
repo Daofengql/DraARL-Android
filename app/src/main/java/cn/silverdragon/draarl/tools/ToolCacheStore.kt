@@ -4,10 +4,22 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal class ToolCacheStore(context: Context) {
+internal interface ToolCache {
+    fun saveRelays(location: String, relays: List<RelayStation>, savedAt: Long = System.currentTimeMillis())
+
+    fun loadRelays(): CachedRelays?
+
+    fun saveDraft(userId: Int, draft: LogbookDraft)
+
+    fun loadDraft(userId: Int): LogbookDraft?
+
+    fun clearDraft(userId: Int)
+}
+
+internal class ToolCacheStore(context: Context) : ToolCache {
     private val preferences = context.getSharedPreferences("draarl_tool_cache", Context.MODE_PRIVATE)
 
-    fun saveRelays(location: String, relays: List<RelayStation>, savedAt: Long = System.currentTimeMillis()) {
+    override fun saveRelays(location: String, relays: List<RelayStation>, savedAt: Long) {
         preferences.edit()
             .putString("relay_location", location)
             .putLong("relay_saved_at", savedAt)
@@ -15,30 +27,30 @@ internal class ToolCacheStore(context: Context) {
             .apply()
     }
 
-    fun loadRelays(): CachedRelays? = runCatching {
+    override fun loadRelays(): CachedRelays? = runCatching {
         val location = preferences.getString("relay_location", "").orEmpty()
         val savedAt = preferences.getLong("relay_saved_at", 0L)
         if (location.isBlank() || savedAt <= 0L) return null
         CachedRelays(
             location = location,
             savedAt = savedAt,
-            items = RelayCacheJson.decode(preferences.getString("relay_items", "[]").orEmpty()),
+            items = RelayCacheJson.decode(preferences.getString("relay_items", "[]").orEmpty())
         )
     }.getOrNull()
 
-    fun saveDraft(userId: Int, draft: LogbookDraft) {
+    override fun saveDraft(userId: Int, draft: LogbookDraft) {
         if (userId <= 0) return
         preferences.edit().putString(logbookDraftCacheKey(userId), LogbookDraftJson.encode(draft)).apply()
     }
 
-    fun loadDraft(userId: Int): LogbookDraft? = runCatching {
+    override fun loadDraft(userId: Int): LogbookDraft? = runCatching {
         if (userId <= 0) return null
         val raw = preferences.getString(logbookDraftCacheKey(userId), "").orEmpty()
         if (raw.isBlank()) return null
         LogbookDraftJson.decode(raw)
     }.getOrNull()
 
-    fun clearDraft(userId: Int) {
+    override fun clearDraft(userId: Int) {
         if (userId > 0) preferences.edit().remove(logbookDraftCacheKey(userId)).apply()
     }
 }
@@ -57,7 +69,7 @@ internal object RelayCacheJson {
                     .put("owner", relay.ownerCallsign)
                     .put("location", relay.location)
                     .put("status", relay.status)
-                    .put("note", relay.note),
+                    .put("note", relay.note)
             )
         }
     }.toString()
@@ -76,7 +88,7 @@ internal object RelayCacheJson {
                 ownerCallsign = item.optString("owner"),
                 location = item.optString("location"),
                 status = item.optInt("status", 1),
-                note = item.optString("note"),
+                note = item.optString("note")
             )
         }
     }
@@ -127,7 +139,7 @@ internal object LogbookDraftJson {
             myQth = optString("my_qth"),
             myRadio = optString("my_radio"),
             myAntenna = optString("my_antenna"),
-            notes = optString("notes"),
+            notes = optString("notes")
         )
     }
 }

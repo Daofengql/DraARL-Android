@@ -1,26 +1,42 @@
 package cn.silverdragon.draarl.tools
 
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import cn.silverdragon.draarl.concurrency.ControllerTaskRunner
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.network.ToolsApi
 import cn.silverdragon.draarl.tools.ble.BleProvisionController
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 
-class ToolsController(context: Context, private val api: ToolsApi) {
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val executor = Executors.newFixedThreadPool(2) { runnable -> Thread(runnable, "draarl-tools") }
-    private val cache = ToolCacheStore(context.applicationContext)
-    private val closed = AtomicBoolean(false)
-    val ble = BleProvisionController(context.applicationContext)
+class ToolsController internal constructor(
+    private val api: ToolsApi,
+    private val cache: ToolCache,
+    scope: CoroutineScope,
+    ioDispatcher: CoroutineDispatcher,
+    private val bleController: BleProvisionController? = null,
+    private val currentTimeMillis: () -> Long = System::currentTimeMillis
+) {
+    constructor(
+        context: Context,
+        api: ToolsApi,
+        scope: CoroutineScope,
+        ioDispatcher: CoroutineDispatcher
+    ) : this(
+        api = api,
+        cache = ToolCacheStore(context.applicationContext),
+        scope = scope,
+        ioDispatcher = ioDispatcher,
+        bleController = BleProvisionController(context.applicationContext)
+    )
+
+    private var closed = false
+    val ble: BleProvisionController
+        get() = checkNotNull(bleController)
     private val navigation = ToolBackStack()
 
     var destination by mutableStateOf(ToolDestination.HOME)
@@ -33,6 +49,12 @@ class ToolsController(context: Context, private val api: ToolsApi) {
         private set
     var presetBusy by mutableStateOf(false)
         private set
+    private val relayTasks = ControllerTaskRunner(scope, ioDispatcher) { relayBusy = it }
+    private val relayCacheTasks = ControllerTaskRunner(scope, ioDispatcher) {}
+    private val logbookTasks = ControllerTaskRunner(scope, ioDispatcher) { logbookBusy = it }
+    private val presetTasks = ControllerTaskRunner(scope, ioDispatcher) { presetBusy = it }
+    private val draftLoadTasks = ControllerTaskRunner(scope, ioDispatcher) {}
+    private val cacheWriteTasks = ControllerTaskRunner(scope, ioDispatcher) {}
     private var homeError by mutableStateOf("")
     private var relayError by mutableStateOf("")
     private var logbookError by mutableStateOf("")
@@ -64,17 +86,20 @@ class ToolsController(context: Context, private val api: ToolsApi) {
     var draft by mutableStateOf<LogbookDraft?>(null)
         private set
     private var activeUserId = 0
-    private val relayGeneration = AtomicInteger(0)
-    private val logbookGeneration = AtomicInteger(0)
-    private val presetGeneration = AtomicInteger(0)
     private var presetOrderDirty = false
 
     init {
-        cache.loadRelays()?.let {
-            relayLocation = it.location
-            relays = it.items
-            relayCacheTime = it.savedAt
-        }
+        relayCacheTasks.replace(
+            operation = cache::loadRelays,
+            onSuccess = { cached ->
+                cached?.let {
+                    relayLocation = it.location
+                    relays = it.items
+                    relayCacheTime = it.savedAt
+                }
+            },
+            onFailure = {}
+        )
     }
 
     fun open(target: ToolDestination, user: User?): Boolean {
@@ -88,7 +113,12 @@ class ToolsController(context: Context, private val api: ToolsApi) {
         when (target) {
             ToolDestination.LOGBOOK -> {
                 activeUserId = user?.id ?: 0
-                draft = cache.loadDraft(activeUserId)
+                val draftUserId = activeUserId
+                draftLoadTasks.replace(
+                    operation = { cache.loadDraft(draftUserId) },
+                    onSuccess = { loaded -> if (draftUserId == activeUserId) draft = loaded },
+                    onFailure = {}
+                )
                 if (logbooks.isEmpty()) loadLogbooks(reset = true)
             }
 
@@ -107,54 +137,48 @@ class ToolsController(context: Context, private val api: ToolsApi) {
     }
 
     fun searchRelays(location: String) {
-        if (relayBusy) return
+        if (closed || relayBusy) return
         val normalized = location.trim().replace(Regex("\\s+"), " ")
         if (normalized.split(' ').filter(String::isNotBlank).size < 2) {
             relayError = "请至少填写省和城市"
             return
         }
-        val generation = relayGeneration.incrementAndGet()
-        relayBusy = true
+        relayCacheTasks.cancel()
         relayError = ""
-        executor.execute {
-            runCatching { api.searchPublicRelays(normalized) }
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        if (closed.get() || generation != relayGeneration.get()) return@post
-                        cache.saveRelays(normalized, loaded)
-                        relayLocation = normalized
-                        relays = loaded
-                        relayCacheTime = System.currentTimeMillis()
-                        relayBusy = false
-                    }
-                }
-                .onFailure { postRelayError(generation, it) }
-        }
+        relayTasks.launch(
+            operation = {
+                val loaded = api.searchPublicRelays(normalized)
+                val savedAt = currentTimeMillis()
+                cache.saveRelays(normalized, loaded, savedAt)
+                CachedRelays(normalized, loaded, savedAt)
+            },
+            onSuccess = { loaded ->
+                relayLocation = loaded.location
+                relays = loaded.items
+                relayCacheTime = loaded.savedAt
+            },
+            onFailure = { failure -> relayError = failure.toToolError() }
+        )
     }
 
     fun loadLogbooks(reset: Boolean = false, callsign: String = logbookFilter) {
-        if (logbookBusy) return
+        if (closed || logbookBusy) return
         val targetPage = if (reset) 1 else logbookPage + 1
-        val generation = logbookGeneration.incrementAndGet()
-        logbookBusy = true
         logbookError = ""
-        executor.execute {
-            runCatching { api.getLogbooks(targetPage, LOGBOOK_PAGE_SIZE, callsign) }
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        if (closed.get() || generation != logbookGeneration.get()) return@post
-                        logbookFilter = callsign.trim()
-                        logbookPage = loaded.page
-                        logbookTotal = loaded.total
-                        logbooks = if (reset) loaded.items else (logbooks + loaded.items).distinctBy(LogbookEntry::id)
-                        logbookBusy = false
-                    }
-                }
-                .onFailure { postLogbookError(generation, it) }
-        }
+        logbookTasks.launch(
+            operation = { api.getLogbooks(targetPage, LOGBOOK_PAGE_SIZE, callsign) },
+            onSuccess = { loaded ->
+                logbookFilter = callsign.trim()
+                logbookPage = loaded.page
+                logbookTotal = loaded.total
+                logbooks = if (reset) loaded.items else (logbooks + loaded.items).distinctBy(LogbookEntry::id)
+            },
+            onFailure = { failure -> logbookError = failure.toToolError() }
+        )
     }
 
     fun editDraft(entry: LogbookEntry?, user: User?) {
+        draftLoadTasks.cancel()
         if (user != null) activeUserId = user.id
         draft = entry?.let {
             LogbookDraft(
@@ -180,7 +204,10 @@ class ToolsController(context: Context, private val api: ToolsApi) {
                 notes = it.notes
             )
         } ?: LogbookDraft(myCallsign = user?.callsign.orEmpty(), localTime = LogbookTime.nowLocal())
-        draft?.let { cache.saveDraft(activeUserId, it) }
+        val draftUserId = activeUserId
+        draft?.let { value ->
+            cacheWriteTasks.enqueue(operation = { cache.saveDraft(draftUserId, value) })
+        }
         navigation.open(ToolDestination.LOGBOOK_EDITOR)
         destination = navigation.current
     }
@@ -192,8 +219,10 @@ class ToolsController(context: Context, private val api: ToolsApi) {
     }
 
     fun updateDraft(value: LogbookDraft) {
+        draftLoadTasks.cancel()
         draft = value
-        cache.saveDraft(activeUserId, value)
+        val draftUserId = activeUserId
+        cacheWriteTasks.enqueue(operation = { cache.saveDraft(draftUserId, value) })
     }
 
     fun applyPreset(preset: RadioPreset) {
@@ -209,30 +238,24 @@ class ToolsController(context: Context, private val api: ToolsApi) {
     }
 
     fun saveDraft(onSuccess: () -> Unit) {
-        if (logbookBusy) return
+        if (closed || logbookBusy) return
         val current = draft ?: return
         val entry = runCatching(current::toLogbookEntry).getOrElse {
             logbookError = it.message ?: "日志内容格式不正确"
             return
         }
         val draftUserId = activeUserId
-        val generation = logbookGeneration.incrementAndGet()
-        logbookBusy = true
         logbookError = ""
-        executor.execute {
-            runCatching { api.saveLogbook(entry) }
-                .onSuccess {
-                    mainHandler.post {
-                        if (closed.get() || generation != logbookGeneration.get()) return@post
-                        cache.clearDraft(draftUserId)
-                        draft = null
-                        logbookBusy = false
-                        onSuccess()
-                        loadLogbooks(reset = true)
-                    }
-                }
-                .onFailure { postLogbookError(generation, it) }
-        }
+        logbookTasks.launch(
+            operation = { api.saveLogbook(entry) },
+            onSuccess = {
+                cacheWriteTasks.enqueue(operation = { cache.clearDraft(draftUserId) })
+                draft = null
+                onSuccess()
+                loadLogbooks(reset = true)
+            },
+            onFailure = { failure -> logbookError = failure.toToolError() }
+        )
     }
 
     fun deleteLogbook(id: Int) = runLogbookMutation({ api.deleteLogbook(id) }) { loadLogbooks(reset = true) }
@@ -246,22 +269,16 @@ class ToolsController(context: Context, private val api: ToolsApi) {
     }
 
     fun loadPresets() {
-        if (presetBusy) return
-        val generation = presetGeneration.incrementAndGet()
-        presetBusy = true
+        if (closed || presetBusy) return
         presetError = ""
-        executor.execute {
-            runCatching(api::getRadioPresets)
-                .onSuccess { loaded ->
-                    mainHandler.post {
-                        if (closed.get() || generation != presetGeneration.get()) return@post
-                        presets = loaded
-                        presetOrderDirty = false
-                        presetBusy = false
-                    }
-                }
-                .onFailure { postPresetError(generation, it) }
-        }
+        presetTasks.launch(
+            operation = api::getRadioPresets,
+            onSuccess = { loaded ->
+                presets = loaded
+                presetOrderDirty = false
+            },
+            onFailure = { failure -> presetError = failure.toToolError() }
+        )
     }
 
     fun savePreset(preset: RadioPreset, onSuccess: () -> Unit = {}) =
@@ -293,15 +310,14 @@ class ToolsController(context: Context, private val api: ToolsApi) {
     }
 
     fun reset() {
-        ble.disconnect()
+        bleController?.disconnect()
         navigation.reset()
         destination = navigation.current
-        relayGeneration.incrementAndGet()
-        logbookGeneration.incrementAndGet()
-        presetGeneration.incrementAndGet()
-        relayBusy = false
-        logbookBusy = false
-        presetBusy = false
+        relayTasks.cancel()
+        relayCacheTasks.cancel()
+        logbookTasks.cancel()
+        presetTasks.cancel()
+        draftLoadTasks.cancel()
         homeError = ""
         relayError = ""
         logbookError = ""
@@ -314,69 +330,35 @@ class ToolsController(context: Context, private val api: ToolsApi) {
     }
 
     fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        ble.close()
-        executor.shutdownNow()
+        if (closed) return
+        closed = true
+        bleController?.close()
+        relayTasks.close()
+        relayCacheTasks.close()
+        logbookTasks.close()
+        presetTasks.close()
+        draftLoadTasks.close()
+        cacheWriteTasks.close()
     }
 
     private fun runLogbookMutation(block: () -> Any?, onSuccess: () -> Unit) {
-        if (logbookBusy) return
-        val generation = logbookGeneration.incrementAndGet()
-        logbookBusy = true
+        if (closed || logbookBusy) return
         logbookError = ""
-        executor.execute {
-            runCatching(block)
-                .onSuccess {
-                    mainHandler.post {
-                        if (closed.get() || generation != logbookGeneration.get()) return@post
-                        logbookBusy = false
-                        onSuccess()
-                    }
-                }
-                .onFailure { postLogbookError(generation, it) }
-        }
+        logbookTasks.launch(
+            operation = block,
+            onSuccess = { onSuccess() },
+            onFailure = { failure -> logbookError = failure.toToolError() }
+        )
     }
 
     private fun runPresetMutation(block: () -> Any?, onSuccess: () -> Unit) {
-        if (presetBusy) return
-        val generation = presetGeneration.incrementAndGet()
-        presetBusy = true
+        if (closed || presetBusy) return
         presetError = ""
-        executor.execute {
-            runCatching(block)
-                .onSuccess {
-                    mainHandler.post {
-                        if (closed.get() || generation != presetGeneration.get()) return@post
-                        presetBusy = false
-                        onSuccess()
-                    }
-                }
-                .onFailure { postPresetError(generation, it) }
-        }
-    }
-
-    private fun postRelayError(generation: Int, throwable: Throwable) {
-        mainHandler.post {
-            if (closed.get() || generation != relayGeneration.get()) return@post
-            relayBusy = false
-            relayError = throwable.message ?: "操作失败，请稍后重试"
-        }
-    }
-
-    private fun postLogbookError(generation: Int, throwable: Throwable) {
-        mainHandler.post {
-            if (closed.get() || generation != logbookGeneration.get()) return@post
-            logbookBusy = false
-            logbookError = throwable.message ?: "操作失败，请稍后重试"
-        }
-    }
-
-    private fun postPresetError(generation: Int, throwable: Throwable) {
-        mainHandler.post {
-            if (closed.get() || generation != presetGeneration.get()) return@post
-            presetBusy = false
-            presetError = throwable.message ?: "操作失败，请稍后重试"
-        }
+        presetTasks.launch(
+            operation = block,
+            onSuccess = { onSuccess() },
+            onFailure = { failure -> presetError = failure.toToolError() }
+        )
     }
 
     fun clearPresetError() {
@@ -395,3 +377,5 @@ class ToolsController(context: Context, private val api: ToolsApi) {
         const val LOGBOOK_PAGE_SIZE = 20
     }
 }
+
+private fun Throwable.toToolError(): String = message ?: "操作失败，请稍后重试"

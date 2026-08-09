@@ -7,6 +7,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal class ControllerTaskRunner(
@@ -19,6 +21,7 @@ internal class ControllerTaskRunner(
     private var operationJob: Job? = null
     private var generation = 0
     private var closed = false
+    private val queueMutex = Mutex()
 
     fun <T> launch(operation: () -> T, onSuccess: (T) -> Unit, onFailure: (Throwable) -> Unit): Boolean {
         if (closed || operationJob?.isActive == true) return false
@@ -40,6 +43,19 @@ internal class ControllerTaskRunner(
     fun <T> replace(operation: () -> T, onSuccess: (T) -> Unit, onFailure: (Throwable) -> Unit) {
         cancel()
         launch(operation, onSuccess, onFailure)
+    }
+
+    fun enqueue(operation: () -> Unit, onFailure: (Throwable) -> Unit = {}) {
+        if (closed) return
+        scope.launch {
+            val result = runCatching {
+                queueMutex.withLock { withContext(ioDispatcher) { operation() } }
+            }
+            result.exceptionOrNull()?.let { failure ->
+                if (failure is CancellationException) throw failure
+                if (!closed) onFailure(failure)
+            }
+        }
     }
 
     fun cancel() {

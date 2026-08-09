@@ -127,7 +127,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         ioDispatcher = ioDispatcher,
         friendlyError = ::friendlyError
     )
-    private val toolsDelegate = lazy { ToolsController(appContext, api) }
+    private val toolsDelegate = lazy { ToolsController(appContext, api, viewModelScope, ioDispatcher) }
     val tools: ToolsController
         get() = toolsDelegate.value
     private val appUpdateManager by lazy { AppUpdateManager(appContext, api) }
