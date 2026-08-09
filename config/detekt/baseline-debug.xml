@@ -69,8 +69,6 @@
     <ID>ComplexCondition:RadioPresetsScreen.kt:targetInfo != null &amp;&amp; currentIndex &gt;= 0 &amp;&amp; targetIndex &gt;= 0 &amp;&amp; currentIndex != targetIndex</ID>
     <ID>ComplexCondition:UdpRadioClient.kt:UdpRadioClient$!status.connected || status.transmitting || status.speaker.isNotBlank() || normalized.isEmpty()</ID>
     <ID>ComplexCondition:UdpRadioClient.kt:UdpRadioClient$packetOffset &lt; samples.size &amp;&amp; shouldContinue() &amp;&amp; (!requireActive || isActive(currentGeneration)) &amp;&amp; (!sendToRemote || status.transmitting)</ID>
-    <ID>CyclomaticComplexMethod:AppController.kt:AppController$override fun onRadioMessage</ID>
-    <ID>CyclomaticComplexMethod:AppController.kt:AppController$override fun onRadioStatus</ID>
     <ID>CyclomaticComplexMethod:AppController.kt:AppController$private fun startRefreshAll</ID>
     <ID>CyclomaticComplexMethod:AppUpdateManager.kt:AppUpdateManager$private fun downloadToFile: File</ID>
     <ID>CyclomaticComplexMethod:AprsMapPanel.kt:@Composable internal fun AprsMapPanel</ID>
@@ -100,7 +98,7 @@
     <ID>InjectDispatcher:AprsIsClient.kt:AprsIsClient$IO</ID>
     <ID>InjectDispatcher:AprsService.kt:AprsService$IO</ID>
     <ID>LargeClass:ApiClient.kt:ApiClient</ID>
-    <ID>LargeClass:AppController.kt:AppController : AndroidViewModelRadioServiceListener</ID>
+    <ID>LargeClass:AppController.kt:AppController : AndroidViewModel</ID>
     <ID>LargeClass:UdpRadioClient.kt:UdpRadioClient</ID>
     <ID>LongMethod:AccountSecurityScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AccountSecurityScreen</ID>
     <ID>LongMethod:AprsMapPanel.kt:@Composable internal fun AprsMapPanel</ID>
@@ -638,7 +636,7 @@
     <ID>TooGenericExceptionCaught:UdpRadioClient.kt:UdpRadioClient$error: Exception</ID>
     <ID>TooManyFunctions:ApiClient.kt:ApiClient</ID>
     <ID>TooManyFunctions:ApiClient.kt:cn.silverdragon.draarl.network.ApiClient.kt</ID>
-    <ID>TooManyFunctions:AppController.kt:AppController : AndroidViewModelRadioServiceListener</ID>
+    <ID>TooManyFunctions:AppController.kt:AppController : AndroidViewModel</ID>
     <ID>TooManyFunctions:BleProvisionController.kt:BleProvisionController</ID>
     <ID>TooManyFunctions:BleProvisioningClient.kt:BleProvisioningClient</ID>
     <ID>TooManyFunctions:DeviceManagementController.kt:DeviceManagementController</ID>

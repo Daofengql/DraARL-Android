@@ -76,6 +76,9 @@ fun RadioScreen(
     val scope = rememberCoroutineScope()
     val locationProvider = remember(context) { CurrentLocationProvider(context) }
     val messageState = controller.messageController.uiState
+    val sessionState = controller.radioSession.uiState
+    val radioStatus = sessionState.status
+    val selectedGroupId = sessionState.selectedGroupId
     val messages = messageState.messages
     val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
     val unplayedVoiceCount = messageState.unplayedVoiceCount
@@ -83,9 +86,9 @@ fun RadioScreen(
         initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0)
     )
     val userDragging by listState.interactionSource.collectIsDraggedAsState()
-    var followLatest by rememberSaveable(controller.selectedGroupId) { mutableStateOf(true) }
-    var userScrollPending by rememberSaveable(controller.selectedGroupId) { mutableStateOf(false) }
-    var initialListPositioned by rememberSaveable(controller.selectedGroupId) { mutableStateOf(messages.isNotEmpty()) }
+    var followLatest by rememberSaveable(selectedGroupId) { mutableStateOf(true) }
+    var userScrollPending by rememberSaveable(selectedGroupId) { mutableStateOf(false) }
+    var initialListPositioned by rememberSaveable(selectedGroupId) { mutableStateOf(messages.isNotEmpty()) }
     var text by rememberSaveable { mutableStateOf("") }
     var textMode by rememberSaveable { mutableStateOf(false) }
     var showDevices by rememberSaveable { mutableStateOf(false) }
@@ -96,11 +99,11 @@ fun RadioScreen(
     var cwText by rememberSaveable { mutableStateOf("") }
     var cwWordsPerMinute by rememberSaveable { mutableIntStateOf(18) }
     var cwToneHz by rememberSaveable { mutableIntStateOf(700) }
-    var historyAnchorId by rememberSaveable(controller.selectedGroupId) { mutableStateOf("") }
-    var historyAnchorOffset by rememberSaveable(controller.selectedGroupId) { mutableIntStateOf(0) }
+    var historyAnchorId by rememberSaveable(selectedGroupId) { mutableStateOf("") }
+    var historyAnchorOffset by rememberSaveable(selectedGroupId) { mutableIntStateOf(0) }
     val dismissExtrasInteraction = remember { MutableInteractionSource() }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        controller.connectRadio()
+        controller.radioSession.connect()
     }
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val sendCurrentLocation = {
@@ -155,7 +158,7 @@ fun RadioScreen(
             userScrollPending = false
         }
     }
-    LaunchedEffect(messages.lastOrNull()?.id, messages.size, controller.selectedGroupId) {
+    LaunchedEffect(messages.lastOrNull()?.id, messages.size, selectedGroupId) {
         if (messages.isEmpty()) return@LaunchedEffect
         if (!initialListPositioned) {
             listState.scrollToItem(messages.lastIndex)
@@ -164,7 +167,7 @@ fun RadioScreen(
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
-    LaunchedEffect(controller.playingMessageId, controller.voiceAutoPlayEnabled, controller.selectedGroupId) {
+    LaunchedEffect(controller.playingMessageId, controller.voiceAutoPlayEnabled, selectedGroupId) {
         if (!controller.voiceAutoPlayEnabled) return@LaunchedEffect
         val playingId = controller.playingMessageId ?: return@LaunchedEffect
         val playingIndex = messages.indexOfFirst { it.id == playingId }
@@ -179,7 +182,7 @@ fun RadioScreen(
         historyAnchorId = ""
         historyAnchorOffset = 0
     }
-    LaunchedEffect(controller.selectedGroupId) {
+    LaunchedEffect(selectedGroupId) {
         snapshotFlow {
             Triple(listState.firstVisibleItemIndex, followLatest, messages.firstOrNull()?.id)
         }
@@ -197,8 +200,8 @@ fun RadioScreen(
                 }
             }
     }
-    LaunchedEffect(controller.selectedGroupId, controller.radioStatus.connected) {
-        if (controller.radioStatus.connected) controller.refreshRadioData()
+    LaunchedEffect(selectedGroupId, radioStatus.connected) {
+        if (radioStatus.connected) controller.refreshRadioData()
     }
 
     val connect = {
@@ -209,7 +212,7 @@ fun RadioScreen(
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            controller.connectRadio()
+            controller.radioSession.connect()
         }
     }
     val startPtt = {
@@ -222,12 +225,12 @@ fun RadioScreen(
             false
         }
     }
-    val selectedPointId = controller.selectedAccessPoint?.id.orEmpty()
-    LaunchedEffect(selectedPointId, controller.radioStatus.phase) {
+    val selectedPointId = sessionState.selectedAccessPoint?.id.orEmpty()
+    LaunchedEffect(selectedPointId, radioStatus.phase) {
         if (
             selectedPointId.isNotBlank() &&
-            controller.radioStatus.phase == RadioConnectionPhase.DISCONNECTED &&
-            controller.shouldAutoConnectRadio()
+            radioStatus.phase == RadioConnectionPhase.DISCONNECTED &&
+            sessionState.autoConnectAllowed
         ) {
             connect()
         }
@@ -236,7 +239,7 @@ fun RadioScreen(
     Column(Modifier.fillMaxSize()) {
         ConnectionPanel(
             controller = controller,
-            status = controller.radioStatus,
+            sessionState = sessionState,
             onToggleDevices = { showDevices = !showDevices }
         )
         if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
@@ -382,9 +385,9 @@ fun RadioScreen(
             RadioComposer(
                 textMode = textMode,
                 text = text,
-                connected = controller.radioStatus.connected,
-                transmitting = controller.radioStatus.transmitting,
-                receiving = controller.radioStatus.speaker.isNotBlank(),
+                connected = radioStatus.connected,
+                transmitting = radioStatus.transmitting,
+                receiving = radioStatus.speaker.isNotBlank(),
                 canSendText = canSendText,
                 onTextModeChange = {
                     textMode = it
@@ -416,8 +419,8 @@ fun RadioScreen(
             ) {
                 RadioExtraPanel(
                     locating = locating,
-                    cwEnabled = controller.radioStatus.connected &&
-                        !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
+                    cwEnabled = radioStatus.connected &&
+                        !radioStatus.transmitting && radioStatus.speaker.isBlank(),
                     cwTransmitting = controller.cwTransmitting,
                     onLocationClick = {
                         showCwSheet = false
@@ -473,9 +476,8 @@ fun RadioScreen(
             text = cwText,
             wordsPerMinute = cwWordsPerMinute,
             toneHz = cwToneHz,
-            enabled = controller.radioStatus.connected &&
-                !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
-            previewEnabled = !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
+            enabled = radioStatus.connected && !radioStatus.transmitting && radioStatus.speaker.isBlank(),
+            previewEnabled = !radioStatus.transmitting && radioStatus.speaker.isBlank(),
             transmitting = controller.cwTransmitting,
             previewing = controller.cwPreviewing,
             onDismiss = {

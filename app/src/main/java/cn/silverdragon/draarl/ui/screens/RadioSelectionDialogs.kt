@@ -30,9 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.Group
+import cn.silverdragon.draarl.radio.session.RadioSessionUiState
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
@@ -40,42 +40,45 @@ import cn.silverdragon.draarl.ui.state.availableRadioGroups
 import cn.silverdragon.draarl.ui.theme.appColors
 
 @Composable
-internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit) {
-    val probesByAccessPointId = remember(controller.accessPointProbes) {
-        controller.accessPointProbes.associateBy { it.accessPoint.id }
+internal fun AccessPointDialog(state: RadioSessionUiState, onSelect: (AccessPoint) -> Unit, onDismiss: () -> Unit) {
+    val probesByAccessPointId = remember(state.accessPointProbes) {
+        state.accessPointProbes.associateBy { it.accessPoint.id }
     }
     DraarlDialog(
         title = "选择边缘节点",
         onDismissRequest = onDismiss,
-        dismissAction = DraarlAction("关闭", onDismiss),
+        dismissAction = DraarlAction("关闭", onDismiss)
     ) {
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
-            items(controller.accessPoints, key = AccessPoint::id) { point ->
-                val selected = point.id == controller.selectedAccessPoint?.id
+            items(state.accessPoints, key = AccessPoint::id) { point ->
+                val selected = point.id == state.selectedAccessPoint?.id
                 val probe = probesByAccessPointId[point.id]
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                         .clickable {
-                            if (!selected) controller.selectAccessPoint(point)
+                            if (!selected) onSelect(point)
                             onDismiss()
                         }
                         .padding(horizontal = 18.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Default.Router, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(point.displayName, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                         val meta = listOf(point.region, point.network).filter(String::isNotBlank).joinToString(" · ")
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             if (meta.isNotBlank()) {
                                 Text(
                                     meta,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
+                                    maxLines = 1
                                 )
                             }
                             LatencyText(probe?.latencyMs, prefix = "ICMP ")
@@ -89,26 +92,26 @@ internal fun AccessPointDialog(controller: AppController, onDismiss: () -> Unit)
 }
 
 @Composable
-internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
-    val availableGroups = remember(controller.groups) { availableRadioGroups(controller.groups) }
+internal fun GroupDialog(groups: List<Group>, selectedGroupId: Int, onSelect: (Group) -> Unit, onDismiss: () -> Unit) {
+    val availableGroups = remember(groups) { availableRadioGroups(groups) }
     DraarlDialog(
         title = "发送/日志频道",
         onDismissRequest = onDismiss,
-        dismissAction = DraarlAction("关闭", onDismiss),
+        dismissAction = DraarlAction("关闭", onDismiss)
     ) {
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
             items(availableGroups, key = Group::id) { group ->
-                val selected = group.id == controller.selectedGroupId
+                val selected = group.id == selectedGroupId
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                         .clickable {
-                            if (!selected) controller.switchGroup(group)
+                            if (!selected) onSelect(group)
                             onDismiss()
                         }
                         .padding(horizontal = 18.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Default.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
@@ -117,10 +120,10 @@ internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
                         Text(
                             listOf(
                                 "${group.onlineCount} 在线",
-                                if (group.isPrivate) "私有群组" else "公开群组",
+                                if (group.isPrivate) "私有群组" else "公开群组"
                             ).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     if (selected) Icon(Icons.Default.Check, contentDescription = "当前群组")
@@ -131,11 +134,16 @@ internal fun GroupDialog(controller: AppController, onDismiss: () -> Unit) {
 }
 
 @Composable
-internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
-    val availableGroups = remember(controller.groups) { availableRadioGroups(controller.groups) }
-    val primaryGroupId = controller.selectedGroupId
-    var rxGroupIds by remember(controller.radioStatus.sessionId, primaryGroupId) {
-        mutableStateOf(controller.receiveGroupIds + primaryGroupId)
+internal fun RoutingDialog(
+    groups: List<Group>,
+    state: RadioSessionUiState,
+    onApply: (Int, Collection<Int>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val availableGroups = remember(groups) { availableRadioGroups(groups) }
+    val primaryGroupId = state.selectedGroupId
+    var rxGroupIds by remember(state.status.sessionId, primaryGroupId) {
+        mutableStateOf(state.receiveGroupIds + primaryGroupId)
     }
     DraarlDialog(
         title = "收听频道",
@@ -144,12 +152,12 @@ internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
         confirmAction = DraarlAction(
             label = "应用",
             onClick = {
-                controller.updateRadioRouting(primaryGroupId, rxGroupIds)
+                onApply(primaryGroupId, rxGroupIds)
                 onDismiss()
             },
-            enabled = controller.radioStatus.connected && !controller.radioRoutingUpdating && primaryGroupId > 0,
-            style = CommandStyle.PRIMARY,
-        ),
+            enabled = state.status.connected && !state.routingUpdating && primaryGroupId > 0,
+            style = CommandStyle.PRIMARY
+        )
     ) {
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
             items(availableGroups, key = Group::id) { group ->
@@ -157,14 +165,14 @@ internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
                 val receiving = group.id in rxGroupIds
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Checkbox(
                         checked = receiving,
                         enabled = !transmitting,
                         onCheckedChange = { checked ->
                             rxGroupIds = if (checked) rxGroupIds + group.id else rxGroupIds - group.id
-                        },
+                        }
                     )
                     Column(Modifier.weight(1f)) {
                         Text(group.name, fontWeight = if (transmitting) FontWeight.SemiBold else FontWeight.Normal)
@@ -175,7 +183,7 @@ internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
                                 else -> "未订阅"
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -187,7 +195,7 @@ internal fun RoutingDialog(controller: AppController, onDismiss: () -> Unit) {
 @Composable
 internal fun LatencyText(latencyMs: Int?, modifier: Modifier = Modifier, prefix: String = "") {
     Text(
-        text = latencyMs?.let { "$prefix${it} ms" } ?: "${prefix}不可达",
+        text = latencyMs?.let { "$prefix$it ms" } ?: "${prefix}不可达",
         modifier = modifier,
         style = MaterialTheme.typography.bodySmall,
         color = when {
@@ -196,6 +204,6 @@ internal fun LatencyText(latencyMs: Int?, modifier: Modifier = Modifier, prefix:
             latencyMs <= 180 -> MaterialTheme.appColors.latencyWarn
             else -> MaterialTheme.appColors.latencyPoor
         },
-        maxLines = 1,
+        maxLines = 1
     )
 }

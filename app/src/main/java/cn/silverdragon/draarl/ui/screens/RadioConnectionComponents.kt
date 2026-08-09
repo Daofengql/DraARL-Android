@@ -2,7 +2,6 @@ package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -11,9 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.RadioConnectionPhase
-import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.formatRadioIdentifiers
 import cn.silverdragon.draarl.data.formatRadioIdentity
+import cn.silverdragon.draarl.radio.session.RadioSessionUiState
 import cn.silverdragon.draarl.settings.SettingsEvent
 import cn.silverdragon.draarl.ui.components.RadioAudioLevelMeter
 import cn.silverdragon.draarl.ui.components.RadioStatusStrip
@@ -41,59 +40,47 @@ internal enum class RadioConnectionPanelAction {
 }
 
 @Composable
-internal fun ConnectionPanel(controller: AppController, status: RadioStatus, onToggleDevices: () -> Unit) {
+internal fun ConnectionPanel(
+    controller: AppController,
+    sessionState: RadioSessionUiState,
+    onToggleDevices: () -> Unit
+) {
     var accessMenu by remember { mutableStateOf(false) }
     var groupMenu by remember { mutableStateOf(false) }
     var routingMenu by remember { mutableStateOf(false) }
     val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
-    val user = controller.user
-    val radioSettings by remember {
-        derivedStateOf {
-            controller.settings.uiState.let { state -> state.playbackDenoiseEnabled to state.muted }
-        }
+
+    if (accessMenu) {
+        AccessPointDialog(
+            state = sessionState,
+            onSelect = controller.radioSession::selectAccessPoint,
+            onDismiss = { accessMenu = false }
+        )
     }
-    val callsign = user?.let {
-        it.callsign.ifBlank { it.displayName }
-    }.orEmpty().ifBlank { "DraARL" }
-    val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null
+    if (groupMenu) {
+        GroupDialog(
+            groups = controller.groups,
+            selectedGroupId = sessionState.selectedGroupId,
+            onSelect = controller.radioSession::switchGroup,
+            onDismiss = { groupMenu = false }
+        )
+    }
+    if (routingMenu) {
+        RoutingDialog(
+            groups = controller.groups,
+            state = sessionState,
+            onApply = controller.radioSession::updateRouting,
+            onDismiss = { routingMenu = false }
+        )
+    }
 
-    if (accessMenu) AccessPointDialog(controller = controller, onDismiss = { accessMenu = false })
-    if (groupMenu) GroupDialog(controller = controller, onDismiss = { groupMenu = false })
-    if (routingMenu) RoutingDialog(controller = controller, onDismiss = { routingMenu = false })
-
+    val panelState = radioConnectionPanelState(
+        controller = controller,
+        sessionState = sessionState,
+        groupNames = groupNames
+    )
     RadioConnectionPanel(
-        state = RadioConnectionPanelState(
-            strip = RadioStatusStripState(
-                stationIdentity = formatRadioIdentity(callsign, status.ssid),
-                radioIdentifiers = formatRadioIdentifiers(user?.mdcId.orEmpty(), user?.dmrId ?: 0),
-                connectionText = "${connectionText(
-                    status.phase
-                )} · ${controller.selectedAccessPoint?.displayName ?: "选择节点"}",
-                connectionTone = connectionTone(status.phase),
-                nodeSelectionEnabled =
-                    controller.accessPoints.isNotEmpty() &&
-                        status.phase !in NODE_SELECTION_BLOCKED_PHASES,
-                onlineCount = controller.onlineDevices.size,
-                receiving = receivingAudio,
-                transmitting = status.transmitting,
-                denoiseEnabled = radioSettings.first,
-                muted = radioSettings.second,
-                sendChannel =
-                    groupNames[controller.selectedGroupId] ?: "群组 ${controller.selectedGroupId}",
-                sendChannelEnabled = controller.groups.isNotEmpty() && !controller.radioRoutingUpdating,
-                receiveChannelCount = controller.receiveGroupIds.size,
-                receiveChannelsEnabled =
-                    controller.groups.isNotEmpty() && status.connected &&
-                        !controller.radioRoutingUpdating,
-                speaker = status.speaker,
-                error = status.error
-            ),
-            avatarUrl = user?.avatarUrl.orEmpty(),
-            receiveLevel = controller.playbackLevel,
-            transmitLevel = controller.transmitLevel,
-            receiving = receivingAudio,
-            transmitting = status.transmitting
-        ),
+        state = panelState,
         onAction = { action ->
             when (action) {
                 RadioConnectionPanelAction.SELECT_NODE -> accessMenu = true
@@ -111,6 +98,46 @@ internal fun ConnectionPanel(controller: AppController, status: RadioStatus, onT
                 RadioConnectionPanelAction.SELECT_RECEIVE_CHANNELS -> routingMenu = true
             }
         }
+    )
+}
+
+private fun radioConnectionPanelState(
+    controller: AppController,
+    sessionState: RadioSessionUiState,
+    groupNames: Map<Int, String>
+): RadioConnectionPanelState {
+    val status = sessionState.status
+    val user = controller.user
+    val radioSettings = controller.settings.uiState
+    val callsign = user?.let { it.callsign.ifBlank { it.displayName } }.orEmpty().ifBlank { "DraARL" }
+    val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null
+    return RadioConnectionPanelState(
+        strip = RadioStatusStripState(
+            stationIdentity = formatRadioIdentity(callsign, status.ssid),
+            radioIdentifiers = formatRadioIdentifiers(user?.mdcId.orEmpty(), user?.dmrId ?: 0),
+            connectionText =
+                "${connectionText(status.phase)} · ${sessionState.selectedAccessPoint?.displayName ?: "选择节点"}",
+            connectionTone = connectionTone(status.phase),
+            nodeSelectionEnabled =
+                sessionState.accessPoints.isNotEmpty() && status.phase !in NODE_SELECTION_BLOCKED_PHASES,
+            onlineCount = controller.onlineDevices.size,
+            receiving = receivingAudio,
+            transmitting = status.transmitting,
+            denoiseEnabled = radioSettings.playbackDenoiseEnabled,
+            muted = radioSettings.muted,
+            sendChannel = groupNames[sessionState.selectedGroupId] ?: "群组 ${sessionState.selectedGroupId}",
+            sendChannelEnabled = controller.groups.isNotEmpty() && !sessionState.routingUpdating,
+            receiveChannelCount = sessionState.receiveGroupIds.size,
+            receiveChannelsEnabled =
+                controller.groups.isNotEmpty() && status.connected && !sessionState.routingUpdating,
+            speaker = status.speaker,
+            error = status.error
+        ),
+        avatarUrl = user?.avatarUrl.orEmpty(),
+        receiveLevel = controller.playbackLevel,
+        transmitLevel = controller.transmitLevel,
+        receiving = receivingAudio,
+        transmitting = status.transmitting
     )
 }
 

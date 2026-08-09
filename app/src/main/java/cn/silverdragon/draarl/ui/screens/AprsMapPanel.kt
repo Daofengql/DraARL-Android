@@ -50,9 +50,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -65,14 +65,14 @@ import cn.silverdragon.draarl.maps.MapDistance
 import cn.silverdragon.draarl.ui.components.DraarlSegment
 import cn.silverdragon.draarl.ui.components.DraarlSegmentedControl
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
-import com.amap.api.maps.AMap
-import com.amap.api.maps.model.LatLng
-import com.amap.api.maps.model.BitmapDescriptorFactory
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import com.amap.api.maps.AMap
+import com.amap.api.maps.model.BitmapDescriptorFactory
+import com.amap.api.maps.model.LatLng
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -82,7 +82,7 @@ internal fun AprsMapPanel(
     onStartPtt: () -> Boolean,
     onStopPtt: () -> Unit,
     modifier: Modifier = Modifier,
-    visible: Boolean = true,
+    visible: Boolean = true
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -109,7 +109,9 @@ internal fun AprsMapPanel(
     val fallbackMarker = remember {
         BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(null))
     }
-    var avatarMarker by remember(controller.user?.avatarUrl) { mutableStateOf<com.amap.api.maps.model.BitmapDescriptor?>(null) }
+    var avatarMarker by remember(controller.user?.avatarUrl) {
+        mutableStateOf<com.amap.api.maps.model.BitmapDescriptor?>(null)
+    }
 
     LaunchedEffect(controller.user?.avatarUrl) {
         val avatarUrl = controller.user?.avatarUrl.orEmpty()
@@ -122,7 +124,7 @@ internal fun AprsMapPanel(
                         .data(avatarUrl)
                         .size(AVATAR_BITMAP_SIZE)
                         .allowHardware(false)
-                        .build(),
+                        .build()
                 )
                 (result as? SuccessResult)?.image?.toBitmap(AVATAR_BITMAP_SIZE, AVATAR_BITMAP_SIZE)?.let { avatar ->
                     BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(avatar))
@@ -151,19 +153,21 @@ internal fun AprsMapPanel(
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         if (result.values.any { it }) locate() else controller.showNotice("需要定位权限才能显示当前位置")
     }
 
     LaunchedEffect(Unit) {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
         if (fine || coarse) {
             locate()
         } else {
             permissionLauncher.launch(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             )
         }
     }
@@ -182,7 +186,7 @@ internal fun AprsMapPanel(
     }
     val measurementDistance = remember(measurementPath) {
         MapDistance.totalMeters(
-            measurementPath.map { point -> GeoCoordinate(point.latitude, point.longitude) },
+            measurementPath.map { point -> GeoCoordinate(point.latitude, point.longitude) }
         )
     }
 
@@ -211,11 +215,15 @@ internal fun AprsMapPanel(
                 onMapClick = { point ->
                     if (measuring) measurementPath = measurementPath + point
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize()
             )
         } else {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Text("地图 Key 未配置", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "地图 Key 未配置",
+                    modifier = Modifier.align(Alignment.Center),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -225,7 +233,7 @@ internal fun AprsMapPanel(
                     .align(Alignment.TopEnd)
                     .padding(top = 12.dp, end = 12.dp)
                     .zIndex(2f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 MapControlButton(
                     onClick = {
@@ -233,25 +241,25 @@ internal fun AprsMapPanel(
                             permissionLauncher.launch(
                                 arrayOf(
                                     Manifest.permission.ACCESS_FINE_LOCATION,
-                                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                                ),
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                )
                             )
                         } else {
                             recenterRequest++
                         }
                     },
                     icon = if (coordinate == null) Icons.Default.LocationSearching else Icons.Default.CenterFocusStrong,
-                    description = "定位当前位置",
+                    description = "定位当前位置"
                 )
                 MapControlButton(
                     onClick = { zoomInRequest++ },
                     icon = Icons.Default.Add,
-                    description = "放大地图",
+                    description = "放大地图"
                 )
                 MapControlButton(
                     onClick = { zoomOutRequest++ },
                     icon = Icons.Default.Remove,
-                    description = "缩小地图",
+                    description = "缩小地图"
                 )
                 MapControlButton(
                     onClick = {
@@ -263,24 +271,24 @@ internal fun AprsMapPanel(
                     },
                     icon = Icons.Default.Straighten,
                     description = if (measuring) "退出测距" else "开始测距",
-                    selected = measuring,
+                    selected = measuring
                 )
                 if (measuring && measurementPath.isNotEmpty()) {
                     MapControlButton(
                         onClick = { measurementPath = emptyList() },
                         icon = Icons.Default.Delete,
-                        description = "清除测距点",
+                        description = "清除测距点"
                     )
                 }
                 Box(Modifier.size(MAP_CONTROL_SIZE)) {
                     MapControlButton(
                         onClick = { mapTypeMenuExpanded = true },
                         icon = Icons.Default.Layers,
-                        description = "选择地图类型",
+                        description = "选择地图类型"
                     )
                     DropdownMenu(
                         expanded = mapTypeMenuExpanded,
-                        onDismissRequest = { mapTypeMenuExpanded = false },
+                        onDismissRequest = { mapTypeMenuExpanded = false }
                     ) {
                         MAP_TYPES.forEach { option ->
                             DropdownMenuItem(
@@ -291,13 +299,13 @@ internal fun AprsMapPanel(
                                             MaterialTheme.colorScheme.primary
                                         } else {
                                             MaterialTheme.colorScheme.onSurface
-                                        },
+                                        }
                                     )
                                 },
                                 onClick = {
                                     mapType = option.value
                                     mapTypeMenuExpanded = false
-                                },
+                                }
                             )
                         }
                         DropdownMenuItem(
@@ -305,7 +313,7 @@ internal fun AprsMapPanel(
                             onClick = {
                                 mapTypeMenuExpanded = false
                                 controller.showNotice("当前高德 SDK 不提供等高线数据；外部地形瓦片在境内存在坐标偏移，暂未启用")
-                            },
+                            }
                         )
                     }
                 }
@@ -317,7 +325,7 @@ internal fun AprsMapPanel(
                 modifier = Modifier.align(Alignment.TopCenter).padding(12.dp).zIndex(2f),
                 shape = MaterialTheme.shapes.small,
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                tonalElevation = 4.dp,
+                tonalElevation = 4.dp
             ) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
                     Text("测距 · ${measurementPath.size} 点", style = MaterialTheme.typography.labelMedium)
@@ -325,23 +333,28 @@ internal fun AprsMapPanel(
                         MapDistance.format(measurementDistance),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
         }
 
         if (visible && loading && coordinate == null) {
-            Text("正在定位", modifier = Modifier.align(Alignment.Center).padding(top = 54.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "正在定位",
+                modifier = Modifier.align(Alignment.Center).padding(top = 54.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         if (visible) {
+            val radioStatus = controller.radioSession.uiState.status
             MapPttButton(
-                transmitting = controller.radioStatus.transmitting,
-                enabled = controller.radioStatus.connected && controller.radioStatus.speaker.isBlank(),
+                transmitting = radioStatus.transmitting,
+                enabled = radioStatus.connected && radioStatus.speaker.isBlank(),
                 onStart = onStartPtt,
                 onStop = onStopPtt,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp)
             )
         }
     }
@@ -352,7 +365,7 @@ private fun MapControlButton(
     onClick: () -> Unit,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
-    selected: Boolean = false,
+    selected: Boolean = false
 ) {
     SmallFloatingActionButton(
         onClick = onClick,
@@ -362,7 +375,11 @@ private fun MapControlButton(
         } else {
             MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
         },
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        contentColor = if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        }
     ) {
         Icon(icon, contentDescription = description)
     }
@@ -373,7 +390,7 @@ internal fun RadioModeSwitcher(
     mapSelected: Boolean,
     onMap: () -> Unit,
     onMessages: () -> Unit,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier
 ) {
     Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
         DraarlSegmentedControl(
@@ -382,7 +399,7 @@ internal fun RadioModeSwitcher(
             onSelect = { selected ->
                 if (selected == RADIO_MAP_SEGMENT) onMap() else onMessages()
             },
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
     }
 }
@@ -391,7 +408,7 @@ private const val RADIO_MAP_SEGMENT = "map"
 private const val RADIO_MESSAGES_SEGMENT = "messages"
 private val RADIO_CONTENT_SEGMENTS = listOf(
     DraarlSegment(RADIO_MAP_SEGMENT, "地图"),
-    DraarlSegment(RADIO_MESSAGES_SEGMENT, "通联日志"),
+    DraarlSegment(RADIO_MESSAGES_SEGMENT, "通联日志")
 )
 
 private fun createAvatarMarkerBitmap(avatar: Bitmap?): Bitmap {
@@ -429,7 +446,7 @@ private fun MapPttButton(
     enabled: Boolean,
     onStart: () -> Boolean,
     onStop: () -> Unit,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier
 ) {
     val color = when {
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
@@ -451,12 +468,12 @@ private fun MapPttButton(
                                 onStop()
                             }
                         }
-                    },
+                    }
                 )
             },
         shape = CircleShape,
         color = color,
-        contentColor = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        contentColor = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(Icons.Default.Mic, contentDescription = "按住发射", modifier = Modifier.size(42.dp))
@@ -474,9 +491,8 @@ private data class MapTypeOption(val label: String, val value: Int)
 private val MAP_TYPES = listOf(
     MapTypeOption("标准地图", AMap.MAP_TYPE_NORMAL),
     MapTypeOption("卫星地图", AMap.MAP_TYPE_SATELLITE),
-    MapTypeOption("夜间地图", AMap.MAP_TYPE_NIGHT),
+    MapTypeOption("夜间地图", AMap.MAP_TYPE_NIGHT)
 )
 
-private fun LatLng.isSamePoint(other: LatLng): Boolean =
-    kotlin.math.abs(latitude - other.latitude) < 1e-7 &&
-        kotlin.math.abs(longitude - other.longitude) < 1e-7
+private fun LatLng.isSamePoint(other: LatLng): Boolean = kotlin.math.abs(latitude - other.latitude) < 1e-7 &&
+    kotlin.math.abs(longitude - other.longitude) < 1e-7
