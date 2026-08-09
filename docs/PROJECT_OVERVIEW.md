@@ -1,16 +1,16 @@
 # DraARL Android 项目概览
 
-审计日期：2026-08-08
+审计日期：2026-08-09
 代码基线：`2.0.0-alpha1`（versionCode 8）
 
 ## 规模结论
 
-这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.40 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
+这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.43 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 137 | 23,954 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 49 | 2,290 | 157 个测试用例 |
+| 生产 Kotlin | 142 | 24,299 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 50 | 2,632 | 164 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 2 | 366 | 12 张壳层和一级页面参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -26,7 +26,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | 包 | 文件数 | 职责 |
 | --- | ---: | --- |
 | `ui` | 56 | Compose 页面、导航和组件 |
-| `radio` | 21 | UDP、音频、重连、缓存和前台通信服务 |
+| `radio` | 26 | 消息状态与同步、UDP、音频、重连、缓存和前台通信服务 |
 | `data` | 16 | 模型、本地存储、消息对账和路由 |
 | `tools` | 12 | BLE、中继、通联日志和预设 |
 | `maps` / `aprs` | 13 | 地图、坐标换算、网格和 APRS-IS |
@@ -37,7 +37,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 | 文件 | 行数 |
 | --- | ---: |
-| `AppController.kt` | 1,774 |
+| `AppController.kt` | 1,405 |
 | `network/ApiClient.kt` | 1,184 |
 | `radio/UdpRadioClient.kt` | 1,094 |
 | `ui/screens/DevicesScreen.kt` | 1,006 |
@@ -46,8 +46,9 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 ## 架构边界
 
 - UI 使用 Jetpack Compose，一级导航固定为设备、群组、PTT、工具、我的。
-- `AppController` 仍是跨功能状态协调中心；设备、群组、资料、工具、设置和 APRS 已下沉到各自 Controller，但会话、刷新、PTT 和导航仍集中于此。
+- `AppController` 仍是跨功能状态协调中心；设备、群组、资料、工具、设置、APRS 和电台消息已下沉到各自 Controller，但会话、PTT 和导航仍集中于此。
 - `AprsController` 独占按用户隔离的配置、手动发送状态和后台 Service 协调；设置页只接收不可变 `AprsUiState` 与事件回调。
+- `RadioMessageController` 独占消息列表、缓存写入、游标分页、服务端对账和公开资料预加载；消息列表读取不可变 `RadioMessageUiState`，旧账户和旧群组结果不会覆盖当前状态。
 - 设备、群组、工具和个人页已拆出只接收页面数据与回调的内容层，可脱离 `AppController` 生成稳定截图。
 - HTTP 契约集中在 `ApiClient`，实时通信由 `UdpRadioClient` 和 `RadioConnectionService` 承担。
 - SQLite/SharedPreferences 分别保存消息历史、仪表盘/工具缓存、会话和客户端设置。
@@ -66,6 +67,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - `TODO.md` 只保留尚未完成的实施与真机验收清单；已落地的静态质量门禁不再列为待办。
 - 设置状态、持久化、音频偏好同步和缓存清理已集中到 `SettingsController`；设置入口、系统设置与存储页面不再接收完整 `AppController`。
 - APRS 配置、手动发送、重复发送抑制和后台上报协调已集中到 `AprsController`，并由 8 个 JVM 用例覆盖归一化、失败、取消和用户切换竞态。
+- 电台消息缓存、最新页同步、历史游标、实时去重、已播放状态和资料预加载已集中到 `RadioMessageController`，并由 7 个 JVM 用例覆盖失败与上下文切换竞态。
 - 应用壳层和五个一级页面已有 12 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文和 1.5 倍字体。
 - GitHub Actions、Spotless/ktlint、Detekt 存量基线和 Markdown 链接检查已接入，RNNoise 第三方目录被显式排除。
 - Android 仪器测试 APK 已在本次基线编译通过，但尚未连接设备执行；Release 构建和签名也需在发布候选版本上重新验证。

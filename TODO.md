@@ -1,6 +1,6 @@
 # DraARL Android 工程优化 TODO
 
-更新时间：2026-08-08
+更新时间：2026-08-09
 
 ## 目标与边界
 
@@ -18,7 +18,7 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 137 个文件，约 2.40 万有效代码行；JVM 测试 49 个文件、157 个用例。
+- 生产 Kotlin 142 个文件，约 2.43 万有效代码行；JVM 测试 50 个文件、164 个用例。
 - Compose 截图测试 2 个文件、12 张参考图，覆盖应用壳层和五个一级页面的浅色/深色状态。
 - 复杂度主要集中在 `AppController`、`ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
@@ -30,9 +30,8 @@
 
 建议按风险从低到高迁移：
 
-1. `RadioMessageController`：缓存、分页、同步、对账和公开资料预加载。
-2. `RadioSessionController`：节点发现、连接、路由和 Service Binder。
-3. `SessionController`：登录态恢复、刷新和退出清理。
+1. `RadioSessionController`：节点发现、连接、路由和 Service Binder。
+2. `SessionController`：登录态恢复、刷新和退出清理。
 
 要求：
 

@@ -27,12 +27,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material3.Icon
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,16 +52,16 @@ import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.encodeLocationMessage
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
+import cn.silverdragon.draarl.radio.messages.RadioMessageEvent
 import cn.silverdragon.draarl.ui.state.groupNamesById
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collectLatest
-import androidx.compose.runtime.snapshotFlow
 
 private enum class RadioContentMode {
     MAP,
-    MESSAGES,
+    MESSAGES
 }
 
 @Composable
@@ -70,16 +70,17 @@ fun RadioScreen(
     extrasExpanded: Boolean,
     onExtrasExpandedChange: (Boolean) -> Unit,
     onPickLocation: () -> Unit,
-    onOpenLocation: (Wgs84LocationMessage) -> Unit,
+    onOpenLocation: (Wgs84LocationMessage) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val locationProvider = remember(context) { CurrentLocationProvider(context) }
-    val messages = controller.radioMessages
+    val messageState = controller.messageController.uiState
+    val messages = messageState.messages
     val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
-    val unplayedVoiceCount by remember { derivedStateOf { controller.unplayedVoiceCount } }
+    val unplayedVoiceCount = messageState.unplayedVoiceCount
     val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0),
+        initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0)
     )
     val userDragging by listState.interactionSource.collectIsDraggedAsState()
     var followLatest by rememberSaveable(controller.selectedGroupId) { mutableStateOf(true) }
@@ -112,7 +113,7 @@ fun RadioScreen(
                         kind = LocationMessageKind.CURRENT,
                         latitude = location.latitude,
                         longitude = location.longitude,
-                        altitudeMeters = if (location.hasAltitude()) location.altitude else null,
+                        altitudeMeters = if (location.hasAltitude()) location.altitude else null
                     )
                     if (controller.sendText(encodeLocationMessage(message))) {
                         onExtrasExpandedChange(false)
@@ -127,9 +128,10 @@ fun RadioScreen(
             }
         }
     }
-    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        if (result.values.any { it }) sendCurrentLocation() else controller.showNotice("需要定位权限才能发送当前位置")
-    }
+    val locationPermission =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            if (result.values.any { it }) sendCurrentLocation() else controller.showNotice("需要定位权限才能发送当前位置")
+        }
     val canSendText = controller.canSendText()
 
     BackHandler(enabled = extrasExpanded && !showLocationChoices && !showCwSheet) { onExtrasExpandedChange(false) }
@@ -168,8 +170,8 @@ fun RadioScreen(
         val playingIndex = messages.indexOfFirst { it.id == playingId }
         if (playingIndex >= 0) listState.animateScrollToItem(playingIndex)
     }
-    LaunchedEffect(messages.firstOrNull()?.id, messages.size, controller.radioHistoryLoading) {
-        if (controller.radioHistoryLoading || historyAnchorId.isBlank()) return@LaunchedEffect
+    LaunchedEffect(messages.firstOrNull()?.id, messages.size, messageState.historyLoading) {
+        if (messageState.historyLoading || historyAnchorId.isBlank()) return@LaunchedEffect
         val anchorIndex = messages.indexOfFirst { it.id == historyAnchorId }
         if (anchorIndex >= 0) {
             listState.scrollToItem(anchorIndex, historyAnchorOffset)
@@ -191,7 +193,7 @@ fun RadioScreen(
                         historyAnchorId = anchorId
                         historyAnchorOffset = -(anchor.offset)
                     }
-                    controller.loadOlderRadioMessages()
+                    controller.messageController.onEvent(RadioMessageEvent.LoadOlder)
                 }
             }
     }
@@ -202,7 +204,8 @@ fun RadioScreen(
     val connect = {
         if (
             Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
@@ -210,7 +213,9 @@ fun RadioScreen(
         }
     }
     val startPtt = {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
             controller.startPtt()
         } else {
             microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
@@ -232,7 +237,7 @@ fun RadioScreen(
         ConnectionPanel(
             controller = controller,
             status = controller.radioStatus,
-            onToggleDevices = { showDevices = !showDevices },
+            onToggleDevices = { showDevices = !showDevices }
         )
         if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
         RadioModeSwitcher(
@@ -243,7 +248,7 @@ fun RadioScreen(
                 onExtrasExpandedChange(false)
             },
             onMessages = { contentMode = RadioContentMode.MESSAGES },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth()
         )
         Box(Modifier.fillMaxWidth().weight(1f)) {
             AprsMapPanel(
@@ -251,168 +256,180 @@ fun RadioScreen(
                 onStartPtt = startPtt,
                 onStopPtt = controller::stopPtt,
                 visible = contentMode == RadioContentMode.MAP,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize()
             )
             if (contentMode == RadioContentMode.MESSAGES) {
                 androidx.compose.material3.Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     Column(Modifier.fillMaxSize()) {
-                if (messages.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.History,
-                                contentDescription = null,
-                                modifier = Modifier.size(44.dp),
-                                tint = MaterialTheme.colorScheme.outline,
-                            )
-                            Text("暂无通联记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (controller.radioSyncError.isNotBlank()) {
-                                Text(
-                                    "记录同步暂时中断，稍后自动重试",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    Box(Modifier.fillMaxWidth().weight(1f)) {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                                start = 12.dp,
-                                top = 12.dp,
-                                end = 12.dp,
-                                bottom = 12.dp,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (controller.radioHistoryLoading || controller.radioSyncError.isNotBlank()) {
-                                item(key = "radio-history-status") {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        if (controller.radioHistoryLoading) {
-                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                                            Text(
-                                                "正在加载更早记录",
-                                                modifier = Modifier.padding(start = 8.dp),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        } else {
-                                            Text(
-                                                "记录同步暂时中断，稍后自动重试",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.error,
-                                            )
-                                        }
+                        if (messages.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.History,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(44.dp),
+                                        tint = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text("暂无通联记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (messageState.syncError.isNotBlank()) {
+                                        Text(
+                                            "记录同步暂时中断，稍后自动重试",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
                                     }
                                 }
                             }
-                            itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
-                                MessageItem(
-                                    controller = controller,
-                                    message = message,
-                                    sourceGroupName = groupNames[message.groupId].orEmpty(),
-                                    showTimeDivider = index == 0 ||
-                                        message.timestamp - messages[index - 1].timestamp >= RADIO_TIME_DIVIDER_MS,
-                                    onOpenLocation = onOpenLocation,
+                        } else {
+                            Box(Modifier.fillMaxWidth().weight(1f)) {
+                                LazyColumn(
+                                    state = listState,
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                        start = 12.dp,
+                                        top = 12.dp,
+                                        end = 12.dp,
+                                        bottom = 12.dp
+                                    ),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (messageState.historyLoading || messageState.syncError.isNotBlank()) {
+                                        item(key = "radio-history-status") {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (messageState.historyLoading) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(18.dp),
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                    Text(
+                                                        "正在加载更早记录",
+                                                        modifier = Modifier.padding(start = 8.dp),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        "记录同步暂时中断，稍后自动重试",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+                                        val previousTimestamp = messages.getOrNull(index - 1)?.timestamp
+                                        MessageItem(
+                                            state = MessageItemState(
+                                                message = message,
+                                                profile = if (message.mine) {
+                                                    controller.user
+                                                } else {
+                                                    messageState.publicProfiles[message.senderUsername.lowercase()]
+                                                },
+                                                playing = controller.playingMessageId == message.id,
+                                                sourceGroupName = groupNames[message.groupId].orEmpty(),
+                                                showTimeDivider = previousTimestamp == null ||
+                                                    message.timestamp - previousTimestamp >= RADIO_TIME_DIVIDER_MS
+                                            ),
+                                            onToggleVoicePlayback = controller::toggleVoicePlayback,
+                                            onOpenLocation = onOpenLocation
+                                        )
+                                    }
+                                }
+                                MessageListFloatingActions(
+                                    unplayedCount = unplayedVoiceCount,
+                                    autoPlaying = controller.voiceAutoPlayEnabled,
+                                    canScrollToBottom = listState.canScrollForward,
+                                    onToggleAutoPlay = {
+                                        followLatest = false
+                                        controller.toggleVoiceAutoPlay()
+                                    },
+                                    onClearUnplayed = controller::clearUnplayedVoiceMessages,
+                                    onScrollToBottom = {
+                                        followLatest = true
+                                        scope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                                    },
+                                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp)
                                 )
                             }
                         }
-                        MessageListFloatingActions(
-                            unplayedCount = unplayedVoiceCount,
-                            autoPlaying = controller.voiceAutoPlayEnabled,
-                            canScrollToBottom = listState.canScrollForward,
-                            onToggleAutoPlay = {
-                                followLatest = false
-                                controller.toggleVoiceAutoPlay()
-                            },
-                            onClearUnplayed = controller::clearUnplayedVoiceMessages,
-                            onScrollToBottom = {
-                                followLatest = true
-                                scope.launch { listState.animateScrollToItem(messages.lastIndex) }
-                            },
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp),
-                        )
                     }
                 }
-            }
+                if (extrasExpanded) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = dismissExtrasInteraction,
+                                indication = null
+                            ) { onExtrasExpandedChange(false) }
+                    )
                 }
-            if (extrasExpanded) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            interactionSource = dismissExtrasInteraction,
-                            indication = null,
-                        ) { onExtrasExpandedChange(false) },
-                )
             }
-        }
         }
         if (contentMode == RadioContentMode.MESSAGES) {
-        RadioComposer(
-            textMode = textMode,
-            text = text,
-            connected = controller.radioStatus.connected,
-            transmitting = controller.radioStatus.transmitting,
-            receiving = controller.radioStatus.speaker.isNotBlank(),
-            canSendText = canSendText,
-            onTextModeChange = {
-                textMode = it
-                onExtrasExpandedChange(false)
-            },
-            onTextChange = { text = it },
-            onTextInputFocused = { onExtrasExpandedChange(false) },
-            onSendText = {
-                onExtrasExpandedChange(false)
-                if (controller.sendText(text)) {
-                    text = ""
-                }
-            },
-            onMoreMessage = {
-                showLocationChoices = false
-                showCwSheet = false
-                onExtrasExpandedChange(!extrasExpanded)
-            },
-            onStartPtt = {
-                onExtrasExpandedChange(false)
-                startPtt()
-            },
-            onStopPtt = controller::stopPtt,
-        )
-        AnimatedVisibility(
-            visible = extrasExpanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
-        ) {
-            RadioExtraPanel(
-                locating = locating,
-                cwEnabled = controller.radioStatus.connected &&
-                    !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
-                cwTransmitting = controller.cwTransmitting,
-                onLocationClick = {
-                    showCwSheet = false
-                    showLocationChoices = true
+            RadioComposer(
+                textMode = textMode,
+                text = text,
+                connected = controller.radioStatus.connected,
+                transmitting = controller.radioStatus.transmitting,
+                receiving = controller.radioStatus.speaker.isNotBlank(),
+                canSendText = canSendText,
+                onTextModeChange = {
+                    textMode = it
+                    onExtrasExpandedChange(false)
                 },
-                onCwClick = {
+                onTextChange = { text = it },
+                onTextInputFocused = { onExtrasExpandedChange(false) },
+                onSendText = {
+                    onExtrasExpandedChange(false)
+                    if (controller.sendText(text)) {
+                        text = ""
+                    }
+                },
+                onMoreMessage = {
                     showLocationChoices = false
-                    showCwSheet = true
+                    showCwSheet = false
+                    onExtrasExpandedChange(!extrasExpanded)
                 },
-                onStopCw = controller::stopCw,
+                onStartPtt = {
+                    onExtrasExpandedChange(false)
+                    startPtt()
+                },
+                onStopPtt = controller::stopPtt
             )
-        }
+            AnimatedVisibility(
+                visible = extrasExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                RadioExtraPanel(
+                    locating = locating,
+                    cwEnabled = controller.radioStatus.connected &&
+                        !controller.radioStatus.transmitting && controller.radioStatus.speaker.isBlank(),
+                    cwTransmitting = controller.cwTransmitting,
+                    onLocationClick = {
+                        showCwSheet = false
+                        showLocationChoices = true
+                    },
+                    onCwClick = {
+                        showLocationChoices = false
+                        showCwSheet = true
+                    },
+                    onStopCw = controller::stopCw
+                )
+            }
         }
     }
     if (showLocationChoices) {
@@ -427,11 +444,11 @@ fun RadioScreen(
                 onExtrasExpandedChange(false)
                 val fineGranted = ContextCompat.checkSelfPermission(
                     context,
-                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
                 val coarseGranted = ContextCompat.checkSelfPermission(
                     context,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
                 if (fineGranted || coarseGranted) {
                     sendCurrentLocation()
@@ -439,8 +456,8 @@ fun RadioScreen(
                     locationPermission.launch(
                         arrayOf(
                             Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION,
-                        ),
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
                     )
                 }
             },
@@ -448,7 +465,7 @@ fun RadioScreen(
                 showLocationChoices = false
                 onExtrasExpandedChange(false)
                 onPickLocation()
-            },
+            }
         )
     }
     if (showCwSheet) {
@@ -476,7 +493,7 @@ fun RadioScreen(
             onSend = {
                 controller.sendCw(cwText, cwWordsPerMinute, cwToneHz)
             },
-            onStop = controller::stopCw,
+            onStop = controller::stopCw
         )
     }
 }
