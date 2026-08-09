@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.aprs.AprsConnectionState
 import cn.silverdragon.draarl.aprs.AprsStatus
 import cn.silverdragon.draarl.data.StorageUsage
+import cn.silverdragon.draarl.tools.ble.BleWifiConfig
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
@@ -32,6 +33,7 @@ import cn.silverdragon.draarl.ui.components.InlineNotice
 import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.screens.AprsSettingsContent
 import cn.silverdragon.draarl.ui.screens.AprsSettingsContentState
+import cn.silverdragon.draarl.ui.screens.BleWifiForm
 import cn.silverdragon.draarl.ui.screens.StorageSettingsContent
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
 import com.android.tools.screenshot.PreviewTest
@@ -106,6 +108,34 @@ fun AprsSettingsLightMediumTextBaseline() {
             ),
             onAction = {}
         )
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "BLE Wi-Fi Form Dark Large Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun BleWifiFormDarkLargeTextBaseline() {
+    DraarlTheme(darkTheme = true) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.padding(top = 16.dp)) {
+                BleWifiForm(
+                    config = BleWifiConfig(
+                        ssid = "DraARL-Portable-Link",
+                        password = "radio-password",
+                        dhcp = true
+                    ),
+                    busy = false,
+                    onChange = {},
+                    onSave = {}
+                )
+            }
+        }
     }
 }
 

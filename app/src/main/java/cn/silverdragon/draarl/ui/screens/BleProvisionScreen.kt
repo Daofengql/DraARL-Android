@@ -16,17 +16,17 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.BluetoothDisabled
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -45,8 +46,17 @@ import cn.silverdragon.draarl.tools.ble.BleConnectionPhase
 import cn.silverdragon.draarl.tools.ble.BleDeviceInfo
 import cn.silverdragon.draarl.tools.ble.BleDeviceProfile
 import cn.silverdragon.draarl.tools.ble.BleDeviceProfiles
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.DraarlSettings
+import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
+import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
+import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
+import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.StatusIndicator
+import cn.silverdragon.draarl.ui.components.StatusTone
 
 @Composable
 internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
@@ -79,38 +89,37 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
     ) {
         item { ToolHeader("蓝牙配置", onBack) }
         item {
-            OutlinedButton(
-                onClick = { showProfiles = true },
-                enabled = !ble.busy && ble.status.phase !in setOf(
-                    BleConnectionPhase.CONNECTING,
-                    BleConnectionPhase.DISCOVERING
-                ),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-            ) {
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                    Text(ble.selectedProfile.label, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        ble.selectedProfile.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                DraarlSettingsSectionTitle("设备类型")
+                DraarlSettingsGroup {
+                    DraarlSettingsRow(
+                        item = DraarlSettings(
+                            icon = Icons.Default.SettingsInputAntenna,
+                            title = ble.selectedProfile.label,
+                            detail = ble.selectedProfile.description,
+                            onClick = { showProfiles = true }
+                        ),
+                        enabled = !ble.busy && ble.status.phase !in setOf(
+                            BleConnectionPhase.CONNECTING,
+                            BleConnectionPhase.DISCOVERING
+                        )
                     )
                 }
-                Icon(Icons.Default.ExpandMore, contentDescription = "选择设备类型")
             }
         }
         if (permissionError.isNotBlank()) item { ToolError(permissionError) { permissionError = "" } }
         if (ble.error.isNotBlank()) item { ToolError(ble.error, ble::clearFeedback) }
         if (ble.message.isNotBlank()) {
             item {
-                Text(
-                    ble.message,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                InlineNotice(
+                    text = ble.message,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    tone = StatusTone.CONNECTED
                 )
             }
         }
         item {
-            BleStatusCard(
+            BleStatusPanel(
                 phase = ble.status.phase,
                 deviceName = ble.status.deviceName.ifBlank { ble.selectedProfile.label },
                 wifiState = ble.status.wifiState,
@@ -123,7 +132,8 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Button(
+                CommandButton(
+                    label = if (ble.status.phase == BleConnectionPhase.SCANNING) "正在扫描" else "扫描设备",
                     onClick = {
                         if (permissions.all {
                                 ContextCompat.checkSelfPermission(context, it) ==
@@ -137,12 +147,12 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                         }
                     },
                     enabled = !ble.busy,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.BluetoothSearching, contentDescription = null)
-                    Text("扫描", Modifier.padding(start = 8.dp))
-                }
-                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    style = CommandStyle.PRIMARY,
+                    leadingIcon = Icons.AutoMirrored.Filled.BluetoothSearching
+                )
+                CommandButton(
+                    label = "断开设备",
                     onClick = ble::disconnect,
                     enabled =
                         ble.status.phase in
@@ -151,36 +161,38 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                                 BleConnectionPhase.DISCOVERING,
                                 BleConnectionPhase.READY
                             ),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.BluetoothDisabled, contentDescription = null)
-                    Text("断开", Modifier.padding(start = 8.dp))
-                }
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = Icons.Default.BluetoothDisabled
+                )
             }
         }
         if (ble.status.phase == BleConnectionPhase.READY && !ble.status.authenticated) {
             item {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    OutlinedTextField(
-                        value = dynamicCode,
-                        onValueChange = { dynamicCode = it.filter(Char::isDigit).take(6) },
-                        label = { Text("6 位动态码") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    Button(
-                        onClick = { ble.authenticate(dynamicCode) },
-                        enabled = !ble.busy && dynamicCode.length == 6,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (ble.busy) {
-                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.LockOpen, contentDescription = null)
-                            Text("认证并读取配置", Modifier.padding(start = 8.dp))
+                    DraarlSettingsSectionTitle("设备认证", detail = "验证后读取当前配置")
+                    DraarlSettingsGroup {
+                        Column(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = dynamicCode,
+                                onValueChange = { dynamicCode = it.filter(Char::isDigit).take(6) },
+                                label = { Text("6 位动态码") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            CommandButton(
+                                label = if (ble.busy) "正在认证并读取配置" else "认证并读取配置",
+                                onClick = { ble.authenticate(dynamicCode) },
+                                enabled = !ble.busy && dynamicCode.length == 6,
+                                modifier = Modifier.fillMaxWidth(),
+                                style = CommandStyle.PRIMARY,
+                                leadingIcon = Icons.Default.LockOpen
+                            )
                         }
                     }
                 }
@@ -238,36 +250,26 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
 }
 
 @Composable
-private fun BleStatusCard(
+private fun BleStatusPanel(
     phase: BleConnectionPhase,
     deviceName: String,
     wifiState: String,
     authenticated: Boolean,
     rssi: Int?
 ) {
-    Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = MaterialTheme.shapes.small) {
+    DraarlSettingsGroup(modifier = Modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(deviceName, fontWeight = FontWeight.SemiBold)
-            Text(
-                when (phase) {
-                    BleConnectionPhase.IDLE -> "未连接"
-                    BleConnectionPhase.SCANNING -> "正在扫描"
-                    BleConnectionPhase.CONNECTING -> "正在连接"
-                    BleConnectionPhase.DISCOVERING -> "正在初始化"
-                    BleConnectionPhase.READY -> "已连接"
-                    BleConnectionPhase.DISCONNECTED -> "已断开"
-                    BleConnectionPhase.ERROR -> "连接异常"
-                },
-                color = if (phase ==
-                    BleConnectionPhase.READY
-                ) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(deviceName, modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                StatusIndicator(phase.displayName(), phase.statusTone())
+            }
             if (phase == BleConnectionPhase.READY) {
-                Text("Wi-Fi $wifiState · ${if (authenticated) "已认证" else "未认证"}${rssi?.let { " · $it dBm" }.orEmpty()}")
+                Text(
+                    "Wi-Fi $wifiState · ${if (authenticated) "已认证" else "未认证"}" +
+                        rssi?.let { " · $it dBm" }.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -289,33 +291,51 @@ private fun DeviceProfileDialog(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            profiles.forEach { profile ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onSelect(profile) },
-                    shape = MaterialTheme.shapes.small
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(
-                            profile.label,
-                            fontWeight = if (profile.key == selectedKey) FontWeight.Bold else FontWeight.Medium,
-                            color = if (profile.key ==
-                                selectedKey
-                            ) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
-                        )
-                        Text(
-                            profile.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+            profiles.forEachIndexed { index, profile ->
+                DeviceProfileRow(
+                    profile = profile,
+                    selected = profile.key == selectedKey,
+                    showDivider = index < profiles.lastIndex,
+                    onSelect = onSelect
+                )
             }
         }
     }
+}
+
+@Composable
+private fun DeviceProfileRow(
+    profile: BleDeviceProfile,
+    selected: Boolean,
+    showDivider: Boolean,
+    onSelect: (BleDeviceProfile) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = { onSelect(profile) }
+            )
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                profile.label,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                profile.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (selected) Icon(Icons.Default.Check, contentDescription = "当前设备类型")
+    }
+    if (showDivider) HorizontalDivider()
 }
 
 @Composable
@@ -361,4 +381,27 @@ private fun requiredBlePermissions(): Array<String> = if (Build.VERSION.SDK_INT 
     arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
 } else {
     arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+}
+
+private fun BleConnectionPhase.displayName(): String = when (this) {
+    BleConnectionPhase.IDLE -> "未连接"
+    BleConnectionPhase.SCANNING -> "正在扫描"
+    BleConnectionPhase.CONNECTING -> "正在连接"
+    BleConnectionPhase.DISCOVERING -> "正在初始化"
+    BleConnectionPhase.READY -> "已连接"
+    BleConnectionPhase.DISCONNECTED -> "已断开"
+    BleConnectionPhase.ERROR -> "连接异常"
+}
+
+private fun BleConnectionPhase.statusTone(): StatusTone = when (this) {
+    BleConnectionPhase.SCANNING,
+    BleConnectionPhase.CONNECTING,
+    BleConnectionPhase.DISCOVERING -> StatusTone.CONNECTING
+
+    BleConnectionPhase.READY -> StatusTone.CONNECTED
+
+    BleConnectionPhase.ERROR -> StatusTone.ERROR
+
+    BleConnectionPhase.IDLE,
+    BleConnectionPhase.DISCONNECTED -> StatusTone.NEUTRAL
 }

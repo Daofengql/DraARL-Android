@@ -394,36 +394,6 @@
     <ID>MaxLineLength:AprsMapPanel.kt:var avatarMarker by remember(controller.user?.avatarUrl) { mutableStateOf&lt;com.amap.api.maps.model.BitmapDescriptor?&gt;(null) }</ID>
     <ID>MaxLineLength:AprsPacketFormatter.kt:AprsPacketFormatter$return "$call&gt;APDRA1,TCPIP*:!$latitude${config.symbolTable}$longitude${config.symbolCode}$altitude${if (comment.isBlank()) "" else " $comment"}"</ID>
     <ID>MaxLineLength:AprsService.kt:AprsService$val movedMeters = previousPosition?.let { distanceMeters(it, currentPosition) } ?: Float.POSITIVE_INFINITY</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:Button</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(callsign, { callsign = it.uppercase() }, Modifier.fillMaxWidth(), label = { Text("呼号（不含 SSID 也可以）") }, singleLine = true, enabled = enabled)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(comment, { comment = it.take(43) }, Modifier.fillMaxWidth(), label = { Text("位置包注释") }, singleLine = true, enabled = enabled)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(passcode, { passcode = it.filter { char -&gt; char.isDigit() }.take(6) }, Modifier.fillMaxWidth(), label = { Text("验证密码（留空自动计算）") }, singleLine = true, enabled = enabled)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, Modifier.fillMaxWidth(), label = { Text("端口") }, singleLine = true, enabled = enabled)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:OutlinedTextField(server, { server = it }, Modifier.fillMaxWidth(), label = { Text("APRS-IS 地址") }, singleLine = true, enabled = enabled)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:Text("位置包直接发送到 APRS-IS，不经过 DraARL 服务端", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:Text("需要定位权限，并会显示系统常驻通知", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:Text(controller.aprsStatus.message, style = MaterialTheme.typography.bodySmall, color = if (controller.aprsStatus.state == AprsConnectionState.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
-    <ID>MaxLineLength:AprsSettingsScreen.kt:val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.account, { onChange(config.copy(account = it)) }, label = { Text("账号") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.callsign, { onChange(config.copy(callsign = it.uppercase())) }, label = { Text("呼号") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.dns1, { onChange(config.copy(dns1 = it)) }, label = { Text("主 DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.dns2, { onChange(config.copy(dns2 = it)) }, label = { Text("备用 DNS") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.gateway, { onChange(config.copy(gateway = it)) }, label = { Text("网关") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.httpApiBaseUrl, { onChange(config.copy(httpApiBaseUrl = it)) }, label = { Text("HTTPS API") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.ip, { onChange(config.copy(ip = it)) }, label = { Text("IP 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.nodeSsid.toString(), { onChange(config.copy(nodeSsid = it.toIntOrNull() ?: 0)) }, label = { Text("SSID") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.ssid, { onChange(config.copy(ssid = it)) }, label = { Text("SSID") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.subnet, { onChange(config.copy(subnet = it)) }, label = { Text("子网掩码") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.udpHost, { onChange(config.copy(udpHost = it)) }, label = { Text("UDP 主机") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionForms.kt:OutlinedTextField(config.udpPort.toString(), { onChange(config.copy(udpPort = it.toIntOrNull() ?: 0)) }, label = { Text("UDP 端口") }, modifier = Modifier.fillMaxWidth(), singleLine = true)</ID>
-    <ID>MaxLineLength:BleProvisionScreen.kt:color = if (phase == BleConnectionPhase.READY) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant</ID>
-    <ID>MaxLineLength:BleProvisionScreen.kt:color = if (profile.key == selectedKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface</ID>
-    <ID>MaxLineLength:BleProvisionScreen.kt:enabled = ble.status.phase in setOf(BleConnectionPhase.CONNECTING, BleConnectionPhase.DISCOVERING, BleConnectionPhase.READY)</ID>
-    <ID>MaxLineLength:BleProvisionScreen.kt:if</ID>
-    <ID>MaxLineLength:BleProvisionScreen.kt:item { BleServerForm(config = ble.config.server, busy = ble.busy, onChange = ble::updateServer, onSave = ble::saveServer) }</ID>
-    <ID>MaxLineLength:BleProvisionScreen.kt:item { BleWifiForm(config = ble.config.wifi, busy = ble.busy, onChange = ble::updateWifi, onSave = ble::saveWifi) }</ID>
     <ID>MaxLineLength:BleProvisioningClient.kt:BleProvisioningClient$gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) == BluetoothStatusCodes.SUCCESS</ID>
     <ID>MaxLineLength:BleProvisioningClient.kt:BleProvisioningClient$return statusCharacteristic != null &amp;&amp; authCharacteristic != null &amp;&amp; rpcTxCharacteristic != null &amp;&amp; rpcRxCharacteristic != null</ID>
     <ID>MaxLineLength:CurrentLocationProvider.kt:CurrentLocationProvider$private</ID>
