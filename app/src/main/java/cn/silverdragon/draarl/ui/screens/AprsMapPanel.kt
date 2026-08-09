@@ -65,6 +65,7 @@ import cn.silverdragon.draarl.maps.MapDistance
 import cn.silverdragon.draarl.ui.components.DraarlSegment
 import cn.silverdragon.draarl.ui.components.DraarlSegmentedControl
 import cn.silverdragon.draarl.ui.components.DraarlTooltip
+import cn.silverdragon.draarl.ui.theme.appColors
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
@@ -452,7 +453,7 @@ private fun MapPttButton(
 ) {
     val color = when {
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
-        transmitting -> MaterialTheme.colorScheme.error
+        transmitting -> MaterialTheme.appColors.transmit
         else -> MaterialTheme.colorScheme.primary
     }
     Surface(

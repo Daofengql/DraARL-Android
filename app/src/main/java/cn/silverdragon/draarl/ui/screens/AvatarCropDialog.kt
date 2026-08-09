@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
+import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.StatusTone
 import java.io.ByteArrayOutputStream
 
 @Composable
@@ -110,9 +112,9 @@ fun AvatarCropDialog(imageUri: Uri, onDismiss: () -> Unit, onConfirm: (ByteArray
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                Text(
-                    "无法加载图片",
-                    color = MaterialTheme.colorScheme.error
+                InlineNotice(
+                    text = "无法加载图片，请重新选择头像文件。",
+                    tone = StatusTone.ERROR
                 )
             }
         }

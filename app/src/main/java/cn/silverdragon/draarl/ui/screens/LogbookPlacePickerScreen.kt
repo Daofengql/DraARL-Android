@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +51,8 @@ import cn.silverdragon.draarl.maps.MaidenheadLocator
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
@@ -210,12 +211,7 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
                     keyboardActions = KeyboardActions(onSearch = { search() })
                 )
                 if (searchBusy) {
-                    Surface(shape = MaterialTheme.shapes.small, tonalElevation = 4.dp) {
-                        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            CircularProgressIndicator(Modifier.padding(2.dp), strokeWidth = 2.dp)
-                            Text("正在搜索地点")
-                        }
-                    }
+                    InlineNotice(text = "正在搜索地点", tone = StatusTone.CONNECTING)
                 } else if (results.isNotEmpty()) {
                     Surface(shape = MaterialTheme.shapes.small, tonalElevation = 5.dp) {
                         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {

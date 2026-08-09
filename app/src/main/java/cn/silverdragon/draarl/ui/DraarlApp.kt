@@ -1,10 +1,6 @@
 package cn.silverdragon.draarl.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -52,8 +48,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
@@ -67,12 +61,15 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
+import cn.silverdragon.draarl.ui.components.AppUpdateFeedback
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlBottomBar
 import cn.silverdragon.draarl.ui.components.DraarlBottomBarItem
 import cn.silverdragon.draarl.ui.components.DraarlDialog
 import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.StatusIndicator
+import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.AprsSettingsScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
@@ -122,37 +119,11 @@ private fun DraarlAppContent(controller: AppController) {
 }
 
 @Composable
-private fun LoadingScreen() {
-    val transition = rememberInfiniteTransition(label = "startup")
-    val logoScale = transition.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.03f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "logoScale"
-    )
-    val glowAlpha = transition.animateFloat(
-        initialValue = 0.14f,
-        targetValue = 0.34f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
-    )
+internal fun LoadingScreen() {
     Box(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(132.dp)
-                .scale(logoScale.value)
-                .alpha(glowAlpha.value)
-                .background(MaterialTheme.colorScheme.primaryContainer, androidx.compose.foundation.shape.CircleShape)
-        )
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -160,7 +131,7 @@ private fun LoadingScreen() {
             Image(
                 painter = painterResource(R.drawable.draarl_splash_logo),
                 contentDescription = null,
-                modifier = Modifier.size(108.dp).scale(logoScale.value)
+                modifier = Modifier.size(104.dp)
             )
             Text(
                 text = "DraARL 麟链",
@@ -168,12 +139,7 @@ private fun LoadingScreen() {
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
-            Text(
-                text = "正在接入通信网络",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.alpha(0.65f + glowAlpha.value)
-            )
+            StatusIndicator("正在恢复通信会话", StatusTone.CONNECTING)
         }
     }
 }
@@ -480,24 +446,7 @@ private fun AppUpdateDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (message.isNotBlank()) {
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = when (status) {
-                        AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
-                        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-            if (status == AppUpdateStatus.INSTALL_PERMISSION_REQUIRED) {
-                Text(
-                    text = "请在系统页面允许 DraARL 安装未知应用，返回后会继续更新。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            AppUpdateFeedback(status = status, message = message)
             if (busy) {
                 LinearProgressIndicator(
                     progress = { progress },

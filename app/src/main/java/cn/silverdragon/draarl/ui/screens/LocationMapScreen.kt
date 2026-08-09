@@ -74,6 +74,10 @@ import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.ui.components.DraarlTooltip
+import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.PageFeedback
+import cn.silverdragon.draarl.ui.components.PageFeedbackKind
+import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
@@ -141,9 +145,12 @@ fun LocationMapScreen(
                 )
             }
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("地图 Key 未配置，暂时无法使用标点位置")
-            }
+            PageFeedback(
+                kind = PageFeedbackKind.ERROR,
+                title = "地图暂不可用",
+                detail = "未配置地图 Key，无法标点或预览位置",
+                modifier = Modifier.fillMaxSize().padding(padding)
+            )
         }
         return
     }
@@ -652,10 +659,9 @@ private fun LocationDetailsPanel(
                             )
                         }
                         if (distanceError.isNotBlank()) {
-                            Text(
-                                distanceError,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error
+                            InlineNotice(
+                                text = distanceError,
+                                tone = StatusTone.ERROR
                             )
                         }
                     }

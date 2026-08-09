@@ -29,6 +29,21 @@ private val BaselineNavigationItems = listOf(
     DraarlBottomBarItem("profile", "我的", Icons.Default.Person)
 )
 
+@PreviewTest
+@Preview(
+    name = "Startup Loading Light Medium Text",
+    widthDp = 360,
+    heightDp = 640,
+    fontScale = 1.3f,
+    showBackground = true
+)
+@Composable
+fun StartupLoadingLightBaseline() {
+    DraarlTheme(darkTheme = false) {
+        LoadingScreen()
+    }
+}
+
 @Composable
 internal fun BaselineScreen(
     selectedKey: String,

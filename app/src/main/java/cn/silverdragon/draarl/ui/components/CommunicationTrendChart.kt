@@ -59,12 +59,13 @@ fun CommunicationTrendChart(data: List<DailyCommunicationStats>) {
                 Text("近30天通信趋势", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
             if (data.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(220.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("暂无通信记录数据", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                PageFeedback(
+                    kind = PageFeedbackKind.EMPTY,
+                    title = "暂无通信记录",
+                    detail = "完成通联后，这里会显示近 30 天趋势",
+                    modifier = Modifier.height(220.dp),
+                    icon = Icons.Default.Forum
+                )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     ChartLegend("通信次数", countLineColor)

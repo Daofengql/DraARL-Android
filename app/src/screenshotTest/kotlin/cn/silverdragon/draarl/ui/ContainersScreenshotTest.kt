@@ -18,7 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.ui.components.AppUpdateFeedback
 import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.CommunicationTrendChart
 import cn.silverdragon.draarl.ui.components.DataRow
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlIconButton
@@ -26,7 +28,56 @@ import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.DraarlSheetContent
 import cn.silverdragon.draarl.ui.components.DraarlSheetHandle
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
+import cn.silverdragon.draarl.update.AppUpdateStatus
 import com.android.tools.screenshot.PreviewTest
+
+@PreviewTest
+@Preview(
+    name = "Trend Empty Light Medium Text",
+    widthDp = 360,
+    heightDp = 320,
+    fontScale = 1.3f,
+    showBackground = true
+)
+@Composable
+fun TrendEmptyLightBaseline() {
+    DraarlTheme(darkTheme = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Box(Modifier.padding(12.dp)) {
+                CommunicationTrendChart(emptyList())
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Update Feedback Dark Medium Text",
+    widthDp = 360,
+    heightDp = 260,
+    fontScale = 1.3f,
+    showBackground = true
+)
+@Composable
+fun UpdateFeedbackDarkBaseline() {
+    DraarlTheme(darkTheme = true) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AppUpdateFeedback(
+                    status = AppUpdateStatus.ERROR,
+                    message = "更新包校验失败，请检查网络后重试。"
+                )
+                AppUpdateFeedback(
+                    status = AppUpdateStatus.INSTALL_PERMISSION_REQUIRED,
+                    message = "需要允许本应用安装更新包"
+                )
+            }
+        }
+    }
+}
 
 @PreviewTest
 @Preview(

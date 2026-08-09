@@ -396,10 +396,9 @@ private fun DeviceListRow(device: Device, groupName: String, onClick: () -> Unit
                 if (!device.enabled) add("停用")
             }
             if (restrictions.isNotEmpty()) {
-                Text(
-                    restrictions.joinToString(" · "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error
+                StatusIndicator(
+                    text = restrictions.joinToString(" · "),
+                    tone = StatusTone.ERROR
                 )
             }
         }

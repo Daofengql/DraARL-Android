@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.SettingsInputAntenna
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +54,8 @@ import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
 import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
 import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
 import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.PageFeedback
+import cn.silverdragon.draarl.ui.components.PageFeedbackKind
 import cn.silverdragon.draarl.ui.components.StatusIndicator
 import cn.silverdragon.draarl.ui.components.StatusTone
 
@@ -357,13 +358,7 @@ private fun DevicePickerDialog(
         ) {
             if (devices.isEmpty()) {
                 item {
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (scanning) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                        Text(if (scanning) "正在查找 DraARL 设备" else "没有发现设备", Modifier.padding(start = 12.dp))
-                    }
+                    BleDevicePickerFeedback(scanning)
                 }
             }
             items(devices.size, key = { devices[it].address }) { index ->
@@ -377,6 +372,15 @@ private fun DevicePickerDialog(
             }
         }
     }
+}
+
+@Composable
+private fun BleDevicePickerFeedback(scanning: Boolean) {
+    PageFeedback(
+        kind = if (scanning) PageFeedbackKind.LOADING else PageFeedbackKind.EMPTY,
+        title = if (scanning) "正在查找设备" else "没有发现设备",
+        detail = if (scanning) "正在扫描附近的 DraARL 设备" else "请确认设备已开机并处于配网模式"
+    )
 }
 
 private fun requiredBlePermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

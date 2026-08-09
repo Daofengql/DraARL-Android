@@ -63,6 +63,7 @@ import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.radio.TransmitTailTone
 import cn.silverdragon.draarl.settings.SettingsController
 import cn.silverdragon.draarl.settings.SettingsEvent
+import cn.silverdragon.draarl.ui.components.AppUpdateFeedback
 import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateStatus
@@ -318,27 +319,16 @@ fun SystemSettingsScreen(
                         checked = state.autoCheckAppUpdate,
                         onCheckedChange = { settings.onEvent(SettingsEvent.AutoCheckAppUpdateChanged(it)) }
                     )
-                    if (update.message.isNotBlank() || update.info != null) {
+                    if (
+                        update.message.isNotBlank() || update.info != null ||
+                        update.status == AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
+                    ) {
                         SettingsDivider()
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            if (update.message.isNotBlank()) {
-                                Text(
-                                    update.message,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = when (update.status) {
-                                        AppUpdateStatus.AVAILABLE,
-                                        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED
-                                        -> MaterialTheme.colorScheme.primary
-
-                                        AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
-
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
+                            AppUpdateFeedback(status = update.status, message = update.message)
                             update.info?.changelog?.takeIf(String::isNotBlank)?.let { changelog ->
                                 Text(
                                     changelog,
