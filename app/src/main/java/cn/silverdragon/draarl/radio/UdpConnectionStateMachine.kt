@@ -38,10 +38,8 @@ internal sealed interface UdpConnectionEvent {
 }
 
 internal class UdpConnectionStateMachine {
-    @Volatile
     private var state = UdpConnectionState()
 
-    @Synchronized
     fun connect(config: RadioConnectionConfig): UdpConnectionAttempt? {
         val next = reduce(state, UdpConnectionEvent.Connect(config))
         if (next == state) return null
@@ -49,7 +47,6 @@ internal class UdpConnectionStateMachine {
         return next.attempt(reconnecting = false)
     }
 
-    @Synchronized
     fun scheduleReconnect(expectedGeneration: Int): Int? {
         val next = reduce(state, UdpConnectionEvent.ReconnectScheduled(expectedGeneration))
         if (next == state) return null
@@ -57,7 +54,6 @@ internal class UdpConnectionStateMachine {
         return next.generation
     }
 
-    @Synchronized
     fun startReconnect(expectedGeneration: Int): UdpConnectionAttempt? {
         val next = reduce(state, UdpConnectionEvent.ReconnectStarted(expectedGeneration))
         if (next == state) return null
@@ -65,7 +61,6 @@ internal class UdpConnectionStateMachine {
         return next.attempt(reconnecting = true)
     }
 
-    @Synchronized
     fun dispatch(event: UdpConnectionEvent): Boolean {
         val next = reduce(state, event)
         if (next == state) return false

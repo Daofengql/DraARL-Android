@@ -6,7 +6,8 @@
 
 - `RadioSessionController` 负责节点发现、连接参数准备、频道路由和 Service Binder 生命周期，并向 UI 发布 `RadioConnectionPhase`。
 - `RadioConnectionService` 持有唯一 `UdpRadioClient`，Service 销毁时调用 `release` 完成最终清理。
-- `UdpConnectionStateMachine` 持有 UDP 会话代次、目标配置和内部阶段。阶段包括断开、连接、认证、在线、等待重连、重连、错误和关闭。
+- `UdpSessionStateContext` 串行持有 UDP 会话代次、目标配置、内部阶段、`RadioStatus` 和认证身份；`UdpConnectionStateMachine` 只计算状态转换。阶段包括断开、连接、认证、在线、等待重连、重连、错误和关闭。
+- 状态通知在上下文锁外由唯一发布者按序发送；阻塞或重入 listener 不会持有状态锁，也不会倒序覆盖新状态。
 - 每次新连接、重连调度、主动断开或关闭都会推进代次。Transport、调度任务和音频回调只有在代次仍匹配时才能更新连接状态。
 - `CLOSED` 是终态；释放后的客户端不能由延迟任务或旧回调重新连接。
 - `RadioClock` 是所有会话时间判断的来源；生产实现读取系统时间，测试可注入确定性时钟。
@@ -15,7 +16,7 @@
 
 | 资源 | 所有者 | 约束 |
 | --- | --- | --- |
-| 目标节点、Token、路由与会话代次 | `UdpConnectionStateMachine` | 更新形成新的不可变状态快照 |
+| 目标节点、Token、路由、会话代次、状态与认证身份 | `UdpSessionStateContext` | 在单一事务边界内更新不可变快照；状态机自身不再维护并发锁 |
 | Socket 创建、端口复用和连接 | `DatagramUdpTransportFactory` | 绑定首选端口失败时回退到系统分配端口 |
 | 数据报收发、读取超时和 Socket 关闭 | `UdpTransport` | `UdpRadioClient` 不直接依赖 `java.net` Socket 类型 |
 | 认证握手 | `draarl-udp-connect` 单线程执行器 | 仅当前代次可以安装和激活 Transport |
@@ -46,6 +47,7 @@
 ## 自动化边界
 
 - `UdpConnectionStateMachineTest` 验证合法顺序、乱序/陈旧事件、重复连接、单次重连调度、等待期间配置更新、认证失败、主动断开和关闭终态。
+- `UdpSessionStateContextTest` 验证认证状态/身份原子提交、陈旧代次丢弃、锁外顺序通知和 listener 失败恢复。
 - `UdpAuthenticationTest` 验证认证成功字段、服务端拒绝、异常响应、客户端实例匹配、非认证包忽略和总超时。
 - `UdpTransportTest` 通过本地回环验证双向数据报、读取超时、首选端口回退和幂等关闭。
 - `UdpSessionMonitorTest` 使用 fake clock 和 scheduler 验证心跳频率、静默超时边界、服务端包刷新、发送时间记录与周期任务取消。

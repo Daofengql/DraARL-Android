@@ -18,19 +18,13 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 184 个文件，约 2.79 万有效代码行；JVM 测试 63 个文件、259 个用例。
+- 生产 Kotlin 185 个文件，约 2.80 万有效代码行；JVM 测试 64 个文件、263 个用例。
 - Compose 截图测试 4 个文件、24 张参考图，覆盖应用壳层、五个一级页面、设置行、APRS、BLE 配网、存储页、弹窗、Bottom Sheet 和首批页面反馈状态。
 - 复杂度主要集中在 `UdpRadioClient`、`AppController` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
 - Spotless、Detekt、单元测试、截图验证、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
 
 ## P1：代码边界与状态所有权
-
-- [ ] **明确 `UdpRadioClient` 状态机**
-
-- 尽量在单一串行执行上下文修改会话状态，减少 `Volatile`、`Atomic` 和锁的混用。
-
-验收：认证、超时、重连、乱序包和主动关闭可以通过确定性 JVM 测试验证。
 
 - [ ] **统一普通异步任务模型**
 

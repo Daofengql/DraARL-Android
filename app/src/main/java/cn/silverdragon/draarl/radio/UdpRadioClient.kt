@@ -100,12 +100,11 @@ class UdpRadioClient internal constructor(
         maxPayloadBytes = MAX_CACHED_VOICE_BYTES,
         endTimeoutMillis = VOICE_END_TIMEOUT_MS
     )
-    private val connectionState = UdpConnectionStateMachine()
+    private val sessionState = UdpSessionStateContext(listener::onStatus)
     private val authenticationReceiver = UdpAuthenticationReceiver(AUTH_TOTAL_TIMEOUT_MS, clock::nowMillis)
     private val cwTransmitActive = AtomicBoolean(false)
     private val cwPreviewActive = AtomicBoolean(false)
     private val sendLock = Any()
-    private val statusLock = Any()
     private val cwVoiceLock = Any()
 
     @Volatile private var transport: UdpTransport? = null
@@ -122,18 +121,12 @@ class UdpRadioClient internal constructor(
 
     @Volatile private var playingMessageId: String? = null
 
-    @Volatile private var sessionTag = 0L
-
-    @Volatile private var sessionUsername = ""
-
-    @Volatile private var sessionSsid = DraarlProtocol.SSID_ANDROID
-
-    @Volatile private var status = RadioStatus()
+    private val status: RadioStatus get() = sessionState.snapshot().status
     private var cwVoiceBuffer = ByteArrayOutputStream()
 
     @Synchronized
     fun connect(config: RadioConnectionConfig) {
-        val attempt = connectionState.connect(config) ?: return
+        val attempt = sessionState.connect(config) ?: return
         sessionTasks.cancelReconnect()
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
@@ -148,11 +141,12 @@ class UdpRadioClient internal constructor(
     }
 
     fun updateAccessToken(token: String) {
-        connectionState.dispatch(UdpConnectionEvent.AccessTokenChanged(token))
+        sessionState.dispatch(UdpConnectionEvent.AccessTokenChanged(token))
     }
 
+    @Synchronized
     fun disconnect() {
-        connectionState.dispatch(UdpConnectionEvent.Disconnect)
+        sessionState.dispatch(UdpConnectionEvent.Disconnect)
         sessionTasks.cancelReconnect()
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
@@ -163,9 +157,7 @@ class UdpRadioClient internal constructor(
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
         closeTransport()
-        synchronized(statusLock) {
-            updateStatus(RadioStatus(phase = RadioConnectionPhase.DISCONNECTED))
-        }
+        sessionState.updateStatus { RadioStatus(phase = RadioConnectionPhase.DISCONNECTED) }
     }
 
     fun sendText(text: String): Boolean {
@@ -177,7 +169,7 @@ class UdpRadioClient internal constructor(
         }
         val payload = normalized.toByteArray(Charsets.UTF_8)
         if (payload.size > DraarlProtocol.MAX_PACKET_SIZE - DraarlProtocol.HEADER_SIZE) {
-            reportNonFatal("消息过长，UTF-8 编码后不能超过 710 字节", connectionState.generation())
+            reportNonFatal("消息过长，UTF-8 编码后不能超过 710 字节", generation())
             return false
         }
         return send(sessionText(normalized)).also { sent ->
@@ -203,13 +195,13 @@ class UdpRadioClient internal constructor(
         stopCwPreview()
         val tone = runCatching { CwToneGenerator.generate(text, wordsPerMinute, toneHz) }
             .getOrElse { error ->
-                reportNonFatal(error.message ?: "CW 内容无效", connectionState.generation())
+                reportNonFatal(error.message ?: "CW 内容无效", generation())
                 return false
             }
         val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
         val transmitDurationMs = (tone.samples.size + tailSamples.size) * 1_000L / OpusAudioFormat.SAMPLE_RATE
         if (transmitDurationMs > transmitTimeoutSeconds * 1_000L) {
-            reportNonFatal("CW 音频超过当前发射限时，请缩短内容或提高速度", connectionState.generation())
+            reportNonFatal("CW 音频超过当前发射限时，请缩短内容或提高速度", generation())
             return false
         }
         if (!cwTransmitActive.compareAndSet(false, true)) return false
@@ -217,7 +209,7 @@ class UdpRadioClient internal constructor(
         stopPlayback()
         audioEngine.playback.resetDecoder()
         synchronized(cwVoiceLock) { cwVoiceBuffer = ByteArrayOutputStream() }
-        val currentGeneration = connectionState.generation()
+        val currentGeneration = generation()
         val startedAt = clock.nowMillis()
         val statusUpdated = updateStatusIfActive(currentGeneration) { current ->
             if (!current.connected) current else current.copy(transmitting = true, speaker = "", error = "")
@@ -256,7 +248,7 @@ class UdpRadioClient internal constructor(
         if (status.transmitting || status.speaker.isNotBlank()) return false
         val tone = runCatching { CwToneGenerator.generate(text, wordsPerMinute, toneHz) }
             .getOrElse { error ->
-                reportNonFatal(error.message ?: "CW 内容无效", connectionState.generation())
+                reportNonFatal(error.message ?: "CW 内容无效", generation())
                 return false
             }
         val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
@@ -264,7 +256,7 @@ class UdpRadioClient internal constructor(
         stopPlayback()
         audioEngine.playback.resetDecoder()
         listener.onCwPreviewState(true)
-        val currentGeneration = connectionState.generation()
+        val currentGeneration = generation()
         return runCatching {
             sessionTasks.execute { previewCwAudio(tone.samples, tailSamples, currentGeneration) }
             true
@@ -287,13 +279,13 @@ class UdpRadioClient internal constructor(
     fun startPtt(): Boolean {
         if (!status.connected || status.transmitting || status.speaker.isNotBlank()) return false
         stopPlayback()
-        val currentGeneration = connectionState.generation()
+        val currentGeneration = generation()
         return pttCoordinator.start(currentGeneration, transmitTimeoutSeconds * 1_000L)
     }
 
     @Synchronized
     fun stopPtt() {
-        stopPtt(connectionState.generation())
+        stopPtt(generation())
     }
 
     private fun stopPtt(currentGeneration: Int) {
@@ -343,7 +335,7 @@ class UdpRadioClient internal constructor(
             audioUrl = message.audioUrl,
             onFinished = { completePlayback(message.id) },
             onError = { error ->
-                reportNonFatal(error, connectionState.generation())
+                reportNonFatal(error, generation())
                 completePlayback(message.id)
             }
         )
@@ -370,7 +362,7 @@ class UdpRadioClient internal constructor(
         transmitTimeoutSeconds = seconds.coerceIn(MIN_TRANSMIT_TIMEOUT_SECONDS, MAX_TRANSMIT_TIMEOUT_SECONDS)
         if (status.transmitting && !cwTransmitActive.get()) {
             pttCoordinator.rescheduleTimeout(
-                generation = connectionState.generation(),
+                generation = generation(),
                 timeoutMillis = transmitTimeoutSeconds * 1_000L
             )
         }
@@ -400,17 +392,17 @@ class UdpRadioClient internal constructor(
     }
 
     fun setRouting(groupId: Int, receiveGroupIds: Collection<Int>) {
-        connectionState.dispatch(UdpConnectionEvent.RoutingChanged(groupId))
-        updateStatus(status.copy(groupId = groupId, receiveGroupIds = receiveGroupIds.distinct()))
+        sessionState.dispatch(UdpConnectionEvent.RoutingChanged(groupId))
+        sessionState.updateStatus { it.copy(groupId = groupId, receiveGroupIds = receiveGroupIds.distinct()) }
     }
 
-    fun snapshot(): RadioStatus = status
+    fun snapshot(): RadioStatus = sessionState.snapshot().status
 
     @Synchronized
     fun release() {
-        if (connectionState.isClosed()) return
+        if (sessionState.snapshot().connection.stage == UdpConnectionStage.CLOSED) return
         disconnect()
-        connectionState.dispatch(UdpConnectionEvent.Close)
+        sessionState.dispatch(UdpConnectionEvent.Close)
         audioEngine.release()
         connectionExecutor.shutdownNow()
         sessionTasks.close()
@@ -430,11 +422,10 @@ class UdpRadioClient internal constructor(
             }
         } catch (error: UdpAuthenticationException) {
             closeTransport()
-            if (connectionState.dispatch(UdpConnectionEvent.AuthenticationFailed(currentGeneration))) {
-                updateStatusIfActive(currentGeneration) {
-                    it.copy(phase = RadioConnectionPhase.ERROR, error = error.message.orEmpty())
-                }
-            }
+            sessionState.transition(
+                event = UdpConnectionEvent.AuthenticationFailed(currentGeneration),
+                expectedGeneration = currentGeneration
+            ) { it.copy(phase = RadioConnectionPhase.ERROR, error = error.message.orEmpty()) }
         } catch (error: Exception) {
             closeTransport()
             scheduleReconnect(error.message ?: "UDP 连接失败", currentGeneration)
@@ -502,9 +493,10 @@ class UdpRadioClient internal constructor(
         config: RadioConnectionConfig,
         currentGeneration: Int
     ): UdpAuthenticatedSession? {
-        val started =
-            connectionState.dispatch(UdpConnectionEvent.AuthenticationStarted(currentGeneration)) &&
-                updateStatusIfActive(currentGeneration) { it.copy(phase = RadioConnectionPhase.AUTHENTICATING) }
+        val started = sessionState.transition(
+            event = UdpConnectionEvent.AuthenticationStarted(currentGeneration),
+            expectedGeneration = currentGeneration
+        ) { it.copy(phase = RadioConnectionPhase.AUTHENTICATING) }
         if (!started) {
             closeTransport(activeTransport)
         }
@@ -528,24 +520,28 @@ class UdpRadioClient internal constructor(
     ): Boolean {
         val session = authenticated.session
         val response = authenticated.packet
-        sessionTag = session.sessionTag
-        sessionUsername = response.username
-        sessionSsid = authenticated.ssid
         activeTransport.receiveTimeoutMillis = RECEIVE_SOCKET_TIMEOUT_MS
         sessionMonitor.recordServerPacket()
-        val activated = connectionState.dispatch(UdpConnectionEvent.Authenticated(currentGeneration)) &&
-            updateStatusIfActive(currentGeneration) { current ->
-                current.copy(
-                    phase = RadioConnectionPhase.CONNECTED,
-                    callsign = response.callsign,
-                    ssid = authenticated.ssid,
-                    groupId = session.txGroupId,
-                    sessionId = session.sessionId,
-                    clientInstanceId = session.clientInstanceId,
-                    receiveGroupIds = session.rxGroupIds,
-                    error = ""
-                )
-            }
+        val activated = sessionState.transition(
+            event = UdpConnectionEvent.Authenticated(currentGeneration),
+            expectedGeneration = currentGeneration,
+            authenticatedIdentity = UdpSessionIdentity(
+                sessionTag = session.sessionTag,
+                username = response.username,
+                ssid = authenticated.ssid
+            )
+        ) { current ->
+            current.copy(
+                phase = RadioConnectionPhase.CONNECTED,
+                callsign = response.callsign,
+                ssid = authenticated.ssid,
+                groupId = session.txGroupId,
+                sessionId = session.sessionId,
+                clientInstanceId = session.clientInstanceId,
+                receiveGroupIds = session.rxGroupIds,
+                error = ""
+            )
+        }
         if (!activated) closeTransport(activeTransport)
         return activated
     }
@@ -818,8 +814,8 @@ class UdpRadioClient internal constructor(
         sessionMonitor.stop()
     }
 
-    private fun scheduleReconnect(reason: String, expectedGeneration: Int = connectionState.generation()) {
-        val reconnectGeneration = connectionState.scheduleReconnect(expectedGeneration) ?: return
+    private fun scheduleReconnect(reason: String, expectedGeneration: Int = generation()) {
+        val reconnectGeneration = sessionState.scheduleReconnect(expectedGeneration) ?: return
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
         listener.onCwPreviewState(false)
@@ -841,23 +837,26 @@ class UdpRadioClient internal constructor(
         runCatching {
             sessionTasks.scheduleReconnect(
                 delayMillis = retryDelay,
-                shouldKeep = { connectionState.isWaitingToReconnect(reconnectGeneration) },
+                shouldKeep = {
+                    val connection = sessionState.snapshot().connection
+                    connection.generation == reconnectGeneration &&
+                        connection.stage == UdpConnectionStage.RECONNECT_DELAY
+                },
                 reconnect = reconnect@{
-                    val attempt = connectionState.startReconnect(reconnectGeneration) ?: return@reconnect
+                    val attempt = sessionState.startReconnect(reconnectGeneration) ?: return@reconnect
                     connectionExecutor.execute { establish(attempt) }
                 }
             )
         }.getOrElse { error ->
-            if (connectionState.dispatch(UdpConnectionEvent.ReconnectFailed(reconnectGeneration))) {
-                updateStatusIfActive(reconnectGeneration) {
-                    it.copy(phase = RadioConnectionPhase.ERROR, error = error.message ?: "无法安排自动重连")
-                }
-            }
+            sessionState.transition(
+                event = UdpConnectionEvent.ReconnectFailed(reconnectGeneration),
+                expectedGeneration = reconnectGeneration
+            ) { it.copy(phase = RadioConnectionPhase.ERROR, error = error.message ?: "无法安排自动重连") }
             return
         }
     }
 
-    private fun send(bytes: ByteArray, expectedGeneration: Int = connectionState.generation()): Boolean {
+    private fun send(bytes: ByteArray, expectedGeneration: Int = generation()): Boolean {
         if (!isActive(expectedGeneration)) return false
         val activeTransport = transport ?: return false
         if (!status.connected || activeTransport.isClosed) return false
@@ -870,25 +869,31 @@ class UdpRadioClient internal constructor(
         }
     }
 
-    private fun sessionHeartbeat(): ByteArray = DraarlProtocol.heartbeat(
-        username = sessionUsername,
-        ssid = sessionSsid,
-        sessionTag = sessionTag
-    )
+    private fun sessionHeartbeat(): ByteArray = sessionState.snapshot().identity.let { identity ->
+        DraarlProtocol.heartbeat(
+            username = identity.username,
+            ssid = identity.ssid,
+            sessionTag = identity.sessionTag
+        )
+    }
 
-    private fun sessionText(text: String): ByteArray = DraarlProtocol.text(
-        message = text,
-        username = sessionUsername,
-        ssid = sessionSsid,
-        sessionTag = sessionTag
-    )
+    private fun sessionText(text: String): ByteArray = sessionState.snapshot().identity.let { identity ->
+        DraarlProtocol.text(
+            message = text,
+            username = identity.username,
+            ssid = identity.ssid,
+            sessionTag = identity.sessionTag
+        )
+    }
 
-    private fun sessionVoice(payload: ByteArray): ByteArray = DraarlProtocol.voice(
-        mergedOpusFrames = payload,
-        username = sessionUsername,
-        ssid = sessionSsid,
-        sessionTag = sessionTag
-    )
+    private fun sessionVoice(payload: ByteArray): ByteArray = sessionState.snapshot().identity.let { identity ->
+        DraarlProtocol.voice(
+            mergedOpusFrames = payload,
+            username = identity.username,
+            ssid = identity.ssid,
+            sessionTag = identity.sessionTag
+        )
+    }
 
     private fun sourceGroupId(reserved: Long): Int =
         reserved.takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt() ?: status.groupId
@@ -907,26 +912,19 @@ class UdpRadioClient internal constructor(
         }
         activeTransport?.localPort?.takeIf { it > 0 }?.let { preferredLocalPort = it }
         transport = null
-        sessionTag = 0
-        sessionUsername = ""
-        sessionSsid = DraarlProtocol.SSID_ANDROID
+        sessionState.clearIdentity()
         runCatching { activeTransport?.close() }
     }
 
-    private fun isActive(expectedGeneration: Int): Boolean = connectionState.isActive(expectedGeneration)
+    private fun generation(): Int = sessionState.snapshot().connection.generation
 
-    private fun updateStatus(newStatus: RadioStatus) {
-        status = newStatus
-        listener.onStatus(newStatus)
+    private fun isActive(expectedGeneration: Int): Boolean = sessionState.snapshot().connection.let { connection ->
+        connection.generation == expectedGeneration &&
+            connection.stage !in setOf(UdpConnectionStage.DISCONNECTED, UdpConnectionStage.CLOSED)
     }
 
     private fun updateStatusIfActive(expectedGeneration: Int, transform: (RadioStatus) -> RadioStatus): Boolean =
-        synchronized(statusLock) {
-            if (!isActive(expectedGeneration)) return@synchronized false
-            val updated = transform(status)
-            if (updated != status) updateStatus(updated)
-            true
-        }
+        sessionState.updateStatusIfActive(expectedGeneration, transform)
 
     private fun reportNonFatal(message: String, expectedGeneration: Int) {
         updateStatusIfActive(expectedGeneration) { it.copy(error = message) }
@@ -1006,7 +1004,7 @@ class UdpRadioClient internal constructor(
             audioCache.put(cacheKey, RawOpusRecording.fromNetworkPayload(payload))
             cacheKey
         }.onFailure {
-            reportNonFatal(it.message ?: "语音缓存失败", connectionState.generation())
+            reportNonFatal(it.message ?: "语音缓存失败", generation())
         }.getOrDefault("")
     }
 
