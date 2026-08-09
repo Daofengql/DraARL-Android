@@ -10,13 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +46,7 @@ fun RegionPicker(value: String, onValueChange: (String) -> Unit) {
         OutlinedButton(
             onClick = { choosingCity = true },
             enabled = selectedProvince != null,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f)
         ) {
             Text(selectedCity?.name ?: "选择城市", modifier = Modifier.weight(1f), maxLines = 1)
             Icon(Icons.Default.ArrowDropDown, contentDescription = null)
@@ -73,23 +71,22 @@ private fun RegionChoiceDialog(
     title: String,
     options: List<RegionOption>,
     onDismiss: () -> Unit,
-    onSelect: (RegionOption) -> Unit,
+    onSelect: (RegionOption) -> Unit
 ) {
-    AlertDialog(
+    DraarlDialog(
+        title = title,
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp)) {
-                items(options.size) { index ->
-                    Text(
-                        options[index].name,
-                        modifier = Modifier.fillMaxWidth().clickable { onSelect(options[index]) }.padding(vertical = 14.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    if (index != options.lastIndex) HorizontalDivider()
-                }
+        dismissAction = DraarlAction("取消", onDismiss)
+    ) {
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp).padding(horizontal = 18.dp)) {
+            items(options.size) { index ->
+                Text(
+                    options[index].name,
+                    modifier = Modifier.fillMaxWidth().clickable { onSelect(options[index]) }.padding(vertical = 14.dp),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                if (index != options.lastIndex) HorizontalDivider()
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+        }
+    }
 }

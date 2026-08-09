@@ -13,10 +13,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -41,6 +40,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.tools.LogbookDraft
 import cn.silverdragon.draarl.tools.ToolsController
+import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlDialog
 
 @Composable
 internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
@@ -65,10 +66,10 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                         current.copy(myQth = selection.qth)
                     } else {
                         current.copy(theirQth = selection.qth)
-                    },
+                    }
                 )
                 qthPickerTarget = null
-            },
+            }
         )
         return
     }
@@ -82,10 +83,12 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
         LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item { LogbookSectionTitle("通联信息") }
-            item { DraftField(draft.myCallsign, { tools.updateDraft(draft.copy(myCallsign = it.uppercase())) }, "我方呼号") }
+            item {
+                DraftField(draft.myCallsign, { tools.updateDraft(draft.copy(myCallsign = it.uppercase())) }, "我方呼号")
+            }
             item { DraftField(draft.callsign, { tools.updateDraft(draft.copy(callsign = it.uppercase())) }, "对方呼号") }
             item { DraftField(draft.localTime, { tools.updateDraft(draft.copy(localTime = it)) }, "本地时间") }
             item {
@@ -95,14 +98,14 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                         { tools.updateDraft(draft.copy(txFrequency = it)) },
                         "发射 MHz",
                         Modifier.weight(1f),
-                        true,
+                        true
                     )
                     DraftField(
                         draft.rxFrequency,
                         { tools.updateDraft(draft.copy(rxFrequency = it)) },
                         "接收 MHz",
                         Modifier.weight(1f),
-                        true,
+                        true
                     )
                 }
             }
@@ -113,14 +116,14 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                         { tools.updateDraft(draft.copy(cqZone = it)) },
                         "CQ 分区",
                         Modifier.weight(1f),
-                        true,
+                        true
                     )
                     DraftField(
                         draft.ituZone,
                         { tools.updateDraft(draft.copy(ituZone = it)) },
                         "ITU 分区",
                         Modifier.weight(1f),
-                        true,
+                        true
                     )
                 }
             }
@@ -131,7 +134,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                             selected = draft.mode == mode,
                             onClick = { tools.updateDraft(draft.copy(mode = mode)) },
                             label = { Text(mode) },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -142,13 +145,13 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                         draft.myRst,
                         { tools.updateDraft(draft.copy(myRst = it)) },
                         "我方 RST",
-                        Modifier.weight(1f),
+                        Modifier.weight(1f)
                     )
                     DraftField(
                         draft.theirRst,
                         { tools.updateDraft(draft.copy(theirRst = it)) },
                         "对方 RST",
-                        Modifier.weight(1f),
+                        Modifier.weight(1f)
                     )
                 }
             }
@@ -158,12 +161,12 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                 OutlinedButton(
                     onClick = { showPresets = true },
                     enabled = tools.presets.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Tune, contentDescription = null)
                     Text(
                         if (tools.presetBusy) "正在加载预设" else "使用电台预设",
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.padding(start = 8.dp)
                     )
                 }
             }
@@ -175,7 +178,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                     value = draft.myQth,
                     onValueChange = { tools.updateDraft(draft.copy(myQth = it)) },
                     label = "我的 QTH",
-                    onPick = { qthPickerTarget = QthPickerTarget.MY },
+                    onPick = { qthPickerTarget = QthPickerTarget.MY }
                 )
             }
 
@@ -187,7 +190,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                     draft.theirPower,
                     { tools.updateDraft(draft.copy(theirPower = it)) },
                     "对方功率 W",
-                    numeric = true,
+                    numeric = true
                 )
             }
             item {
@@ -195,7 +198,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                     value = draft.theirQth,
                     onValueChange = { tools.updateDraft(draft.copy(theirQth = it)) },
                     label = "对方 QTH",
-                    onPick = { qthPickerTarget = QthPickerTarget.THEIR },
+                    onPick = { qthPickerTarget = QthPickerTarget.THEIR }
                 )
             }
             item {
@@ -205,7 +208,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                     label = { Text("备注") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
-                    maxLines = 6,
+                    maxLines = 6
                 )
             }
         }
@@ -213,7 +216,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
             Button(
                 onClick = { tools.saveDraft(onSuccess = onBack) },
                 enabled = !tools.logbookBusy,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 if (tools.logbookBusy) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -222,7 +225,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                 }
                 Text(
                     if (tools.logbookBusy) "正在保存" else "保存通联日志",
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier.padding(start = 8.dp)
                 )
             }
         }
@@ -231,7 +234,7 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
     if (showPresets) {
         PresetPickerDialog(
             tools = tools,
-            onDismiss = { showPresets = false },
+            onDismiss = { showPresets = false }
         )
     }
 }
@@ -243,7 +246,7 @@ private fun LogbookSectionTitle(text: String) {
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 4.dp),
+        modifier = Modifier.padding(top = 4.dp)
     )
 }
 
@@ -253,7 +256,7 @@ private fun DraftField(
     onValueChange: (String) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
-    numeric: Boolean = false,
+    numeric: Boolean = false
 ) {
     OutlinedTextField(
         value = value,
@@ -261,17 +264,12 @@ private fun DraftField(
         label = { Text(label) },
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text),
+        keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Decimal else KeyboardType.Text)
     )
 }
 
 @Composable
-private fun QthDraftField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    onPick: () -> Unit,
-) {
+private fun QthDraftField(value: String, onValueChange: (String) -> Unit, label: String, onPick: () -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -282,7 +280,7 @@ private fun QthDraftField(
             IconButton(onClick = onPick) {
                 Icon(Icons.Default.Map, contentDescription = "在地图上选择$label")
             }
-        },
+        }
     )
 }
 
@@ -290,32 +288,31 @@ private enum class QthPickerTarget { MY, THEIR }
 
 @Composable
 private fun PresetPickerDialog(tools: ToolsController, onDismiss: () -> Unit) {
-    AlertDialog(
+    DraarlDialog(
+        title = "选择电台预设",
         onDismissRequest = onDismiss,
-        title = { Text("选择电台预设") },
-        text = {
-            LazyColumn(Modifier.heightIn(max = 400.dp)) {
-                items(tools.presets.size, key = { tools.presets[it].id }) { index ->
-                    val preset = tools.presets[index]
-                    TextButton(
-                        onClick = {
-                            tools.applyPreset(preset)
-                            onDismiss()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(Modifier.fillMaxWidth()) {
-                            Text(preset.name)
-                            Text(
-                                listOf(preset.radio, preset.antenna).filter(String::isNotBlank).joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+        dismissAction = DraarlAction("取消", onDismiss)
+    ) {
+        LazyColumn(Modifier.heightIn(max = 400.dp).padding(horizontal = 8.dp, vertical = 6.dp)) {
+            items(tools.presets.size, key = { tools.presets[it].id }) { index ->
+                val preset = tools.presets[index]
+                TextButton(
+                    onClick = {
+                        tools.applyPreset(preset)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(preset.name)
+                        Text(
+                            listOf(preset.radio, preset.antenna).filter(String::isNotBlank).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+        }
+    }
 }

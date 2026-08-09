@@ -33,8 +33,6 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -42,7 +40,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -70,8 +67,11 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlBottomBar
 import cn.silverdragon.draarl.ui.components.DraarlBottomBarItem
+import cn.silverdragon.draarl.ui.components.DraarlDialog
 import cn.silverdragon.draarl.ui.screens.AccountSecurityScreen
 import cn.silverdragon.draarl.ui.screens.AprsSettingsScreen
 import cn.silverdragon.draarl.ui.screens.DevicesScreen
@@ -428,81 +428,72 @@ private fun AppUpdateDialog(
 ) {
     val busy = status == AppUpdateStatus.DOWNLOADING
     val canDismiss = !update.forceUpdate && !busy
-    AlertDialog(
+    DraarlDialog(
+        title = if (update.forceUpdate) "必须更新到 ${update.version}" else "发现新版本 ${update.version}",
         onDismissRequest = {
             if (canDismiss) onDismiss()
         },
-        title = {
-            Text(if (update.forceUpdate) "必须更新到 ${update.version}" else "发现新版本 ${update.version}")
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        dismissAction = if (canDismiss) DraarlAction("稍后", onDismiss) else null,
+        confirmAction = DraarlAction(
+            label = when (status) {
+                AppUpdateStatus.READY_TO_INSTALL -> "重新打开安装器"
+                AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> "继续更新"
+                AppUpdateStatus.ERROR -> "重试"
+                AppUpdateStatus.DOWNLOADING -> "下载中"
+                else -> "立即更新"
+            },
+            onClick = onUpdate,
+            enabled = !busy,
+            style = CommandStyle.PRIMARY
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = update.displayTitle,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "当前版本 ${update.currentVersionName}，新版本 ${update.version}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (update.changelog.isNotBlank()) {
                 Text(
-                    text = update.displayTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "当前版本 ${update.currentVersionName}，新版本 ${update.version}",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = update.changelog,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (update.changelog.isNotBlank()) {
-                    Text(
-                        text = update.changelog,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (message.isNotBlank()) {
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = when (status) {
-                            AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
-                            AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
-                if (status == AppUpdateStatus.INSTALL_PERMISSION_REQUIRED) {
-                    Text(
-                        text = "请在系统页面允许 DraARL 安装未知应用，返回后会继续更新。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (busy) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
             }
-        },
-        confirmButton = {
-            Button(onClick = onUpdate, enabled = !busy) {
+            if (message.isNotBlank()) {
                 Text(
-                    when (status) {
-                        AppUpdateStatus.READY_TO_INSTALL -> "重新打开安装器"
-                        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> "继续更新"
-                        AppUpdateStatus.ERROR -> "重试"
-                        AppUpdateStatus.DOWNLOADING -> "下载中"
-                        else -> "立即更新"
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when (status) {
+                        AppUpdateStatus.ERROR -> MaterialTheme.colorScheme.error
+                        AppUpdateStatus.INSTALL_PERMISSION_REQUIRED -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     }
                 )
             }
-        },
-        dismissButton = if (canDismiss) {
-            {
-                TextButton(onClick = onDismiss) {
-                    Text("稍后")
-                }
+            if (status == AppUpdateStatus.INSTALL_PERMISSION_REQUIRED) {
+                Text(
+                    text = "请在系统页面允许 DraARL 安装未知应用，返回后会继续更新。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-        } else {
-            null
+            if (busy) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
-    )
+    }
 }
 
 @Composable

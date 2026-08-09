@@ -38,7 +38,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -79,6 +78,11 @@ import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.ReplaceableDevice
 import cn.silverdragon.draarl.data.deviceModelName
 import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlConfirmation
+import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
+import cn.silverdragon.draarl.ui.components.DraarlDialog
 import cn.silverdragon.draarl.ui.components.EmptyState
 import cn.silverdragon.draarl.ui.components.StatusIndicator
 import cn.silverdragon.draarl.ui.components.StatusPill
@@ -536,32 +540,23 @@ private fun GroupPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (Group?) -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(vertical = 14.dp)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
-                )
-                LazyColumn(modifier = Modifier.fillMaxWidth().height(360.dp)) {
-                    if (allowNone) {
-                        item(key = "none") {
-                            PickerRow("未设置", "只登记，不参与转发", selectedGroupId == null) { onSelect(null) }
-                        }
-                    }
-                    items(groups, key = Group::id) { group ->
-                        PickerRow(
-                            group.name,
-                            "ID ${group.id} · ${if (group.isPrivate) "私有" else "公开"}",
-                            group.id == selectedGroupId
-                        ) { onSelect(group) }
-                    }
+    DraarlDialog(
+        title = title,
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction("取消", onDismiss)
+    ) {
+        LazyColumn(modifier = Modifier.fillMaxWidth().height(360.dp)) {
+            if (allowNone) {
+                item(key = "none") {
+                    PickerRow("未设置", "只登记，不参与转发", selectedGroupId == null) { onSelect(null) }
                 }
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End).padding(end = 8.dp)
-                ) { Text("取消") }
+            }
+            items(groups, key = Group::id) { group ->
+                PickerRow(
+                    group.name,
+                    "ID ${group.id} · ${if (group.isPrivate) "私有" else "公开"}",
+                    group.id == selectedGroupId
+                ) { onSelect(group) }
             }
         }
     }
@@ -590,26 +585,25 @@ private fun PickerRow(title: String, detail: String, selected: Boolean, onClick:
 @Composable
 private fun RenameDeviceDialog(device: Device, busy: Boolean, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     var name by remember(device.id) { mutableStateOf(device.name) }
-    AlertDialog(
+    DraarlDialog(
+        title = "修改设备名称",
         onDismissRequest = onDismiss,
-        title = { Text("修改设备名称") },
-        text = {
-            OutlinedTextField(
-                name,
-                { name = it },
-                label = { Text("设备名称") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(name.trim()) },
-                enabled = name.isNotBlank() && !busy
-            ) { Text("保存") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") } }
-    )
+        dismissAction = DraarlAction("取消", onDismiss, enabled = !busy),
+        confirmAction = DraarlAction(
+            "保存",
+            { onSave(name.trim()) },
+            enabled = name.isNotBlank() && !busy,
+            style = CommandStyle.PRIMARY
+        )
+    ) {
+        OutlinedTextField(
+            name,
+            { name = it },
+            label = { Text("设备名称") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(18.dp)
+        )
+    }
 }
 
 @Composable
@@ -805,49 +799,48 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
     var visible by remember { mutableStateOf(false) }
     var confirmRegenerate by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    Dialog(onDismissRequest = onClose) {
-        Surface(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("设备密码", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text("此密码只用于硬件设备接入，不是账号登录密码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (controller.deviceManagement.busy && controller.deviceManagement.passwordInfo == null) {
-                    Box(
-                        Modifier.fillMaxWidth().height(90.dp),
-                        contentAlignment = Alignment.Center
-                    ) { CircularProgressIndicator() }
-                } else {
+    DraarlDialog(
+        title = "设备密码",
+        onDismissRequest = onClose,
+        dismissAction = DraarlAction(
+            label = "刷新密码",
+            onClick = { confirmRegenerate = true },
+            enabled = !controller.deviceManagement.busy
+        ),
+        confirmAction = DraarlAction("关闭", onClose, style = CommandStyle.PRIMARY)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("此密码只用于硬件设备接入，不是账号登录密码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (controller.deviceManagement.busy && controller.deviceManagement.passwordInfo == null) {
+                Box(
+                    Modifier.fillMaxWidth().height(90.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+            } else {
+                Text(
+                    "账号",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(controller.session.uiState.user?.username.orEmpty(), fontFamily = FontFamily.Monospace)
+                Text(
+                    "设备密码",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "账号",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (visible) controller.deviceManagement.passwordInfo?.password.orEmpty() else "••••••••",
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
                     )
-                    Text(controller.session.uiState.user?.username.orEmpty(), fontFamily = FontFamily.Monospace)
-                    Text(
-                        "设备密码",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (visible) controller.deviceManagement.passwordInfo?.password.orEmpty() else "••••••••",
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(onClick = { visible = !visible }) {
-                            Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "显示或隐藏密码")
-                        }
-                        IconButton(onClick = {
-                            copyText(context, "设备密码", controller.deviceManagement.passwordInfo?.password.orEmpty())
-                        }) { Icon(Icons.Default.ContentCopy, "复制密码") }
+                    IconButton(onClick = { visible = !visible }) {
+                        Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "显示或隐藏密码")
                     }
-                }
-                Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { confirmRegenerate = true },
-                        enabled = !controller.deviceManagement.busy
-                    ) { Text("刷新密码") }
-                    Button(onClick = onClose) { Text("关闭") }
+                    IconButton(onClick = {
+                        copyText(context, "设备密码", controller.deviceManagement.passwordInfo?.password.orEmpty())
+                    }) { Icon(Icons.Default.ContentCopy, "复制密码") }
                 }
             }
         }
@@ -884,62 +877,64 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
         }
     }
 
-    Dialog(onDismissRequest = onClose) {
-        Surface(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text("动态码绑定", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                when {
-                    result != null -> BindingResultContent(result, context)
+    DraarlDialog(
+        title = "动态码绑定",
+        onDismissRequest = onClose,
+        dismissAction = DraarlAction(if (result == null) "取消" else "完成", onClose),
+        confirmAction = when {
+            result != null -> null
 
-                    preview != null -> BindingPreviewContent(
-                        preview = preview,
-                        ssid = ssid,
-                        onSsidChange = {
-                            replacement = null
-                            ssid = it.filter(Char::isDigit).take(3)
-                        },
-                        replacement = replacement,
-                        onReplacement = {
-                            replacement = it
-                            ssid = it.ssid.toString()
-                        }
+            preview != null -> DraarlAction(
+                label = "提交配置",
+                onClick = {
+                    controller.deviceManagement.submitBinding(
+                        ssid.toIntOrNull(),
+                        replacement?.deviceId
                     )
+                },
+                enabled = !controller.deviceManagement.busy && (ssid.isNotBlank() || replacement != null),
+                style = CommandStyle.PRIMARY
+            )
 
-                    else -> {
-                        Text("输入设备屏幕或串口显示的 6 位动态码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedTextField(
-                            code,
-                            { code = it.filter(Char::isDigit).take(6) },
-                            label = { Text("6 位动态码") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+            else -> DraarlAction(
+                label = "下一步",
+                onClick = { controller.deviceManagement.lookupBindCode(code) },
+                enabled = !controller.deviceManagement.busy && code.length == 6,
+                style = CommandStyle.PRIMARY
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            when {
+                result != null -> BindingResultContent(result, context)
+
+                preview != null -> BindingPreviewContent(
+                    preview = preview,
+                    ssid = ssid,
+                    onSsidChange = {
+                        replacement = null
+                        ssid = it.filter(Char::isDigit).take(3)
+                    },
+                    replacement = replacement,
+                    onReplacement = {
+                        replacement = it
+                        ssid = it.ssid.toString()
                     }
-                }
-                Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onClose) { Text(if (result == null) "取消" else "完成") }
-                    when {
-                        result != null -> Unit
+                )
 
-                        preview != null -> Button(
-                            onClick = {
-                                controller.deviceManagement.submitBinding(
-                                    ssid.toIntOrNull(),
-                                    replacement?.deviceId
-                                )
-                            },
-                            enabled = !controller.deviceManagement.busy && (ssid.isNotBlank() || replacement != null)
-                        ) { Text("提交配置") }
-
-                        else -> Button(
-                            onClick = { controller.deviceManagement.lookupBindCode(code) },
-                            enabled = !controller.deviceManagement.busy && code.length == 6
-                        ) { Text("下一步") }
-                    }
+                else -> {
+                    Text("输入设备屏幕或串口显示的 6 位动态码。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        code,
+                        { code = it.filter(Char::isDigit).take(6) },
+                        label = { Text("6 位动态码") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -1040,16 +1035,15 @@ private fun ConfirmDeviceActionDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    AlertDialog(
+    DraarlConfirmationDialog(
+        confirmation = DraarlConfirmation(
+            title = title,
+            message = message,
+            confirmLabel = confirmText,
+            confirmStyle = CommandStyle.DANGER
+        ),
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(confirmText, color = MaterialTheme.colorScheme.error)
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        onConfirm = onConfirm
     )
 }
 

@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -44,13 +43,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,8 +59,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.edit
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -72,29 +71,31 @@ import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.MapDistance
 import cn.silverdragon.draarl.maps.MapViewLifecycleController
+import cn.silverdragon.draarl.ui.components.DraarlConfirmation
+import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
 import com.amap.api.maps.MapsInitializer
-import com.amap.api.maps.model.LatLng
-import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.BitmapDescriptor
 import com.amap.api.maps.model.BitmapDescriptorFactory
+import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.LatLngBounds
+import com.amap.api.maps.model.MarkerOptions
 import com.amap.api.maps.model.PolygonOptions
 import com.amap.api.maps.model.PolylineOptions
 import com.amap.api.services.core.ServiceSettings
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationMapScreen(
     initialLocation: Wgs84LocationMessage?,
     onBack: () -> Unit,
-    onSend: (Wgs84LocationMessage) -> Boolean,
+    onSend: (Wgs84LocationMessage) -> Boolean
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -108,17 +109,17 @@ fun LocationMapScreen(
     }
 
     if (!privacyAccepted) {
-        AlertDialog(
+        DraarlConfirmationDialog(
+            confirmation = DraarlConfirmation(
+                title = "启用地图服务",
+                message = "标点和位置预览由高德地图提供。继续使用即同意为地图展示初始化高德地图 SDK。",
+                confirmLabel = "同意并继续"
+            ),
             onDismissRequest = onBack,
-            title = { Text("启用地图服务") },
-            text = { Text("标点和位置预览由高德地图提供。继续使用即同意为地图展示初始化高德地图 SDK。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    preferences.edit { putBoolean(MAP_PRIVACY_ACCEPTED, true) }
-                    privacyAccepted = true
-                }) { Text("同意并继续") }
-            },
-            dismissButton = { TextButton(onClick = onBack) { Text("取消") } },
+            onConfirm = {
+                preferences.edit { putBoolean(MAP_PRIVACY_ACCEPTED, true) }
+                privacyAccepted = true
+            }
         )
         return
     }
@@ -133,9 +134,9 @@ fun LocationMapScreen(
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                         }
-                    },
+                    }
                 )
-            },
+            }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("地图 Key 未配置，暂时无法使用标点位置")
@@ -175,7 +176,7 @@ fun LocationMapScreen(
                 currentWgs84 = current
                 distanceMeters = MapDistance.metersBetween(
                     current,
-                    GeoCoordinate(target.latitude, target.longitude),
+                    GeoCoordinate(target.latitude, target.longitude)
                 )
                 fitMeasurementRequest++
             } catch (error: CancellationException) {
@@ -189,20 +190,27 @@ fun LocationMapScreen(
     }
 
     val distancePermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        if (result.values.any { it }) locateForDistance()
-        else distanceError = "需要定位权限才能查询距离"
+        if (result.values.any { it }) {
+            locateForDistance()
+        } else {
+            distanceError = "需要定位权限才能查询距离"
+        }
     }
 
     fun requestDistance() {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val fine =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        val coarse =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
         if (fine || coarse) {
             locateForDistance()
         } else {
             distancePermission.launch(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             )
         }
     }
@@ -224,16 +232,16 @@ fun LocationMapScreen(
                             LocationMessageKind.CURRENT -> "当前位置"
                             LocationMessageKind.PINNED -> "标点位置"
                             null -> "选择位置"
-                        },
+                        }
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                },
+                }
             )
-        },
+        }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             ManagedAmapView(
@@ -249,14 +257,14 @@ fun LocationMapScreen(
                 measurementPath = distancePath,
                 measurementPointLabel = "我的位置",
                 fitMeasurementRequest = fitMeasurementRequest,
-                onCoordinateSelected = { selectedGcj = it },
+                onCoordinateSelected = { selectedGcj = it }
             )
             if (selectedGcj != null) {
                 SmallFloatingActionButton(
                     onClick = { recenterRequest++ },
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp),
                     containerColor = MaterialTheme.colorScheme.surface,
-                    contentColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(Icons.Default.CenterFocusStrong, contentDescription = "居中标点")
                 }
@@ -283,21 +291,21 @@ fun LocationMapScreen(
                                 kind = LocationMessageKind.PINNED,
                                 latitude = wgs84.latitude,
                                 longitude = wgs84.longitude,
-                                altitudeMeters = altitudeText.toDoubleOrNull(),
-                            ),
+                                altitudeMeters = altitudeText.toDoubleOrNull()
+                            )
                         )
                     },
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier.align(Alignment.BottomCenter)
                 )
             } ?: Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                 color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
+                tonalElevation = 6.dp
             ) {
                 Text(
                     "点击地图选择标点位置",
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
         }
@@ -305,11 +313,7 @@ fun LocationMapScreen(
 }
 
 @Composable
-internal fun AmapLocationPreview(
-    location: Wgs84LocationMessage,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+internal fun AmapLocationPreview(location: Wgs84LocationMessage, onOpen: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val privacyAccepted = context.getSharedPreferences(MAP_PREFERENCES, Context.MODE_PRIVATE)
         .getBoolean(MAP_PRIVACY_ACCEPTED, false)
@@ -331,14 +335,14 @@ internal fun AmapLocationPreview(
             .fillMaxWidth()
             .height(136.dp)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
     ) {
         if (mapBitmap != null) {
             Image(
                 bitmap = mapBitmap!!.asImageBitmap(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Crop
             )
         } else if (privacyAccepted && hasAmapApiKey(context)) {
             remember(context) { initializeAmapServices(context) }
@@ -365,23 +369,23 @@ internal fun AmapLocationPreview(
 
                         override fun onMapScreenShot(bitmap: Bitmap?, status: Int) = deliver(bitmap)
                     })
-                },
+                }
             )
         } else {
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.Center
             ) {
                 Icon(
                     Icons.Default.Map,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = MaterialTheme.colorScheme.primary
                 )
                 Text(
                     "点击查看地图",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -391,8 +395,8 @@ internal fun AmapLocationPreview(
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
-                    onClick = onOpen,
-                ),
+                    onClick = onOpen
+                )
         )
     }
 }
@@ -419,7 +423,7 @@ internal fun ManagedAmapView(
     fitMeasurementRequest: Int = 0,
     onCoordinateSelected: (LatLng) -> Unit = {},
     onMapClick: (LatLng) -> Unit = {},
-    onMapLoaded: ((AMap) -> Unit)? = null,
+    onMapLoaded: ((AMap) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -427,7 +431,7 @@ internal fun ManagedAmapView(
     val lifecycleController = remember(mapView) {
         MapViewLifecycleController(
             resumeView = mapView::onResume,
-            pauseView = mapView::onPause,
+            pauseView = mapView::onPause
         )
     }
     var map by remember { mutableStateOf<AMap?>(null) }
@@ -477,10 +481,18 @@ internal fun ManagedAmapView(
                 if (allowSelection) onCoordinateSelected(selected)
                 onMapClick(selected)
             }
-        },
+        }
     )
 
-    LaunchedEffect(map, coordinate, markerIcon, polygonPoints, measurementPoints, measurementPath, measurementPointLabel) {
+    LaunchedEffect(
+        map,
+        coordinate,
+        markerIcon,
+        polygonPoints,
+        measurementPoints,
+        measurementPath,
+        measurementPointLabel
+    ) {
         val aMap = map ?: return@LaunchedEffect
         aMap.clear()
         coordinate?.let {
@@ -490,7 +502,7 @@ internal fun ManagedAmapView(
                     .anchor(0.5f, 1f)
                     .zIndex(20f)
                     .draggable(false)
-                    .apply { markerIcon?.let(::icon) },
+                    .apply { markerIcon?.let(::icon) }
             )
         }
         if (polygonPoints.size >= 3) {
@@ -500,7 +512,7 @@ internal fun ManagedAmapView(
                     .strokeColor(MAP_GRID_STROKE_COLOR)
                     .fillColor(MAP_GRID_FILL_COLOR)
                     .strokeWidth(4f)
-                    .zIndex(10f),
+                    .zIndex(10f)
             )
         }
         if (measurementPath.size >= 2) {
@@ -509,18 +521,26 @@ internal fun ManagedAmapView(
                     .addAll(measurementPath)
                     .color(MAP_MEASUREMENT_COLOR)
                     .width(8f)
-                    .zIndex(15f),
+                    .zIndex(15f)
             )
         }
         measurementPoints.forEachIndexed { index, point ->
             aMap.addMarker(
                 MarkerOptions()
                     .position(point)
-                    .title(if (measurementPoints.size == 1) measurementPointLabel else "$measurementPointLabel ${index + 1}")
+                    .title(
+                        if (measurementPoints.size ==
+                            1
+                        ) {
+                            measurementPointLabel
+                        } else {
+                            "$measurementPointLabel ${index + 1}"
+                        }
+                    )
                     .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE))
                     .anchor(0.5f, 1f)
                     .zIndex(18f)
-                    .draggable(false),
+                    .draggable(false)
             )
         }
     }
@@ -580,17 +600,17 @@ private fun LocationDetailsPanel(
     onMeasureDistance: () -> Unit,
     onAltitudeChange: (String) -> Unit,
     onSend: () -> Unit,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier
 ) {
     val altitudeValid = altitudeText.isBlank() || altitudeText.toDoubleOrNull() != null
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
+        tonalElevation = 6.dp
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(PaddingValues(horizontal = 16.dp, vertical = 14.dp)),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -598,7 +618,7 @@ private fun LocationDetailsPanel(
                     Text("WGS-84", style = MaterialTheme.typography.labelMedium)
                     Text(
                         String.format(Locale.US, "%.6f, %.6f", latitude, longitude),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
@@ -606,27 +626,27 @@ private fun LocationDetailsPanel(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(
                             altitudeText.toDoubleOrNull()?.let { "海拔 ${String.format(Locale.US, "%.1f", it)} 米" }
                                 ?: "未提供海拔",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         distanceMeters?.let { distance ->
                             Text(
                                 "距当前位置 ${MapDistance.format(distance)}",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                         if (distanceError.isNotBlank()) {
                             Text(
                                 distanceError,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -636,7 +656,10 @@ private fun LocationDetailsPanel(
                     }
                 }
             } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     OutlinedTextField(
                         value = altitudeText,
                         onValueChange = onAltitudeChange,
@@ -644,7 +667,7 @@ private fun LocationDetailsPanel(
                         label = { Text("海拔（米，可选）") },
                         singleLine = true,
                         isError = !altitudeValid,
-                        supportingText = if (altitudeValid) null else ({ Text("请输入有效数字") }),
+                        supportingText = if (altitudeValid) null else ({ Text("请输入有效数字") })
                     )
                     Button(onClick = onSend, enabled = altitudeValid) { Text("发送") }
                 }

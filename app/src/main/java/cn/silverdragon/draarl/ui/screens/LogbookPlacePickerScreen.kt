@@ -19,7 +19,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -51,27 +50,25 @@ import cn.silverdragon.draarl.maps.CoordinateConverter
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.LastMapLocationStore
 import cn.silverdragon.draarl.maps.MaidenheadLocator
+import cn.silverdragon.draarl.ui.components.DraarlConfirmation
+import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 internal data class LogbookPlaceSelection(
     val qth: String,
     val latitude: Double,
     val longitude: Double,
-    val locator: String,
+    val locator: String
 )
 
 @Composable
-internal fun LogbookPlacePickerScreen(
-    title: String,
-    onBack: () -> Unit,
-    onConfirm: (LogbookPlaceSelection) -> Unit,
-) {
+internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfirm: (LogbookPlaceSelection) -> Unit) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
     val preferences = remember(context) { context.getSharedPreferences(MAP_PREFERENCES, Context.MODE_PRIVATE) }
@@ -79,17 +76,17 @@ internal fun LogbookPlacePickerScreen(
         mutableStateOf(preferences.getBoolean(MAP_PRIVACY_ACCEPTED, false))
     }
     if (!privacyAccepted) {
-        AlertDialog(
+        DraarlConfirmationDialog(
+            confirmation = DraarlConfirmation(
+                title = "启用地点搜索",
+                message = "地点搜索、地址解析和地图选点由高德地图提供。",
+                confirmLabel = "同意并继续"
+            ),
             onDismissRequest = onBack,
-            title = { Text("启用地点搜索") },
-            text = { Text("地点搜索、地址解析和地图选点由高德地图提供。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    preferences.edit { putBoolean(MAP_PRIVACY_ACCEPTED, true) }
-                    privacyAccepted = true
-                }) { Text("同意并继续") }
-            },
-            dismissButton = { TextButton(onClick = onBack) { Text("取消") } },
+            onConfirm = {
+                preferences.edit { putBoolean(MAP_PRIVACY_ACCEPTED, true) }
+                privacyAccepted = true
+            }
         )
         return
     }
@@ -181,11 +178,11 @@ internal fun LogbookPlacePickerScreen(
                 recenterRequest = recenterRequest,
                 mapType = mapType,
                 onCoordinateSelected = ::resolve,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize()
             )
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 OutlinedTextField(
                     value = query,
@@ -208,7 +205,7 @@ internal fun LogbookPlacePickerScreen(
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { search() }),
+                    keyboardActions = KeyboardActions(onSearch = { search() })
                 )
                 if (searchBusy) {
                     Surface(shape = MaterialTheme.shapes.small, tonalElevation = 4.dp) {
@@ -231,14 +228,14 @@ internal fun LogbookPlacePickerScreen(
                                         query = place.name
                                         results = emptyList()
                                         recenterRequest++
-                                    }.padding(horizontal = 14.dp, vertical = 11.dp),
+                                    }.padding(horizontal = 14.dp, vertical = 11.dp)
                                 ) {
                                     Text(place.name, style = MaterialTheme.typography.bodyLarge)
                                     if (place.address.isNotBlank()) {
                                         Text(
                                             place.address,
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -254,20 +251,26 @@ internal fun LogbookPlacePickerScreen(
                 val locator = MaidenheadLocator.encode(wgs84.latitude, wgs84.longitude)
                 Surface(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                    tonalElevation = 7.dp,
+                    tonalElevation = 7.dp
                 ) {
                     Column(
                         modifier = Modifier.padding(PaddingValues(horizontal = 16.dp, vertical = 12.dp)),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
                         Text(
                             selectedPlace?.name.orEmpty().ifBlank { if (resolving) "正在解析地点" else "已选择地图位置" },
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            String.format(Locale.US, "WGS-84  %.6f, %.6f  ·  %s", wgs84.latitude, wgs84.longitude, locator),
+                            String.format(
+                                Locale.US,
+                                "WGS-84  %.6f, %.6f  ·  %s",
+                                wgs84.latitude,
+                                wgs84.longitude,
+                                locator
+                            ),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
                         Button(
@@ -280,12 +283,12 @@ internal fun LogbookPlacePickerScreen(
                                         qth = "$placeName · $locator",
                                         latitude = wgs84.latitude,
                                         longitude = wgs84.longitude,
-                                        locator = locator,
-                                    ),
+                                        locator = locator
+                                    )
                                 )
                             },
                             enabled = !resolving,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth()
                         ) { Text("确认此地点") }
                     }
                 }

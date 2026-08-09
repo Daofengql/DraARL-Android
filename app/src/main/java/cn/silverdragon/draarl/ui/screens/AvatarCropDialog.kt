@@ -4,24 +4,18 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -37,15 +31,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlDialog
 import java.io.ByteArrayOutputStream
 
 @Composable
-fun AvatarCropDialog(
-    imageUri: Uri,
-    onDismiss: () -> Unit,
-    onConfirm: (ByteArray) -> Unit,
-) {
+fun AvatarCropDialog(imageUri: Uri, onDismiss: () -> Unit, onConfirm: (ByteArray) -> Unit) {
     val context = LocalContext.current
     val originalBitmap = remember(imageUri) {
         try {
@@ -66,107 +58,86 @@ fun AvatarCropDialog(
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 6.dp,
+    DraarlDialog(
+        title = "裁切头像",
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction("取消", onDismiss),
+        confirmAction = DraarlAction(
+            label = "确认",
+            onClick = { originalBitmap?.let { onConfirm(centerCropAvatar(it)) } },
+            enabled = originalBitmap != null,
+            style = CommandStyle.PRIMARY
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    "裁切头像",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Spacer(Modifier.height(16.dp))
-
-                if (imageBitmap != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(250.dp)
-                            .border(3.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                            .clip(CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Image(
-                            bitmap = imageBitmap,
-                            contentDescription = "裁切预览",
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .graphicsLayer(
-                                    scaleX = scale,
-                                    scaleY = scale,
-                                    translationX = offsetX,
-                                    translationY = offsetY,
-                                )
-                                .pointerInput(Unit) {
-                                    detectTransformGestures { _, pan, zoom, _ ->
-                                        scale = (scale * zoom).coerceIn(0.5f, 5f)
-                                        offsetX += pan.x
-                                        offsetY += pan.y
-                                    }
-                                },
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "双指缩放和拖动调整头像位置",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    Text(
-                        "无法加载图片",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+            if (imageBitmap != null) {
+                Box(
+                    modifier = Modifier
+                        .size(250.dp)
+                        .border(3.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                        .clip(CircleShape),
+                    contentAlignment = Alignment.Center
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("取消")
-                    }
-                    Button(
-                        onClick = {
-                            if (originalBitmap != null) {
-                                // 创建裁切后的位图
-                                val size = minOf(originalBitmap.width, originalBitmap.height)
-                                val croppedBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-                                val canvas = android.graphics.Canvas(croppedBitmap)
-
-                                // 计算绘制位置（简化版：居中裁切）
-                                val srcX = (originalBitmap.width - size) / 2
-                                val srcY = (originalBitmap.height - size) / 2
-
-                                canvas.drawBitmap(
-                                    originalBitmap,
-                                    android.graphics.Rect(srcX, srcY, srcX + size, srcY + size),
-                                    android.graphics.Rect(0, 0, size, size),
-                                    android.graphics.Paint().apply {
-                                        isAntiAlias = true
-                                        isFilterBitmap = true
-                                    }
-                                )
-
-                                // 输出JPEG
-                                val outputStream = ByteArrayOutputStream()
-                                croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
-                                onConfirm(outputStream.toByteArray())
-                            }
-                        },
-                        enabled = originalBitmap != null,
-                    ) {
-                        Text("确认")
-                    }
+                    Image(
+                        bitmap = imageBitmap,
+                        contentDescription = "裁切预览",
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                translationX = offsetX,
+                                translationY = offsetY
+                            )
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, zoom, _ ->
+                                    scale = (scale * zoom).coerceIn(0.5f, 5f)
+                                    offsetX += pan.x
+                                    offsetY += pan.y
+                                }
+                            },
+                        contentScale = ContentScale.Crop
+                    )
                 }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "双指缩放和拖动调整头像位置",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    "无法加载图片",
+                    color = MaterialTheme.colorScheme.error
+                )
             }
         }
+    }
+}
+
+private fun centerCropAvatar(originalBitmap: Bitmap): ByteArray {
+    val size = minOf(originalBitmap.width, originalBitmap.height)
+    val croppedBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(croppedBitmap)
+    val srcX = (originalBitmap.width - size) / 2
+    val srcY = (originalBitmap.height - size) / 2
+
+    canvas.drawBitmap(
+        originalBitmap,
+        android.graphics.Rect(srcX, srcY, srcX + size, srcY + size),
+        android.graphics.Rect(0, 0, size, size),
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            isFilterBitmap = true
+        }
+    )
+
+    return ByteArrayOutputStream().use { output ->
+        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)
+        output.toByteArray()
     }
 }

@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlConfirmation
+import cn.silverdragon.draarl.ui.components.DraarlConfirmationContent
 import cn.silverdragon.draarl.ui.components.DraarlDialogContent
 import cn.silverdragon.draarl.ui.components.DraarlSettings
 import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
@@ -98,6 +100,36 @@ fun DangerDialogLightBaseline() {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Confirmation Dialog Dark 2x Text",
+    widthDp = 320,
+    heightDp = 620,
+    fontScale = 2f,
+    showBackground = true
+)
+@Composable
+fun ConfirmationDialogDarkLargeTextBaseline() {
+    DraarlTheme(darkTheme = true) {
+        Surface(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(verticalArrangement = Arrangement.Center) {
+                DraarlConfirmationContent(
+                    confirmation = DraarlConfirmation(
+                        title = "启用地图服务",
+                        message = "地点搜索、地址解析和地图选点由高德地图提供。继续前请确认是否初始化地图服务。",
+                        confirmLabel = "同意并继续"
+                    ),
+                    onDismiss = {},
+                    onConfirm = {}
+                )
             }
         }
     }

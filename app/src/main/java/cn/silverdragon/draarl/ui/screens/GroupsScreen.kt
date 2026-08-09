@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.PersonOff
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -81,6 +80,11 @@ import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.deviceModelName
 import cn.silverdragon.draarl.ui.components.CommandIconButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlConfirmation
+import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
+import cn.silverdragon.draarl.ui.components.DraarlDialog
 import cn.silverdragon.draarl.ui.components.EmptyState
 import cn.silverdragon.draarl.ui.components.StatusIndicator
 import cn.silverdragon.draarl.ui.components.StatusPill
@@ -580,67 +584,67 @@ private fun ManagementRow(
 @Composable
 private fun GroupSearchDialog(controller: AppController, onClose: () -> Unit, onJoin: (Group) -> Unit) {
     var keyword by remember { mutableStateOf("") }
-    Dialog(onDismissRequest = onClose) {
-        Surface(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("搜索群组", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = keyword,
-                    onValueChange = { keyword = it },
-                    placeholder = { Text("输入群组 ID 或名称") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            controller.groupManagement.search(keyword)
-                        }, enabled = !controller.groupManagement.busy) {
-                            Icon(Icons.Default.Search, contentDescription = "搜索")
-                        }
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (controller.groupManagement.busy) {
-                    Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
+    DraarlDialog(
+        title = "搜索群组",
+        onDismissRequest = onClose,
+        dismissAction = DraarlAction("关闭", onClose)
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = keyword,
+                onValueChange = { keyword = it },
+                placeholder = { Text("输入群组 ID 或名称") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    IconButton(onClick = {
+                        controller.groupManagement.search(keyword)
+                    }, enabled = !controller.groupManagement.busy) {
+                        Icon(Icons.Default.Search, contentDescription = "搜索")
                     }
-                } else if (controller.groupManagement.searchResults.isEmpty()) {
-                    Text(
-                        "搜索结果会显示在这里",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 20.dp)
-                    )
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().height(280.dp)) {
-                        items(controller.groupManagement.searchResults, key = Group::id) { group ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                GroupAvatar(group, 42)
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(group.name, fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        "ID ${group.id} · ${group.ownerCallsign.ifBlank { "系统" }}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                when {
-                                    group.isPrivate && !group.joined -> OutlinedButton(onClick = { onJoin(group) }) {
-                                        Text("加入")
-                                    }
-
-                                    group.joined -> StatusPill("已加入", MaterialTheme.appColors.statusConnected)
-
-                                    else -> StatusPill("公开", MaterialTheme.colorScheme.primary)
-                                }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (controller.groupManagement.busy) {
+                Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else if (controller.groupManagement.searchResults.isEmpty()) {
+                Text(
+                    "搜索结果会显示在这里",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 20.dp)
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth().height(280.dp)) {
+                    items(controller.groupManagement.searchResults, key = Group::id) { group ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            GroupAvatar(group, 42)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(group.name, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "ID ${group.id} · ${group.ownerCallsign.ifBlank { "系统" }}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                            HorizontalDivider()
+                            when {
+                                group.isPrivate && !group.joined -> OutlinedButton(onClick = { onJoin(group) }) {
+                                    Text("加入")
+                                }
+
+                                group.joined -> StatusPill("已加入", MaterialTheme.appColors.statusConnected)
+
+                                else -> StatusPill("公开", MaterialTheme.colorScheme.primary)
+                            }
                         }
+                        HorizontalDivider()
                     }
                 }
-                TextButton(onClick = onClose, modifier = Modifier.align(Alignment.End)) { Text("关闭") }
             }
         }
     }
@@ -657,63 +661,60 @@ private fun GroupEditorDialog(
     var type by remember(group) { mutableIntStateOf(group?.type ?: 1) }
     var password by remember(group) { mutableStateOf("") }
     var note by remember(group) { mutableStateOf(group?.note.orEmpty()) }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text(if (group == null) "新建群组" else "群组设置", style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(name, {
-                    name = it
-                }, label = { Text("群组名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = type == 1,
-                        onClick = { type = 1 },
-                        label = { Text("公开") },
-                        leadingIcon = {
-                            Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                        }
-                    )
-                    FilterChip(
-                        selected = type == 2,
-                        onClick = { type = 2 },
-                        label = { Text("私有") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
-                        }
-                    )
-                }
-                if (type == 2) {
-                    OutlinedTextField(
-                        password,
-                        { password = it },
-                        label = { Text(if (group == null) "加入密码" else "重置密码（留空不修改）") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+    DraarlDialog(
+        title = if (group == null) "新建群组" else "群组设置",
+        onDismissRequest = onDismiss,
+        dismissAction = DraarlAction("取消", onDismiss, enabled = !busy),
+        confirmAction = DraarlAction(
+            label = if (busy) "保存中" else "保存",
+            onClick = { onSave(name, type, password, note) },
+            enabled = !busy,
+            style = CommandStyle.PRIMARY
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            OutlinedTextField(name, {
+                name = it
+            }, label = { Text("群组名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = type == 1,
+                    onClick = { type = 1 },
+                    label = { Text("公开") },
+                    leadingIcon = {
+                        Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                )
+                FilterChip(
+                    selected = type == 2,
+                    onClick = { type = 2 },
+                    label = { Text("私有") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                )
+            }
+            if (type == 2) {
                 OutlinedTextField(
-                    note,
-                    { note = it },
-                    label = { Text("群公告（可选）") },
-                    minLines = 2,
-                    maxLines = 4,
+                    password,
+                    { password = it },
+                    label = { Text(if (group == null) "加入密码" else "重置密码（留空不修改）") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onDismiss, enabled = !busy) { Text("取消") }
-                    Button(onClick = { onSave(name, type, password, note) }, enabled = !busy) {
-                        if (busy) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        } else {
-                            Text("保存")
-                        }
-                    }
-                }
             }
+            OutlinedTextField(
+                note,
+                { note = it },
+                label = { Text("群公告（可选）") },
+                minLines = 2,
+                maxLines = 4,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -721,24 +722,26 @@ private fun GroupEditorDialog(
 @Composable
 private fun PasswordJoinDialog(group: Group, onDismiss: () -> Unit, onJoin: (String) -> Unit) {
     var password by remember(group.id) { mutableStateOf("") }
-    AlertDialog(
+    DraarlDialog(
+        title = "加入 ${group.name}",
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Lock, contentDescription = null) },
-        title = { Text("加入 ${group.name}") },
-        text = {
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("群组密码") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onJoin(password) }, enabled = password.isNotBlank()) { Text("加入") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
+        dismissAction = DraarlAction("取消", onDismiss),
+        confirmAction = DraarlAction(
+            "加入",
+            { onJoin(password) },
+            enabled = password.isNotBlank(),
+            style = CommandStyle.PRIMARY
+        )
+    ) {
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("群组密码") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(18.dp)
+        )
+    }
 }
 
 @Composable
@@ -855,14 +858,15 @@ private fun ConfirmActionDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    AlertDialog(
+    DraarlConfirmationDialog(
+        confirmation = DraarlConfirmation(
+            title = title,
+            message = message,
+            confirmLabel = confirmText,
+            confirmStyle = CommandStyle.DANGER
+        ),
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text(confirmText, color = MaterialTheme.colorScheme.error) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        onConfirm = onConfirm
     )
 }
 

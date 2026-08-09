@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,19 +35,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.edit
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import cn.silverdragon.draarl.maps.CoordinateConverter
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.MaidenheadCell
 import cn.silverdragon.draarl.maps.MaidenheadLocator
+import cn.silverdragon.draarl.ui.components.DraarlConfirmation
+import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
 import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @Composable
 internal fun MaidenheadToolScreen(onBack: () -> Unit) {
@@ -58,17 +59,17 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
         mutableStateOf(preferences.getBoolean(MAP_PRIVACY_ACCEPTED, false))
     }
     if (!privacyAccepted) {
-        AlertDialog(
+        DraarlConfirmationDialog(
+            confirmation = DraarlConfirmation(
+                title = "启用地图服务",
+                message = "梅登海德网格正反查使用高德地图展示位置和边界。",
+                confirmLabel = "同意并继续"
+            ),
             onDismissRequest = onBack,
-            title = { Text("启用地图服务") },
-            text = { Text("梅登海德网格正反查使用高德地图展示位置和边界。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    preferences.edit { putBoolean(MAP_PRIVACY_ACCEPTED, true) }
-                    privacyAccepted = true
-                }) { Text("同意并继续") }
-            },
-            dismissButton = { TextButton(onClick = onBack) { Text("取消") } },
+            onConfirm = {
+                preferences.edit { putBoolean(MAP_PRIVACY_ACCEPTED, true) }
+                privacyAccepted = true
+            }
         )
         return
     }
@@ -120,22 +121,29 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
     }
 
     val locationPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        if (result.values.any { it }) locateCurrentGrid()
-        else if (input.isBlank()) error = "需要定位权限才能显示当前设备所在网格"
+        if (result.values.any { it }) {
+            locateCurrentGrid()
+        } else if (input.isBlank()) {
+            error = "需要定位权限才能显示当前设备所在网格"
+        }
     }
 
     LaunchedEffect(Unit) {
         if (defaultLocateAttempted) return@LaunchedEffect
         defaultLocateAttempted = true
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val fine =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        val coarse =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
         if (fine || coarse) {
             locateCurrentGrid()
         } else {
             locationPermission.launch(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
             )
         }
     }
@@ -160,12 +168,12 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
                     val locator = MaidenheadLocator.encode(wgs84.latitude, wgs84.longitude, precisionPairs)
                     showCell(MaidenheadLocator.decode(locator), wgs84)
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize()
             )
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                 shape = MaterialTheme.shapes.small,
-                tonalElevation = 5.dp,
+                tonalElevation = 5.dp
             ) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -181,15 +189,18 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
                             IconButton(onClick = ::locateInput) {
                                 Icon(Icons.Default.Search, contentDescription = "定位网格")
                             }
-                        },
+                        }
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text("点击精度", style = MaterialTheme.typography.bodySmall)
                         listOf(2 to "4 位", 3 to "6 位", 4 to "8 位").forEach { (pairs, label) ->
                             FilterChip(
                                 selected = precisionPairs == pairs,
                                 onClick = { precisionPairs = pairs },
-                                label = { Text(label) },
+                                label = { Text(label) }
                             )
                         }
                     }
@@ -201,37 +212,44 @@ internal fun MaidenheadToolScreen(onBack: () -> Unit) {
             selectedCell?.let { cell ->
                 Surface(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                    tonalElevation = 7.dp,
+                    tonalElevation = 7.dp
                 ) {
                     Column(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        Text(cell.locator, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                        Text(
+                            cell.locator,
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                         selectedWgs84?.let { point ->
                             Text(
                                 String.format(Locale.US, "坐标  %.6f, %.6f", point.latitude, point.longitude),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                         Text(
                             String.format(
                                 Locale.US,
                                 "范围  纬度 %.6f 至 %.6f  ·  经度 %.6f 至 %.6f",
-                                cell.south, cell.north, cell.west, cell.east,
+                                cell.south,
+                                cell.north,
+                                cell.west,
+                                cell.east
                             ),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             } ?: Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                tonalElevation = 6.dp,
+                tonalElevation = 6.dp
             ) {
                 Text(
                     if (locatingCurrent) "正在定位当前设备" else "输入网格定位，或点击地图正向计算",
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(16.dp)
                 )
             }
         }
@@ -245,5 +263,5 @@ private fun cellPolygonGcj02(cell: MaidenheadCell): List<LatLng> = listOf(
     GeoCoordinate(cell.south, cell.west),
     GeoCoordinate(cell.south, cell.east),
     GeoCoordinate(cell.north, cell.east),
-    GeoCoordinate(cell.north, cell.west),
+    GeoCoordinate(cell.north, cell.west)
 ).map(GeoCoordinate::toGcj02LatLng)

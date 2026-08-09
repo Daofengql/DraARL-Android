@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -54,6 +53,9 @@ import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.tools.LogbookEntry
 import cn.silverdragon.draarl.tools.LogbookTime
 import cn.silverdragon.draarl.tools.ToolsController
+import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.DraarlConfirmation
+import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
 
 @Composable
 internal fun LogbookScreen(controller: AppController, tools: ToolsController, onBack: () -> Unit) {
@@ -208,37 +210,37 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
         }
     }
     pendingDelete?.let { entry ->
-        AlertDialog(
+        DraarlConfirmationDialog(
+            confirmation = DraarlConfirmation(
+                title = "删除通联日志",
+                message = "确定删除与 ${entry.callsign} 的通联记录？",
+                confirmLabel = "删除",
+                confirmStyle = CommandStyle.DANGER
+            ),
             onDismissRequest = { pendingDelete = null },
-            title = { Text("删除通联日志") },
-            text = { Text("确定删除与 ${entry.callsign} 的通联记录？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingDelete = null
-                    tools.deleteLogbook(entry.id)
-                }) { Text("删除") }
-            },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }
+            onConfirm = {
+                pendingDelete = null
+                tools.deleteLogbook(entry.id)
+            }
         )
     }
     if (confirmBatchDelete) {
-        AlertDialog(
+        DraarlConfirmationDialog(
+            confirmation = DraarlConfirmation(
+                title = "批量删除通联日志",
+                message = "确定删除选中的 ${selectedIds.size} 条通联记录？此操作不可撤销。",
+                confirmLabel = "删除",
+                confirmStyle = CommandStyle.DANGER
+            ),
             onDismissRequest = { confirmBatchDelete = false },
-            title = { Text("批量删除通联日志") },
-            text = { Text("确定删除选中的 ${selectedIds.size} 条通联记录？此操作不可撤销。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmBatchDelete = false
-                        tools.deleteLogbooks(selectedIds) {
-                            selectionMode = false
-                            selectedIds = emptySet()
-                        }
-                    },
-                    enabled = !tools.logbookBusy
-                ) { Text("删除") }
+            onConfirm = {
+                confirmBatchDelete = false
+                tools.deleteLogbooks(selectedIds) {
+                    selectionMode = false
+                    selectedIds = emptySet()
+                }
             },
-            dismissButton = { TextButton(onClick = { confirmBatchDelete = false }) { Text("取消") } }
+            confirmEnabled = !tools.logbookBusy
         )
     }
 }
