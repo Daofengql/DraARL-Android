@@ -17,6 +17,7 @@ import cn.silverdragon.draarl.aprs.AprsEffects
 import cn.silverdragon.draarl.aprs.AprsIsClient
 import cn.silverdragon.draarl.aprs.AprsService
 import cn.silverdragon.draarl.auth.PublicAuthController
+import cn.silverdragon.draarl.concurrency.ControllerTaskRunner
 import cn.silverdragon.draarl.data.ApiAppDataSource
 import cn.silverdragon.draarl.data.AppDataFallback
 import cn.silverdragon.draarl.data.AppDataRefresher
@@ -72,7 +73,6 @@ import cn.silverdragon.draarl.update.AppUpdateManager
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -92,16 +92,11 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val sessionStore = SecureSessionStore(appContext)
     private val messageStore = RadioMessageStore(appContext)
     private val dashboardStore = DashboardCacheStore(appContext)
-    private val syncingOnlineDevices = AtomicBoolean(false)
-    private val pendingOnlineDevicesSync = AtomicBoolean(false)
-    private val syncingGroupCounts = AtomicBoolean(false)
-    private val groupCountsGeneration = AtomicInteger(0)
-    private val onlineDevicesGeneration = AtomicInteger(0)
-    private val groupSwitchGeneration = AtomicInteger(0)
     private val disposed = AtomicBoolean(false)
     private val checkingAppUpdate = AtomicBoolean(false)
     private val downloadingAppUpdate = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
+    private val onlineDevicesCoordinator = RefreshCoordinator()
     private val voiceAutoPlaySkippedIds = mutableSetOf<String>()
     private val playbackLevelThrottler = AudioLevelThrottler()
     private val transmitLevelThrottler = AudioLevelThrottler()
@@ -123,6 +118,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
             session.onRemoteSessionChanged(updatedSession)
         }
     }
+    private val groupCountsTasks = ControllerTaskRunner(viewModelScope, ioDispatcher) {}
+    private val onlineDevicesTasks = ControllerTaskRunner(viewModelScope, ioDispatcher) {}
     val messageController: RadioMessageController = RadioMessageController(
         remote = ApiRadioMessageRemoteDataSource(api),
         cache = StoredRadioMessageCache(messageStore),
@@ -233,9 +230,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         override fun onContextChanged(groupId: Int, selectionChanged: Boolean) {
             if (selectionChanged) {
                 stopVoiceAutoPlay(stopCurrent = true)
-                groupSwitchGeneration.incrementAndGet()
-                onlineDevicesGeneration.incrementAndGet()
-                pendingOnlineDevicesSync.set(false)
+                cancelOnlineDevicesRequests()
             }
             messageController.onContextChanged(
                 updatedAccount = api.currentSession()?.toRadioMessageAccount(),
@@ -644,27 +639,20 @@ class AppController internal constructor(application: Application, ioDispatcher:
 
     fun refreshGroupOnlineCounts() {
         val userId = session.uiState.user?.id ?: return
-        if (api.currentSession() == null || !syncingGroupCounts.compareAndSet(false, true)) return
-        val generation = groupCountsGeneration.incrementAndGet()
-        executor.execute {
-            try {
-                val stats = runCatching(api::getGroupStats).getOrDefault(emptyMap())
-                if (stats.isEmpty()) return@execute
-                mainHandler.post {
-                    val staleRequest = generation != groupCountsGeneration.get()
-                    val accountChanged = session.uiState.user?.id != userId
-                    if (disposed.get() || staleRequest || accountChanged) return@post
-                    if (!session.uiState.authenticated) return@post
-                    groups = groups.map { group ->
-                        stats[group.id]?.let { (online, total) ->
-                            group.copy(onlineCount = online, totalCount = total)
-                        } ?: group
-                    }
+        if (api.currentSession() == null) return
+        groupCountsTasks.launch(
+            operation = { api.getGroupStats() },
+            onSuccess = { stats ->
+                val active = !disposed.get() && session.uiState.authenticated
+                if (!active || session.uiState.user?.id != userId || stats.isEmpty()) return@launch
+                groups = groups.map { group ->
+                    stats[group.id]?.let { (online, total) ->
+                        group.copy(onlineCount = online, totalCount = total)
+                    } ?: group
                 }
-            } finally {
-                if (generation == groupCountsGeneration.get()) syncingGroupCounts.set(false)
-            }
-        }
+            },
+            onFailure = {}
+        )
     }
 
     fun sendText(text: String): Boolean {
@@ -891,39 +879,45 @@ class AppController internal constructor(application: Application, ioDispatcher:
     }
 
     private fun refreshOnlineDevices() {
+        if (session.uiState.user == null || api.currentSession() == null) return
+        val generation = onlineDevicesCoordinator.request() ?: return
+        startOnlineDevicesRefresh(generation)
+    }
+
+    private fun startOnlineDevicesRefresh(generation: Int) {
         val userId = session.uiState.user?.id
-        if (userId == null || api.currentSession() == null) return
-        if (!syncingOnlineDevices.compareAndSet(false, true)) {
-            pendingOnlineDevicesSync.set(true)
-        } else {
-            pendingOnlineDevicesSync.set(false)
-            val generation = onlineDevicesGeneration.incrementAndGet()
-            val groupId = radioSession.uiState.selectedGroupId
-            executor.execute {
-                try {
-                    val onlineResult = runCatching { api.getOnlineDevices(groupId) }
-                    mainHandler.post {
-                        val sameRequest = generation == onlineDevicesGeneration.get() &&
-                            groupId == radioSession.uiState.selectedGroupId &&
-                            session.uiState.user?.id == userId
-                        val active = !disposed.get() && session.uiState.authenticated
-                        if (active && sameRequest) {
-                            onlineResult.onSuccess {
-                                onlineDevices = it
-                                messageController.onEvent(
-                                    RadioMessageEvent.OnlineDevicesChanged(it.map(OnlineDevice::username))
-                                )
-                            }
-                        }
-                    }
-                } finally {
-                    syncingOnlineDevices.set(false)
-                    if (pendingOnlineDevicesSync.getAndSet(false) && !disposed.get()) {
-                        mainHandler.post { refreshOnlineDevices() }
-                    }
-                }
-            }
+        if (userId == null || api.currentSession() == null || disposed.get()) {
+            cancelOnlineDevicesRequests()
+            return
         }
+        val groupId = radioSession.uiState.selectedGroupId
+        val started = onlineDevicesTasks.launch(
+            operation = { api.getOnlineDevices(groupId) },
+            onSuccess = { loaded -> completeOnlineDevicesRefresh(generation, userId, groupId, loaded) },
+            onFailure = { completeOnlineDevicesRefresh(generation, userId, groupId, null) }
+        )
+        if (!started) onlineDevicesCoordinator.cancel()
+    }
+
+    private fun completeOnlineDevicesRefresh(generation: Int, userId: Int, groupId: Int, loaded: List<OnlineDevice>?) {
+        val decision = onlineDevicesCoordinator.complete(generation)
+        val sameRequest = groupId == radioSession.uiState.selectedGroupId && session.uiState.user?.id == userId
+        val active = !disposed.get() && session.uiState.authenticated
+        val canApply = decision.applyResults && active && sameRequest
+        if (canApply && loaded != null) {
+            onlineDevices = loaded
+            messageController.onEvent(
+                RadioMessageEvent.OnlineDevicesChanged(loaded.map(OnlineDevice::username))
+            )
+        }
+        decision.nextGeneration?.let { nextGeneration ->
+            if (!disposed.get()) startOnlineDevicesRefresh(nextGeneration)
+        }
+    }
+
+    private fun cancelOnlineDevicesRequests() {
+        onlineDevicesCoordinator.cancel()
+        onlineDevicesTasks.cancel()
     }
 
     fun joinGroup(group: Group, password: String) {
@@ -953,6 +947,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
         mainHandler.removeCallbacksAndMessages(null)
         cancelRefreshAll()
         invalidateBackgroundRequests()
+        groupCountsTasks.close()
+        onlineDevicesTasks.close()
         if (toolsDelegate.isInitialized()) toolsDelegate.value.close()
         if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.close()
         if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.close()
@@ -1032,11 +1028,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
     }
 
     private fun invalidateBackgroundRequests() {
-        groupCountsGeneration.incrementAndGet()
-        onlineDevicesGeneration.incrementAndGet()
-        groupSwitchGeneration.incrementAndGet()
-        syncingGroupCounts.set(false)
-        pendingOnlineDevicesSync.set(false)
+        groupCountsTasks.cancel()
+        cancelOnlineDevicesRequests()
     }
 
     private fun cancelRefreshAll() {
