@@ -79,7 +79,7 @@
 
 - [ ] **分批升级依赖**
 
-- Lifecycle、Activity、Compose、JUnit 和 Espresso 按组升级。
+- Compose、JUnit 和 Espresso 按组升级。
 - 每组升级单独提交并运行完整门禁，不与 UI 或架构重构混合。
 - 删除未使用依赖，业务代码不得依赖其他库偶然带入的传递依赖。
 
