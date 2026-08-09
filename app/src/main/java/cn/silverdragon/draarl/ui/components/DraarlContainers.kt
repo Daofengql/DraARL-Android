@@ -236,9 +236,9 @@ private fun DraarlActionButton(action: DraarlAction, modifier: Modifier) {
 }
 
 @Composable
-private fun DraarlSheetHandle() {
+internal fun DraarlSheetHandle(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier.padding(vertical = 8.dp).size(width = 36.dp, height = 3.dp).background(
+        modifier = modifier.padding(vertical = 8.dp).size(width = 36.dp, height = 3.dp).background(
             color = MaterialTheme.colorScheme.outline,
             shape = RoundedCornerShape(2.dp)
         )
