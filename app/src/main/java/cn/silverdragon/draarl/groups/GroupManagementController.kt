@@ -98,6 +98,22 @@ class GroupManagementController(
         }
     )
 
+    fun join(group: Group, password: String) = launch(
+        operation = { api.joinGroup(group.id, password) },
+        onSuccess = {
+            showNotice("已加入 ${group.name}")
+            refreshAll()
+        }
+    )
+
+    fun leave(group: Group) = launch(
+        operation = { api.leaveGroup(group.id) },
+        onSuccess = {
+            showNotice("已退出 ${group.name}")
+            refreshAll()
+        }
+    )
+
     fun loadDevices(groupId: Int) {
         managedGroupId = groupId
         managedDevices = emptyList()

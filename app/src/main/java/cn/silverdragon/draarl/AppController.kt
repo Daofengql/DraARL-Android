@@ -72,7 +72,6 @@ import cn.silverdragon.draarl.update.AppUpdateEffects
 import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateManager
 import cn.silverdragon.draarl.update.AppUpdateStatus
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -87,9 +86,6 @@ class AppController internal constructor(application: Application, ioDispatcher:
 
     private val appContext = application.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val executor = Executors.newFixedThreadPool(4) { runnable ->
-        Thread(runnable, "draarl-app-worker")
-    }
     private val sessionStore = SecureSessionStore(appContext)
     private val messageStore = RadioMessageStore(appContext)
     private val dashboardStore = DashboardCacheStore(appContext)
@@ -824,27 +820,9 @@ class AppController internal constructor(application: Application, ioDispatcher:
         onlineDevicesTasks.cancel()
     }
 
-    fun joinGroup(group: Group, password: String) {
-        executor.execute {
-            runCatching { api.joinGroup(group.id, password) }
-                .onSuccess {
-                    mainHandler.post { notice = "已加入 ${group.name}" }
-                    refreshAll()
-                }
-                .onFailure { error -> mainHandler.post { notice = friendlyError(error) } }
-        }
-    }
+    fun joinGroup(group: Group, password: String) = groupManagement.join(group, password)
 
-    fun leaveGroup(group: Group) {
-        executor.execute {
-            runCatching { api.leaveGroup(group.id) }
-                .onSuccess {
-                    mainHandler.post { notice = "已退出 ${group.name}" }
-                    refreshAll()
-                }
-                .onFailure { error -> mainHandler.post { notice = friendlyError(error) } }
-        }
-    }
+    fun leaveGroup(group: Group) = groupManagement.leave(group)
 
     override fun onCleared() {
         if (!disposed.compareAndSet(false, true)) return
@@ -864,7 +842,6 @@ class AppController internal constructor(application: Application, ioDispatcher:
         aprs.close()
         messageController.close()
         radioSession.close()
-        executor.shutdownNow()
     }
 
     private fun prepareSessionResources(session: Session) {

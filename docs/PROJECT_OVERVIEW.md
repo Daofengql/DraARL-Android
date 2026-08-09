@@ -9,8 +9,8 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 187 | 28,046 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 68 | 5,976 | 277 个测试用例 |
+| 生产 Kotlin | 187 | 28,037 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 69 | 6,124 | 279 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 4 | 791 | 24 张壳层、页面、状态和组件参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -42,13 +42,13 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | `ui/screens/DevicesScreen.kt` | 1,044 |
 | `radio/UdpRadioClient.kt` | 951 |
 | `ui/screens/GroupsScreen.kt` | 899 |
-| `AppController.kt` | 890 |
+| `AppController.kt` | 867 |
 | `ui/screens/LocationMapScreen.kt` | 683 |
 
 ## 架构边界
 
 - UI 使用 Jetpack Compose，一级导航固定为设备、群组、PTT、工具、我的。
-- `AppController` 仍是跨功能状态协调中心；设备、群组、资料、工具、设置、APRS、电台消息、电台会话和登录会话已下沉到各自 Controller，PTT 播放协调、应用更新和导航仍集中于此。
+- `AppController` 仍是跨功能状态协调中心；设备、群组、资料、工具、设置、APRS、电台消息、电台会话、应用更新和登录会话已下沉到各自 Controller，PTT 播放协调和导航仍集中于此。
 - `SessionController` 独占登录、持久会话恢复、当前用户和退出状态；`ApiSessionManager` 独占 Token 刷新、会话持久化和认证请求重试，旧登录、旧恢复和旧资料结果不会覆盖替换后的会话。
 - `AprsController` 独占按用户隔离的配置、手动发送状态和后台 Service 协调；设置页只接收不可变 `AprsUiState` 与事件回调。
 - `RadioMessageController` 独占消息列表、缓存写入、游标分页、服务端对账和公开资料预加载；消息列表读取不可变 `RadioMessageUiState`，旧账户和旧群组结果不会覆盖当前状态。
@@ -65,7 +65,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 ## 维护重点
 
-1. `DevicesScreen` 仍超过 1,000 行，`UdpRadioClient` 为 951 行，`AppController` 已降至 890 行。UDP 状态、认证、Socket 传输、心跳监测、PTT 编排、接收语音组装、任务调度和音频设备边界已经独立，设备、群组、资料、公共认证、工具、更新、全量数据刷新和周期在线同步已建立结构化任务所有权，后续重点转向 `AppController` 中其余普通异步任务和大型页面。
+1. `DevicesScreen` 仍超过 1,000 行，`UdpRadioClient` 为 951 行，`AppController` 已降至 867 行。UDP 状态、认证、Socket 传输、心跳监测、PTT 编排、接收语音组装、任务调度和音频设备边界已经独立，设备、群组、资料、公共认证、工具、更新、全量数据刷新和周期在线同步已建立结构化任务所有权，后续重点转向 `AppController` 中其余普通异步任务和大型页面。
 2. 自动化测试以 JVM 测试为主，仪器测试只有 3 个文件。BLE、定位、前台服务、弱网重连、后台麦克风和系统权限仍需要真机覆盖。
 3. CI 已固定 Android SDK 36.1、NDK 28.2 和 CMake 3.22，并执行静态检查、截图验证与 Debug 构建门禁；地图运行验收仍依赖注入高德 Key，Release 签名仍需发布环境显式配置。
 4. Android 客户端依赖同仓库之外的 DraARL Server API 与 UDP 协议文档。服务端契约变更时，应同时检查 README 的“服务端契约”、`DraarlProtocol`、`ApiClient` 和更新清单校验。
@@ -79,7 +79,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 电台消息缓存、最新页同步、历史游标、实时去重、已播放状态和资料预加载已集中到 `RadioMessageController`，并由 7 个 JVM 用例覆盖失败与上下文切换竞态。
 - 电台节点、连接、路由和 Service Binder 已集中到 `RadioSessionController`，并由 8 个 JVM 用例覆盖路由恢复、审核限制、连接参数、服务重连和账户切换竞态。
 - 登录、持久会话恢复、用户更新、会话失效和退出清理已集中到 `SessionController`，并由 9 个 JVM 用例覆盖失败、远端失效和退出竞态。
-- 设备、群组、资料、公共认证和工具 Controller 已移除各自的 `Executor`、`Handler`、原子关闭标记和代次模板，统一通过 `ControllerTaskRunner` 管理 loading、IO 调度、取消和主 scope 回投；工具缓存读写也已移出主线程。9 个 JVM 用例覆盖 dispatcher、迟到结果、关闭、验证码替换、流程取消、独立任务槽和串行缓存写入。
+- 设备、群组、资料、公共认证和工具 Controller 已移除各自的 `Executor`、`Handler`、原子关闭标记和代次模板，统一通过 `ControllerTaskRunner` 管理 loading、IO 调度、取消和主 scope 回投；工具缓存读写也已移出主线程，群组加入与退出不再依赖 `AppController` 的通用线程池。11 个 JVM 用例覆盖 dispatcher、迟到结果、关闭、验证码替换、流程取消、独立任务槽、串行缓存写入和群组成员关系操作。
 - 全量应用数据刷新已移除 `CompletableFuture` 与共享 Executor，六路请求在注入的 IO dispatcher 上并行执行并保留逐项 fallback；2 个 JVM 用例覆盖单项失败和并行启动，`RefreshCoordinator` 的 2 个用例继续覆盖合并刷新与旧结果丢弃。
 - 群组计数和当前频道在线设备同步已移除原子 busy/pending/generation 模板，改由 `ControllerTaskRunner` 与 `RefreshCoordinator` 组合管理取消和 trailing refresh；账户或频道上下文变化后不再接受旧响应。
 - 更新检查、下载、进度与安装权限恢复已从 `AppController` 下沉到 `AppUpdateController`，移除共享 Executor、Handler 回投和原子 busy 标记；4 个 JVM 用例覆盖重置竞态、迟到进度、安装权限恢复和旧服务端自动检查。
