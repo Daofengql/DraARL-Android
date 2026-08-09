@@ -1,30 +1,29 @@
 package cn.silverdragon.draarl.profile
 
-import android.os.Handler
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import cn.silverdragon.draarl.concurrency.ControllerTaskRunner
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.network.ProfileApi
 import cn.silverdragon.draarl.network.ProfileUpdateRequest
-import java.util.concurrent.Executor
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 
 class ProfileController(
     private val api: ProfileApi,
-    private val executor: Executor,
-    private val mainHandler: Handler,
+    scope: CoroutineScope,
+    ioDispatcher: CoroutineDispatcher,
     private val currentUser: () -> User?,
     private val updateUser: (User) -> Unit,
     private val showNotice: (String) -> Unit,
     private val friendlyError: (Throwable) -> String
 ) {
-    private val closed = AtomicBoolean(false)
-    private val generation = AtomicInteger(0)
+    private var closed = false
 
     var busy by mutableStateOf(false)
         private set
+    private val tasks = ControllerTaskRunner(scope, ioDispatcher) { busy = it }
 
     fun updateProfile(
         nickname: String,
@@ -97,36 +96,18 @@ class ProfileController(
     }
 
     fun reset() {
-        generation.incrementAndGet()
-        busy = false
+        tasks.cancel()
     }
 
     fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        reset()
+        if (closed) return
+        closed = true
+        tasks.close()
     }
 
     private fun <T> launch(operation: () -> T, onSuccess: (T) -> Unit) {
-        if (busy || closed.get()) return
-        val requestGeneration = generation.incrementAndGet()
-        busy = true
-        executor.execute {
-            runCatching(operation)
-                .onSuccess { result ->
-                    mainHandler.post {
-                        if (closed.get() || requestGeneration != generation.get()) return@post
-                        busy = false
-                        onSuccess(result)
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        if (closed.get() || requestGeneration != generation.get()) return@post
-                        busy = false
-                        showNotice(friendlyError(error))
-                    }
-                }
-        }
+        if (closed) return
+        tasks.launch(operation, onSuccess) { error -> showNotice(friendlyError(error)) }
     }
 }
 

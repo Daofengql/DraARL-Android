@@ -135,8 +135,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val deviceManagementDelegate = lazy {
         DeviceManagementController(
             api = api,
-            executor = executor,
-            mainHandler = mainHandler,
+            scope = viewModelScope,
+            ioDispatcher = ioDispatcher,
             currentDevices = { devices },
             updateDevices = { devices = it },
             refreshAll = ::refreshAll,
@@ -149,8 +149,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val groupManagementDelegate = lazy {
         GroupManagementController(
             api = api,
-            executor = executor,
-            mainHandler = mainHandler,
+            scope = viewModelScope,
+            ioDispatcher = ioDispatcher,
             currentGroups = { groups },
             updateGroups = {
                 groups = it
@@ -167,8 +167,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val profileDelegate = lazy {
         ProfileController(
             api = api,
-            executor = executor,
-            mainHandler = mainHandler,
+            scope = viewModelScope,
+            ioDispatcher = ioDispatcher,
             currentUser = { session.uiState.user },
             updateUser = session::acceptUser,
             showNotice = { notice = it },

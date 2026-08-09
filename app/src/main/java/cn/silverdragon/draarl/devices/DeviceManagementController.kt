@@ -1,34 +1,33 @@
 package cn.silverdragon.draarl.devices
 
-import android.os.Handler
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import cn.silverdragon.draarl.concurrency.ControllerTaskRunner
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
 import cn.silverdragon.draarl.data.DevicePasswordInfo
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.network.DevicesApi
-import java.util.concurrent.Executor
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 
 class DeviceManagementController(
     private val api: DevicesApi,
-    private val executor: Executor,
-    private val mainHandler: Handler,
+    scope: CoroutineScope,
+    ioDispatcher: CoroutineDispatcher,
     private val currentDevices: () -> List<Device>,
     private val updateDevices: (List<Device>) -> Unit,
     private val refreshAll: () -> Unit,
     private val showNotice: (String) -> Unit,
     private val friendlyError: (Throwable) -> String
 ) {
-    private val closed = AtomicBoolean(false)
-    private val generation = AtomicInteger(0)
+    private var closed = false
 
     var busy by mutableStateOf(false)
         private set
+    private val tasks = ControllerTaskRunner(scope, ioDispatcher) { busy = it }
     var defaultDeviceGroupId by mutableStateOf<Int?>(null)
         private set
     var passwordInfo by mutableStateOf<DevicePasswordInfo?>(null)
@@ -167,41 +166,28 @@ class DeviceManagementController(
     }
 
     fun reset() {
-        generation.incrementAndGet()
-        busy = false
+        tasks.cancel()
+        clearState()
+    }
+
+    fun close() {
+        if (closed) return
+        closed = true
+        tasks.close()
+        clearState()
+    }
+
+    private fun <T> launch(operation: () -> T, onSuccess: (T) -> Unit) {
+        if (closed) return
+        tasks.launch(operation, onSuccess) { error -> showNotice(friendlyError(error)) }
+    }
+
+    private fun clearState() {
         defaultDeviceGroupId = null
         passwordInfo = null
         bindPreview = null
         bindResult = null
         config = emptyMap()
         configDeviceId = null
-    }
-
-    fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        reset()
-    }
-
-    private fun <T> launch(operation: () -> T, onSuccess: (T) -> Unit) {
-        if (busy || closed.get()) return
-        val requestGeneration = generation.incrementAndGet()
-        busy = true
-        executor.execute {
-            runCatching(operation)
-                .onSuccess { result ->
-                    mainHandler.post {
-                        if (closed.get() || requestGeneration != generation.get()) return@post
-                        busy = false
-                        onSuccess(result)
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        if (closed.get() || requestGeneration != generation.get()) return@post
-                        busy = false
-                        showNotice(friendlyError(error))
-                    }
-                }
-        }
     }
 }
