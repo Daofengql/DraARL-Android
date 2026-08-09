@@ -13,7 +13,9 @@ internal class ProfileApiClient(
 ) : ProfileApi {
     override fun getMe(updateSession: Boolean): User {
         val requestSession = sessions.sessionExpectation()
-        val user = users.fromJson(requester.execute("GET", "/api/me").requireObject("data"))
+        val user = users.fromDto(
+            requester.executeMapped("GET", "/api/me", mapper = ProfileApiResponseMapper::user)
+        )
         accountLoginRejection(user)?.let { message ->
             if (requestSession != null) sessions.clearSession(requestSession)
             throw ApiException(HTTP_FORBIDDEN, message)
@@ -49,36 +51,39 @@ internal class ProfileApiClient(
     override fun uploadFile(fileBytes: ByteArray, fileName: String, fileType: String): String {
         val session = sessions.currentSession() ?: throw ApiException(HTTP_UNAUTHORIZED, "请先登录")
         val baseUrl = ApiClient.normalizeBaseUrl(session.baseUrl)
-        val response = requests.execute(
-            HttpRequest(
-                url = "$baseUrl/api/upload/file",
-                method = "POST",
-                headers = mapOf("Authorization" to "Bearer ${session.accessToken}"),
-                body = HttpRequestBody.Multipart(
-                    listOf(
-                        HttpPart(
-                            name = "file",
-                            content = fileBytes,
-                            fileName = fileName,
-                            mediaType = "application/octet-stream"
+        val response = decodeApiResponse(
+            "POST",
+            UPLOAD_PATH,
+            {
+                val httpResponse = requests.execute(
+                    HttpRequest(
+                        url = baseUrl + UPLOAD_PATH,
+                        method = "POST",
+                        headers = mapOf("Authorization" to "Bearer ${session.accessToken}"),
+                        body = HttpRequestBody.Multipart(
+                            listOf(
+                                HttpPart(
+                                    name = "file",
+                                    content = fileBytes,
+                                    fileName = fileName,
+                                    mediaType = "application/octet-stream"
+                                ),
+                                HttpPart(name = "file_type", content = fileType.toByteArray())
+                            )
                         ),
-                        HttpPart(name = "file_type", content = fileType.toByteArray())
+                        connectTimeoutMillis = UPLOAD_TIMEOUT_MILLIS,
+                        readTimeoutMillis = UPLOAD_TIMEOUT_MILLIS,
+                        writeTimeoutMillis = UPLOAD_TIMEOUT_MILLIS
                     )
-                ),
-                connectTimeoutMillis = UPLOAD_TIMEOUT_MILLIS,
-                readTimeoutMillis = UPLOAD_TIMEOUT_MILLIS,
-                writeTimeoutMillis = UPLOAD_TIMEOUT_MILLIS
-            )
+                )
+                if (httpResponse.status !in HTTP_SUCCESS_RANGE) {
+                    throw ApiException(httpResponse.status, "上传失败: ${httpResponse.bodyText()}")
+                }
+                httpResponse.toApiJson()
+            },
+            ProfileApiResponseMapper::uploadedFile
         )
-        if (response.status !in HTTP_SUCCESS_RANGE) {
-            throw ApiException(response.status, "上传失败: ${response.bodyText()}")
-        }
-        val responseJson = response.toApiJson()
-        val data = responseJson.optJSONObject("data") ?: responseJson
-        return ApiClient.resolveHttpsUrl(
-            baseUrl,
-            data.optStringClean("url").ifBlank { data.optStringClean("file_url") }
-        )
+        return ApiClient.resolveHttpsUrl(baseUrl, response.url)
     }
 
     override fun changePassword(oldPassword: String, newPassword: String) {
@@ -103,5 +108,6 @@ private const val HTTP_FORBIDDEN = 403
 private const val HTTP_SUCCESS_MAX = 299
 private const val HTTP_SUCCESS_MIN = 200
 private const val HTTP_UNAUTHORIZED = 401
+private const val UPLOAD_PATH = "/api/upload/file"
 private const val UPLOAD_TIMEOUT_MILLIS = 30_000L
 private val HTTP_SUCCESS_RANGE = HTTP_SUCCESS_MIN..HTTP_SUCCESS_MAX

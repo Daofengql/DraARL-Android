@@ -57,6 +57,11 @@ internal fun JSONArray.objects(): List<JSONObject> = buildList {
     for (index in 0 until length()) optJSONObject(index)?.let(::add)
 }
 
+internal fun JSONArray.requireObjects(field: String): List<JSONObject> = List(length()) { index ->
+    optJSONObject(index)
+        ?: throw ApiException(HTTP_RESPONSE_MAPPING_ERROR, "服务器响应字段 $field[$index] 类型不正确")
+}
+
 internal fun JSONArray.ints(): List<Int> = buildList {
     for (index in 0 until length()) optInt(index).takeIf { it > 0 }?.let(::add)
 }
@@ -64,3 +69,5 @@ internal fun JSONArray.ints(): List<Int> = buildList {
 internal fun JSONArray.strings(): List<String> = buildList {
     for (index in 0 until length()) optString(index).trim().takeIf(String::isNotBlank)?.let(::add)
 }
+
+private const val HTTP_RESPONSE_MAPPING_ERROR = 500

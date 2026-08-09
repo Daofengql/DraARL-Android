@@ -10,8 +10,23 @@ class ApiException(
     override val message: String,
     val errorCode: String = "",
     val retryAfterSeconds: Int? = null,
-    cause: Throwable? = null
-) : Exception(message, cause)
+    cause: Throwable? = null,
+    val requestContext: ApiRequestFailureContext? = null
+) : Exception(message, cause) {
+    val requestMethod: String get() = requestContext?.method.orEmpty()
+    val requestPath: String get() = requestContext?.path.orEmpty()
+    val failureStage: ApiFailureStage? get() = requestContext?.stage
+}
+
+data class ApiRequestFailureContext(val method: String, val path: String, val stage: ApiFailureStage)
+
+enum class ApiFailureStage {
+    REQUEST,
+    TRANSPORT,
+    RESPONSE_DECODING,
+    RESPONSE_VALIDATION,
+    RESPONSE_MAPPING
+}
 
 class ApiClient private constructor(dependencies: ApiClientDependencies) :
     AuthApi by dependencies.auth,
@@ -132,6 +147,15 @@ internal fun JSONObject.requireObject(key: String): JSONObject = optJSONObject(k
 
 internal fun JSONObject.requireString(key: String): String = optStringClean(key)
     .ifBlank { throw ApiException(optInt("code", HTTP_SERVER_ERROR), "服务器响应缺少 $key") }
+
+internal fun JSONObject.requireInt(key: String): Int {
+    if (!has(key) || isNull(key)) throw ApiException(HTTP_SERVER_ERROR, "服务器响应缺少 $key")
+    return when (val value = opt(key)) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull()
+        else -> null
+    } ?: throw ApiException(HTTP_SERVER_ERROR, "服务器响应字段 $key 类型不正确")
+}
 
 internal fun JSONObject.optStringClean(key: String): String {
     if (!has(key) || isNull(key)) return ""

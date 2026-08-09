@@ -5,12 +5,12 @@
 
 ## 规模结论
 
-这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.55 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
+这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.60 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 163 | 25,508 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 55 | 3,949 | 207 个测试用例 |
+| 生产 Kotlin | 168 | 26,034 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 55 | 3,986 | 210 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 2 | 366 | 12 张壳层和一级页面参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -32,7 +32,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | `maps` / `aprs` | 13 | 地图、坐标换算、网格和 APRS-IS |
 | `session` | 4 | 登录、恢复、远端会话变化和退出清理 |
 | `settings` | 4 | 设置状态、持久化和缓存清理协调 |
-| `network` | 13 | HTTP 传输、认证会话、领域 API 契约/实现和数据映射 |
+| `network` | 18 | HTTP 传输、认证会话、领域 API 契约/实现、响应 DTO 和 Mapper |
 | 其他 | 14 | 账号、设备、群组、资料、协议和更新 |
 
 当前最大的生产 Kotlin 文件是：
@@ -54,7 +54,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - `RadioMessageController` 独占消息列表、缓存写入、游标分页、服务端对账和公开资料预加载；消息列表读取不可变 `RadioMessageUiState`，旧账户和旧群组结果不会覆盖当前状态。
 - `RadioSessionController` 独占节点发现、连接准备、频道路由、连接状态和 Service Binder 生命周期；电台页面读取不可变 `RadioSessionUiState`，账户切换会取消旧连接与路由结果。
 - 设备、群组、工具和个人页已拆出只接收页面数据与回调的内容层，可脱离 `AppController` 生成稳定截图。
-- HTTP 连接、超时、Header、响应体和 multipart 集中在 `HttpTransport`；`ApiSessionManager` 在传输层之上合并并发 401、刷新 Token 并持久化会话；128 行的 `ApiClient` 只组合 auth、devices、groups、radio、profile、tools、updates 七组窄接口及其实现。实时通信由 `UdpRadioClient` 和 `RadioConnectionService` 承担。
+- HTTP 连接、超时、Header、响应体和 multipart 集中在 `HttpTransport`；`ApiSessionManager` 在传输层之上合并并发 401、刷新 Token 并持久化会话；149 行的 `ApiClient.kt` 只保留公共异常/URL 规则与 auth、devices、groups、radio、profile、tools、updates 七组窄接口组合。实时通信由 `UdpRadioClient` 和 `RadioConnectionService` 承担。
 - 设备、群组、资料、工具、更新和电台 DataSource/Controller 只依赖对应领域 API，不再依赖完整 `ApiClient`。
 - SQLite/SharedPreferences 分别保存消息历史、仪表盘/工具缓存、会话和客户端设置。
 - 原生层仅承担 RNNoise；Opus 编解码主要通过 Concentus 在 JVM 层实现。
@@ -77,7 +77,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 登录、持久会话恢复、用户更新、会话失效和退出清理已集中到 `SessionController`，并由 9 个 JVM 用例覆盖失败、远端失效和退出竞态。
 - HTTP 连接、超时、HTTPS、Header、空响应、异常 JSON、multipart 和主动取消已集中到可注入的 `HttpTransport`，并由 9 个 MockWebServer 用例覆盖。
 - Token 刷新、会话持久化、认证请求重试和旧认证/资料结果丢弃已集中到 `ApiSessionManager`，并由 8 个 JVM 用例覆盖并发 401 合并、刷新失败、过期边界、Token 刷新和 Session 替换竞态。
-- `ApiClient` 已降为 128 行兼容门面，七个领域 API 分别持有请求与映射逻辑；9 个领域 JVM 用例覆盖代表性路径、请求体、默认参数、响应映射和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
+- `ApiClient` 已成为兼容门面；Auth、Profile、Devices 和 Groups 响应先进入类型化 DTO，再由独立 Mapper 转成业务模型，映射异常携带请求方法、路径与失败阶段。12 个领域 JVM 用例覆盖代表性路径、请求体、默认参数、异常字段、响应阶段和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
 - 应用壳层和五个一级页面已有 12 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文和 1.5 倍字体。
 - GitHub Actions、Spotless/ktlint、Detekt 存量基线和 Markdown 链接检查已接入，RNNoise 第三方目录被显式排除。
 - Android 仪器测试 APK 已在本次基线编译通过，但尚未连接设备执行；Release 构建和签名也需在发布候选版本上重新验证。

@@ -7,6 +7,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -214,6 +215,51 @@ class ApiDomainClientsTest {
             "https://api.example.test/downloads/app.apk",
             manifest.resources.single().artifacts.single().externalUrl
         )
+    }
+
+    @Test
+    fun missingDeviceIdentityReportsRequestAndMappingStage() {
+        val requester = RecordingApiJsonRequester {
+            JSONObject("""{"code":200,"data":{"total":1,"items":[{"name":"Missing id"}]}}""")
+        }
+        val api: DevicesApi = DevicesApiClient(requester)
+
+        val error = assertThrows(ApiException::class.java) { api.getDevices() }
+
+        assertEquals("GET", error.requestMethod)
+        assertEquals("/api/devices?page=1&limit=100&owner_only=true", error.requestPath)
+        assertEquals(ApiFailureStage.RESPONSE_MAPPING, error.failureStage)
+        assertTrue(error.message.contains("id"))
+    }
+
+    @Test
+    fun malformedGroupArrayReportsMappingStage() {
+        val requester = RecordingApiJsonRequester {
+            JSONObject("""{"code":200,"data":{"items":["not-an-object"]}}""")
+        }
+        val api: GroupsApi = GroupsApiClient(requester)
+
+        val error = assertThrows(ApiException::class.java) { api.getGroups() }
+
+        assertEquals("/api/groups?page=1&page_size=100", error.requestPath)
+        assertEquals(ApiFailureStage.RESPONSE_MAPPING, error.failureStage)
+        assertTrue(error.message.contains("data.items[0]"))
+    }
+
+    @Test
+    fun invalidPublicResponseReportsDecodingStage() {
+        val transport = RecordingHttpTransport(
+            HttpResponse(status = 200, headers = emptyMap(), body = "not-json".toByteArray())
+        )
+        val requests = ApiRequestExecutor(transport)
+        val sessions = sessionManager(session = null, requests = requests)
+        val api: AuthApi = AuthApiClient(requests, sessions, UserJsonMapper { "" })
+
+        val error = assertThrows(ApiException::class.java) { api.getCaptcha(API_BASE_URL) }
+
+        assertEquals("GET", error.requestMethod)
+        assertEquals("/api/captcha", error.requestPath)
+        assertEquals(ApiFailureStage.RESPONSE_DECODING, error.failureStage)
     }
 
     private fun sessionManager(

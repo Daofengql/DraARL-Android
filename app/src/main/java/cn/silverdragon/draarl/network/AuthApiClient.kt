@@ -13,16 +13,12 @@ internal class AuthApiClient(
     private val users: UserJsonMapper,
     private val clockMillis: () -> Long = System::currentTimeMillis
 ) : AuthApi {
-    override fun getCaptcha(baseUrl: String): CaptchaChallenge {
-        val data = publicRequest(baseUrl, "GET", "/api/captcha").requireSuccess().requireObject("data")
-        return CaptchaChallenge(
-            id = data.requireString("captcha_id"),
-            imageBase64 = data.optStringClean("captcha_image")
-                .ifBlank { data.optStringClean("image_base64") }
-                .ifBlank { throw ApiException(HTTP_SERVER_ERROR, "服务器响应缺少验证码图片") },
-            expiresInSeconds = data.optInt("expire", DEFAULT_CAPTCHA_EXPIRES_SECONDS)
-        )
-    }
+    override fun getCaptcha(baseUrl: String): CaptchaChallenge = publicRequestMapped(
+        baseUrl,
+        "GET",
+        "/api/captcha",
+        mapper = AuthApiResponseMapper::captcha
+    ).toDomain()
 
     override fun login(
         baseUrl: String,
@@ -33,7 +29,7 @@ internal class AuthApiClient(
     ): Session {
         val operation = sessions.beginAuthOperation()
         val normalizedUrl = ApiClient.normalizeBaseUrl(baseUrl)
-        val data = publicRequest(
+        val dto = publicRequestMapped(
             normalizedUrl,
             "POST",
             "/api/auth/login",
@@ -41,17 +37,18 @@ internal class AuthApiClient(
                 .put("username", username.trim())
                 .put("password", password)
                 .put("captcha_id", captchaId)
-                .put("captcha_code", captchaCode.trim())
-        ).requireSuccess().requireObject("data")
+                .put("captcha_code", captchaCode.trim()),
+            mapper = AuthApiResponseMapper::login
+        )
         val now = clockMillis()
         val session = Session(
             baseUrl = normalizedUrl,
-            accessToken = data.requireString("token"),
-            refreshToken = data.optStringClean("refresh_token"),
-            accessExpiresAt = now + data.optLong("expires_in", DEFAULT_ACCESS_EXPIRES_SECONDS) * MILLIS_PER_SECOND,
+            accessToken = dto.accessToken,
+            refreshToken = dto.refreshToken,
+            accessExpiresAt = now + dto.accessExpiresInSeconds * MILLIS_PER_SECOND,
             refreshExpiresAt = now +
-                data.optLong("refresh_expires_in", DEFAULT_REFRESH_EXPIRES_SECONDS) * MILLIS_PER_SECOND,
-            user = users.fromJson(data.requireObject("user"), normalizedUrl)
+                dto.refreshExpiresInSeconds * MILLIS_PER_SECOND,
+            user = users.fromDto(dto.user, normalizedUrl)
         )
         accountLoginRejection(session.user)?.let { message ->
             throw ApiException(HTTP_FORBIDDEN, message)
@@ -59,12 +56,12 @@ internal class AuthApiClient(
         return sessions.completeAuthOperation(operation, session, "登录请求已取消")
     }
 
-    override fun getRegistrationRequiresEmailVerification(baseUrl: String): Boolean {
-        val data = publicRequest(baseUrl, "GET", "/api/config/public").requireSuccess().requireObject("data")
-        return data.optJSONObject("registration")
-            ?.optBoolean("require_email_verification", true)
-            ?: true
-    }
+    override fun getRegistrationRequiresEmailVerification(baseUrl: String): Boolean = publicRequestMapped(
+        baseUrl,
+        "GET",
+        "/api/config/public",
+        mapper = AuthApiResponseMapper::registrationConfig
+    ).requiresEmailVerification
 
     override fun sendEmailCode(
         baseUrl: String,
@@ -72,22 +69,17 @@ internal class AuthApiClient(
         purpose: String,
         captchaId: String,
         captchaCode: String
-    ): EmailCodeSession {
-        val data = publicRequest(
-            baseUrl,
-            "POST",
-            "/api/auth/send-code",
-            JSONObject()
-                .put("email", email.trim())
-                .put("purpose", purpose)
-                .put("captcha_id", captchaId)
-                .put("captcha_code", captchaCode.trim())
-        ).requireSuccess().requireObject("data")
-        return EmailCodeSession(
-            sessionId = data.requireString("session_id"),
-            expiresInSeconds = data.optInt("expires_in", DEFAULT_EMAIL_CODE_EXPIRES_SECONDS)
-        )
-    }
+    ): EmailCodeSession = publicRequestMapped(
+        baseUrl,
+        "POST",
+        "/api/auth/send-code",
+        JSONObject()
+            .put("email", email.trim())
+            .put("purpose", purpose)
+            .put("captcha_id", captchaId)
+            .put("captcha_code", captchaCode.trim()),
+        mapper = AuthApiResponseMapper::emailCode
+    ).toDomain()
 
     override fun register(request: RegistrationRequest): RegistrationResult {
         val body = JSONObject()
@@ -99,20 +91,17 @@ internal class AuthApiClient(
             .put("email", request.email.trim())
         if (request.sessionId.isNotBlank()) body.put("session_id", request.sessionId)
         if (request.emailCode.isNotBlank()) body.put("email_code", request.emailCode.trim())
-        val data = publicRequest(request.baseUrl, "POST", "/api/auth/register", body)
-            .requireSuccess()
-            .requireObject("data")
-        return RegistrationResult(
-            id = data.optInt("id"),
-            username = data.optStringClean("username"),
-            nickname = data.optStringClean("nickname"),
-            approvalStatus = data.optInt("approval_status"),
-            devicePassword = data.optStringClean("device_password")
-        )
+        return publicRequestMapped(
+            request.baseUrl,
+            "POST",
+            "/api/auth/register",
+            body,
+            AuthApiResponseMapper::registration
+        ).toDomain()
     }
 
     override fun resetPassword(baseUrl: String, sessionId: String, code: String, newPassword: String) {
-        publicRequest(
+        publicRequestMapped(
             baseUrl,
             "POST",
             "/api/auth/reset-password",
@@ -120,17 +109,22 @@ internal class AuthApiClient(
                 .put("session_id", sessionId)
                 .put("code", code.trim())
                 .put("new_password", newPassword)
-        ).requireSuccess()
+        ) { Unit }
     }
 
-    private fun publicRequest(baseUrl: String, method: String, path: String, body: JSONObject? = null): JSONObject =
-        requests.executeJson(ApiClient.normalizeBaseUrl(baseUrl), method, path, body, accessToken = null)
+    private fun <T> publicRequestMapped(
+        baseUrl: String,
+        method: String,
+        path: String,
+        body: JSONObject? = null,
+        mapper: (JSONObject) -> T
+    ): T = decodeApiResponse(
+        method,
+        path,
+        { requests.executeJson(ApiClient.normalizeBaseUrl(baseUrl), method, path, body, accessToken = null) },
+        mapper
+    )
 }
 
-private const val DEFAULT_ACCESS_EXPIRES_SECONDS = 10_800L
-private const val DEFAULT_CAPTCHA_EXPIRES_SECONDS = 300
-private const val DEFAULT_EMAIL_CODE_EXPIRES_SECONDS = 600
-private const val DEFAULT_REFRESH_EXPIRES_SECONDS = 1_209_600L
 private const val HTTP_FORBIDDEN = 403
-private const val HTTP_SERVER_ERROR = 500
 private const val MILLIS_PER_SECOND = 1_000L

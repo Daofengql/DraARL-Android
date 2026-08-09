@@ -3,7 +3,6 @@ package cn.silverdragon.draarl.network
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
-import org.json.JSONArray
 import org.json.JSONObject
 
 internal class GroupsApiClient(requester: ApiJsonRequester) :
@@ -16,20 +15,17 @@ private class GroupDirectoryApiClient(private val requester: ApiJsonRequester) :
         val groups = mutableListOf<Group>()
         var page = FIRST_PAGE
         while (page <= MAX_GROUP_PAGES) {
-            val response = requester.execute("GET", "/api/groups?page=$page&page_size=$GROUP_PAGE_SIZE")
-                .requireObject("data")
-            val pageGroups = (response.optJSONArray("items") ?: JSONArray()).objects().map(JSONObject::toGroup)
-            groups += pageGroups
-            val pagination = response.optJSONObject("pagination")
-            val total = response.optInt("total", pagination?.optInt("total", UNKNOWN_TOTAL) ?: UNKNOWN_TOTAL)
-            val hasMore = response.optBoolean(
-                "has_more",
-                response.optBoolean("hasMore", pagination?.optBoolean("has_more", false) ?: false)
+            val response = requester.executeMapped(
+                "GET",
+                "/api/groups?page=$page&page_size=$GROUP_PAGE_SIZE",
+                mapper = GroupApiResponseMapper::page
             )
+            val pageGroups = response.items.map(GroupDto::toDomain)
+            groups += pageGroups
             val shouldContinue = pageGroups.isNotEmpty() && (
-                hasMore ||
-                    (total >= 0 && groups.size < total) ||
-                    (total < 0 && pageGroups.size >= GROUP_PAGE_SIZE)
+                response.hasMore ||
+                    (response.total >= 0 && groups.size < response.total) ||
+                    (response.total < 0 && pageGroups.size >= GROUP_PAGE_SIZE)
                 )
             if (!shouldContinue) break
             page++
@@ -42,21 +38,19 @@ private class GroupDirectoryApiClient(private val requester: ApiJsonRequester) :
         }
     }
 
-    override fun getGroupStats(): Map<Int, Pair<Int, Int>> {
-        val data = requester.execute("GET", "/api/radio/groups/stats").optJSONArray("data") ?: JSONArray()
-        return data.objects().associate { item ->
-            item.optInt("id") to Pair(
-                item.optInt("online_dev_number", item.optInt("online_count")),
-                item.optInt("total_dev_number", item.optInt("total_count"))
-            )
-        }
+    override fun getGroupStats(): Map<Int, Pair<Int, Int>> = requester.executeMapped(
+        "GET",
+        "/api/radio/groups/stats",
+        mapper = GroupApiResponseMapper::stats
+    ).associate { item ->
+        item.groupId to Pair(item.onlineCount, item.totalCount)
     }
 
-    override fun getOnlineDevices(groupId: Int): List<OnlineDevice> {
-        val data = requester.execute("GET", "/api/radio/groups/$groupId/devices").optJSONArray("data")
-            ?: JSONArray()
-        return data.objects().map(JSONObject::toOnlineDevice)
-    }
+    override fun getOnlineDevices(groupId: Int): List<OnlineDevice> = requester.executeMapped(
+        "GET",
+        "/api/radio/groups/$groupId/devices",
+        mapper = GroupApiResponseMapper::onlineDevices
+    ).map(OnlineDeviceDto::toDomain)
 
     override fun joinGroup(groupId: Int, password: String) {
         requester.execute("POST", "/api/groups/$groupId/join", JSONObject().put("password", password))
@@ -66,19 +60,18 @@ private class GroupDirectoryApiClient(private val requester: ApiJsonRequester) :
         requester.execute("POST", "/api/groups/$groupId/leave", JSONObject())
     }
 
-    override fun searchGroups(keyword: String): List<Group> {
-        val data = requester.execute(
-            "POST",
-            "/api/groups/search",
-            JSONObject().put("keyword", keyword).put("page", FIRST_PAGE).put("page_size", SEARCH_PAGE_SIZE)
-        ).requireObject("data")
-        return (data.optJSONArray("items") ?: JSONArray()).objects().map(JSONObject::toGroup)
-    }
+    override fun searchGroups(keyword: String): List<Group> = requester.executeMapped(
+        "POST",
+        "/api/groups/search",
+        JSONObject().put("keyword", keyword).put("page", FIRST_PAGE).put("page_size", SEARCH_PAGE_SIZE),
+        mapper = GroupApiResponseMapper::page
+    ).items.map(GroupDto::toDomain)
 
     override fun createGroup(name: String, type: Int, password: String, note: String): Group {
         val body = JSONObject().put("name", name).put("type", type).put("note", note)
         if (password.isNotBlank()) body.put("password", password)
-        return requester.execute("POST", "/api/groups", body).requireObject("data").toGroup()
+        return requester.executeMapped("POST", "/api/groups", body, mapper = GroupApiResponseMapper::group)
+            .toDomain()
     }
 
     override fun updateGroup(request: GroupUpdateRequest): Group {
@@ -89,7 +82,12 @@ private class GroupDirectoryApiClient(private val requester: ApiJsonRequester) :
             request.note?.let { put("note", it) }
             request.status?.let { put("status", it) }
         }
-        return requester.execute("PUT", "/api/groups/${request.groupId}", body).requireObject("data").toGroup()
+        return requester.executeMapped(
+            "PUT",
+            "/api/groups/${request.groupId}",
+            body,
+            mapper = GroupApiResponseMapper::group
+        ).toDomain()
     }
 
     override fun deleteGroup(groupId: Int) {
@@ -98,10 +96,11 @@ private class GroupDirectoryApiClient(private val requester: ApiJsonRequester) :
 }
 
 private class GroupDeviceApiClient(private val requester: ApiJsonRequester) : GroupDeviceApi {
-    override fun getGroupDevices(groupId: Int): List<Device> {
-        val data = requester.execute("GET", "/api/groups/$groupId/devices").requireObject("data")
-        return (data.optJSONArray("items") ?: JSONArray()).objects().map(JSONObject::toDevice)
-    }
+    override fun getGroupDevices(groupId: Int): List<Device> = requester.executeMapped(
+        "GET",
+        "/api/groups/$groupId/devices",
+        mapper = GroupApiResponseMapper::devices
+    ).map(DeviceDto::toDomain)
 
     override fun updateGroupDeviceCommControl(
         groupId: Int,
@@ -109,12 +108,13 @@ private class GroupDeviceApiClient(private val requester: ApiJsonRequester) : Gr
         disableSend: Boolean,
         disableReceive: Boolean
     ): Pair<Boolean, Boolean> {
-        val data = requester.execute(
+        val data = requester.executeMapped(
             "PUT",
             "/api/groups/$groupId/devices/$deviceId/comm-control",
-            JSONObject().put("disable_send", disableSend).put("disable_recv", disableReceive)
-        ).requireObject("data")
-        return data.optBoolean("disable_send") to data.optBoolean("disable_recv")
+            JSONObject().put("disable_send", disableSend).put("disable_recv", disableReceive),
+            mapper = GroupApiResponseMapper::communicationControl
+        )
+        return data.disableSend to data.disableReceive
     }
 
     override fun kickGroupDevice(groupId: Int, deviceId: Int) {
@@ -122,38 +122,7 @@ private class GroupDeviceApiClient(private val requester: ApiJsonRequester) : Gr
     }
 }
 
-private fun JSONObject.toGroup() = Group(
-    id = optInt("id"),
-    name = optStringClean("name"),
-    type = optInt("type"),
-    status = optInt("status", 1),
-    note = optStringClean("note"),
-    ownerId = optInt("ower_id"),
-    ownerCallsign = optStringClean("ower_callsign"),
-    joined = optBoolean("is_joined"),
-    owner = optBoolean("is_owner"),
-    requiresPassword = optBoolean("require_password"),
-    onlineCount = optInt("online_count"),
-    totalCount = optInt("total_count"),
-    createdAt = optStringClean("create_time"),
-    updatedAt = optStringClean("update_time")
-)
-
-private fun JSONObject.toOnlineDevice() = OnlineDevice(
-    id = optInt("id"),
-    username = optStringClean("username"),
-    callsign = optStringClean("callsign"),
-    ssid = optInt("ssid"),
-    nickname = optStringClean("nickname"),
-    model = optInt("dev_model"),
-    ghost = optBoolean("is_ghost"),
-    disableSend = optBoolean("disable_send"),
-    disableReceive = optBoolean("disable_recv"),
-    lastActivity = optStringClean("last_activity")
-)
-
 private const val FIRST_PAGE = 1
 private const val GROUP_PAGE_SIZE = 100
 private const val MAX_GROUP_PAGES = 100
 private const val SEARCH_PAGE_SIZE = 50
-private const val UNKNOWN_TOTAL = -1

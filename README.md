@@ -25,7 +25,7 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 
 - `app/src/main/java/cn/silverdragon/draarl/ui`：Compose 导航、页面和公共组件
 - `app/src/main/java/cn/silverdragon/draarl/data`：领域模型、本地状态、加密会话与缓存
-- `app/src/main/java/cn/silverdragon/draarl/network`：HTTP 传输、认证会话，以及按领域划分的 API 契约、实现与数据映射
+- `app/src/main/java/cn/silverdragon/draarl/network`：HTTP 传输、认证会话，以及按领域划分的 API 契约、类型化响应 DTO 与 Mapper
 - `app/src/main/java/cn/silverdragon/draarl/session`：登录、恢复、会话失效和退出清理
 - `app/src/main/java/cn/silverdragon/draarl/settings`：设置状态、持久化和缓存清理协调
 - `app/src/main/java/cn/silverdragon/draarl/radio`、`protocol`：消息状态与同步、节点/UDP 会话、PTT 音频和 DraARL 协议

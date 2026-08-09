@@ -39,20 +39,33 @@ internal class ApiRequestExecutor(private val transport: HttpTransport) {
         val requestBody = body?.toString()?.toByteArray(Charsets.UTF_8)?.let {
             HttpRequestBody.Bytes(it, "application/json; charset=utf-8")
         }
-        return execute(
-            HttpRequest(
-                url = ApiClient.normalizeBaseUrl(baseUrl) + path,
-                method = method,
-                headers = headers,
-                body = requestBody
-            )
-        ).toApiJson()
+        return try {
+            execute(
+                HttpRequest(
+                    url = ApiClient.normalizeBaseUrl(baseUrl) + path,
+                    method = method,
+                    headers = headers,
+                    body = requestBody
+                )
+            ).toApiJson()
+        } catch (error: ApiException) {
+            throw error.withRequestContext(method, path, ApiFailureStage.RESPONSE_DECODING)
+        }
     }
 
     fun execute(request: HttpRequest): HttpResponse = try {
         transport.execute(request)
     } catch (error: HttpTransportException) {
-        throw ApiException(0, error.message ?: "无法连接服务器", cause = error)
+        throw ApiException(
+            code = 0,
+            message = error.message ?: "无法连接服务器",
+            cause = error,
+            requestContext = ApiRequestFailureContext(
+                request.method.uppercase(),
+                request.url,
+                ApiFailureStage.TRANSPORT
+            )
+        )
     }
 }
 
@@ -79,8 +92,11 @@ internal class ApiSessionManager(
 
     fun accessToken(forceRefresh: Boolean): String = tokenRefresher.accessToken(forceRefresh)
 
-    override fun execute(method: String, path: String, body: JSONObject?, requiresAuth: Boolean): JSONObject =
+    override fun execute(method: String, path: String, body: JSONObject?, requiresAuth: Boolean): JSONObject = try {
         requester.execute(method, path, body, requiresAuth)
+    } catch (error: ApiException) {
+        throw error.withRequestContext(method, path, ApiFailureStage.REQUEST)
+    }
 
     fun detachSessionForLogout(expected: Session? = null): Session? = state.detach(expected)
 
