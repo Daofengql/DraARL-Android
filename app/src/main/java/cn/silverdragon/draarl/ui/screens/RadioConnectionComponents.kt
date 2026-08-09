@@ -107,7 +107,7 @@ private fun radioConnectionPanelState(
     groupNames: Map<Int, String>
 ): RadioConnectionPanelState {
     val status = sessionState.status
-    val user = controller.user
+    val user = controller.session.uiState.user
     val radioSettings = controller.settings.uiState
     val callsign = user?.let { it.callsign.ifBlank { it.displayName } }.orEmpty().ifBlank { "DraARL" }
     val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null

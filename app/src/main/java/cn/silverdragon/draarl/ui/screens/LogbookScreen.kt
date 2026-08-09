@@ -5,8 +5,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,6 +14,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Checklist
@@ -97,7 +97,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                 }
                 IconButton(
                     onClick = { confirmBatchDelete = true },
-                    enabled = selectedIds.isNotEmpty() && !tools.logbookBusy,
+                    enabled = selectedIds.isNotEmpty() && !tools.logbookBusy
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = "删除所选日志")
                 }
@@ -106,7 +106,11 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                     Icon(
                         Icons.Default.Search,
                         contentDescription = if (searchExpanded) "收起搜索" else "搜索通联日志",
-                        tint = if (searchExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        tint = if (searchExpanded) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
                     )
                 }
                 IconButton(onClick = {
@@ -115,7 +119,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                 }) {
                     Icon(Icons.Default.Checklist, contentDescription = "批量选择")
                 }
-                IconButton(onClick = { tools.editDraft(null, controller.user) }) {
+                IconButton(onClick = { tools.editDraft(null, controller.session.uiState.user) }) {
                     Icon(Icons.Default.Add, contentDescription = "新增通联日志")
                 }
             }
@@ -123,7 +127,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
         AnimatedVisibility(
             visible = searchExpanded,
             enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
+            exit = shrinkVertically() + fadeOut()
         ) {
             OutlinedTextField(
                 value = filter,
@@ -141,7 +145,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                                 filter = ""
                                 tools.loadLogbooks(reset = true, callsign = "")
                             },
-                            enabled = !tools.logbookBusy,
+                            enabled = !tools.logbookBusy
                         ) {
                             Icon(Icons.Default.Close, contentDescription = "清除搜索")
                         }
@@ -149,7 +153,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                 },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
+                keyboardActions = KeyboardActions(onSearch = { submitSearch() })
             )
         }
         if (tools.error.isNotBlank()) ToolError(tools.error, tools::clearError)
@@ -157,11 +161,11 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
                 shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                 ) {
                     Text("有一份未完成的通联日志", modifier = Modifier.weight(1f))
                     TextButton(onClick = tools::resumeDraft) { Text("继续填写") }
@@ -171,7 +175,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (!tools.logbookBusy && tools.logbooks.isEmpty()) {
                 item { Text("暂无通联日志", color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -185,8 +189,8 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                     onSelect = { selected ->
                         selectedIds = if (selected) selectedIds + entry.id else selectedIds - entry.id
                     },
-                    onEdit = { tools.editDraft(entry, controller.user) },
-                    onDelete = { pendingDelete = entry },
+                    onEdit = { tools.editDraft(entry, controller.session.uiState.user) },
+                    onDelete = { pendingDelete = entry }
                 )
             }
             if (tools.logbooks.size < tools.logbookTotal) {
@@ -194,7 +198,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                     Button(
                         onClick = { tools.loadLogbooks() },
                         enabled = !tools.logbookBusy,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth()
                     ) { Text("加载更多") }
                 }
             }
@@ -209,9 +213,12 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
             title = { Text("删除通联日志") },
             text = { Text("确定删除与 ${entry.callsign} 的通联记录？") },
             confirmButton = {
-                TextButton(onClick = { pendingDelete = null; tools.deleteLogbook(entry.id) }) { Text("删除") }
+                TextButton(onClick = {
+                    pendingDelete = null
+                    tools.deleteLogbook(entry.id)
+                }) { Text("删除") }
             },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }
         )
     }
     if (confirmBatchDelete) {
@@ -228,10 +235,10 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
                             selectedIds = emptySet()
                         }
                     },
-                    enabled = !tools.logbookBusy,
+                    enabled = !tools.logbookBusy
                 ) { Text("删除") }
             },
-            dismissButton = { TextButton(onClick = { confirmBatchDelete = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { confirmBatchDelete = false }) { Text("取消") } }
         )
     }
 }
@@ -243,7 +250,7 @@ private fun LogbookCard(
     selected: Boolean,
     onSelect: (Boolean) -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(shape = MaterialTheme.shapes.small) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -256,7 +263,7 @@ private fun LogbookCard(
                     Text(
                         "${LogbookTime.utcToLocal(entry.timeUtc)} · ${entry.mode}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 if (!selectionMode) {

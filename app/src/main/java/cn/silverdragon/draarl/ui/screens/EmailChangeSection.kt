@@ -31,7 +31,7 @@ import kotlinx.coroutines.delay
 
 @Composable
 internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
-    val user = controller.user ?: return
+    val user = controller.session.uiState.user ?: return
     val verifyCurrentEmail = user.email.isNotBlank() && user.emailVerified
     var newEmail by remember(user.id) { mutableStateOf("") }
     var oldSessionId by remember { mutableStateOf("") }
@@ -65,7 +65,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 imageBase64 = controller.publicAuth.captchaImageBase64,
                 loading = controller.publicAuth.captchaLoading,
                 enabled = !controller.publicAuth.busy,
-                onRefresh = controller.publicAuth::loadCaptcha,
+                onRefresh = controller.publicAuth::loadCaptcha
             )
             Button(
                 onClick = {
@@ -76,7 +76,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                     }
                 },
                 enabled = !controller.publicAuth.busy && captchaCode.isNotBlank() && oldCooldown == 0,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (oldCooldown > 0) "${oldCooldown}秒后可重发" else "向当前邮箱发送验证码")
             }
@@ -91,7 +91,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                     captchaCode = ""
                     controller.publicAuth.loadCaptcha()
                 },
-                enabled = !controller.publicAuth.busy && oldCooldown == 0,
+                enabled = !controller.publicAuth.busy && oldCooldown == 0
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
@@ -109,7 +109,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 },
                 label = { Text("新邮箱地址") },
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
+                singleLine = true
             )
             CaptchaInput(
                 value = captchaCode,
@@ -117,7 +117,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 imageBase64 = controller.publicAuth.captchaImageBase64,
                 loading = controller.publicAuth.captchaLoading,
                 enabled = !controller.publicAuth.busy && newSessionId.isBlank(),
-                onRefresh = controller.publicAuth::loadCaptcha,
+                onRefresh = controller.publicAuth::loadCaptcha
             )
             Button(
                 onClick = {
@@ -129,7 +129,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 },
                 enabled = !controller.publicAuth.busy &&
                     newEmail.isNotBlank() && captchaCode.isNotBlank() && newCooldown == 0,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(if (newCooldown > 0) "${newCooldown}秒后可重发" else "向新邮箱发送验证码")
             }
@@ -144,7 +144,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                     captchaCode = ""
                     controller.publicAuth.loadCaptcha()
                 },
-                enabled = !controller.publicAuth.busy && newCooldown == 0,
+                enabled = !controller.publicAuth.busy && newCooldown == 0
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
@@ -156,7 +156,7 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
             Text(
                 controller.publicAuth.error,
                 color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodySmall
             )
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -167,11 +167,11 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                         oldCode = oldCode,
                         newSessionId = newSessionId,
                         newCode = newCode,
-                        onSuccess = onDone,
+                        onSuccess = onDone
                     )
                 },
                 enabled = !controller.profile.busy && newSessionId.isNotBlank() && newCode.isNotBlank() &&
-                    (!verifyCurrentEmail || oldCode.isNotBlank()),
+                    (!verifyCurrentEmail || oldCode.isNotBlank())
             ) {
                 if (controller.profile.busy) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -190,6 +190,6 @@ private fun VerificationCodeField(value: String, onValueChange: (String) -> Unit
         onValueChange = { onValueChange(it.filter(Char::isDigit).take(8)) },
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
+        singleLine = true
     )
 }

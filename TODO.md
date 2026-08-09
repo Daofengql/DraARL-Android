@@ -18,29 +18,13 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 147 个文件，约 2.49 万有效代码行；JVM 测试 51 个文件、172 个用例。
+- 生产 Kotlin 151 个文件，约 2.50 万有效代码行；JVM 测试 52 个文件、181 个用例。
 - Compose 截图测试 2 个文件、12 张参考图，覆盖应用壳层和五个一级页面的浅色/深色状态。
-- 复杂度主要集中在 `AppController`、`ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
+- 复杂度主要集中在 `ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
 - Spotless、Detekt、单元测试、截图验证、Lint、Debug 构建和 Markdown 链接检查已进入 CI，不再列为待办。
 
 ## P1：代码边界与状态所有权
-
-- [ ] **继续缩减 `AppController`**
-
-建议按风险从低到高迁移：
-
-1. `SessionController`：登录态恢复、刷新和退出清理。
-
-要求：
-
-- 每个 Controller 公开不可变 `UiState` 和小型事件接口。
-- UI 只接收页面所需状态和回调，不把整个根 Controller 向下传递。
-- 用户、群组、路由和连接状态分别只有一个所有者，跨域动作通过明确的协调接口完成。
-- 每迁移一个域就删除旧字段和调用路径，不保留长期兼容层。
-- `AppController` 最终只负责应用级组合、导航和少量跨域协调。
-
-验收：核心页面可以使用假状态独立 Preview 和测试；`AppController` 的职责、函数数和体积持续下降。
 
 - [ ] **拆分 `ApiClient`**
 
@@ -149,12 +133,11 @@
 
 ## 推荐执行顺序
 
-1. 按域继续拆分 `AppController`，每次只迁移一个状态所有者。
-2. 分两到三个小批次改造壳层、列表/设置页和反馈容器。
-3. 拆分 `ApiClient` 并补 MockWebServer 测试。
-4. 显式化 `UdpRadioClient` 状态机并补确定性测试。
-5. 处理 Compose 重组、Release/R8 和 Baseline Profile。
-6. 每个批次同步规模数据与文档，最后执行完整真机回归。
+1. 分两到三个小批次改造壳层、列表/设置页和反馈容器。
+2. 拆分 `ApiClient` 并补 MockWebServer 测试。
+3. 显式化 `UdpRadioClient` 状态机并补确定性测试。
+4. 处理 Compose 重组、Release/R8 和 Baseline Profile。
+5. 每个批次同步规模数据与文档，最后执行完整真机回归。
 
 ## 每批验证
 

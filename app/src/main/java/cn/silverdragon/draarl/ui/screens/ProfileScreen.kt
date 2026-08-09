@@ -24,7 +24,7 @@ import cn.silverdragon.draarl.data.User
 
 @Composable
 fun ProfileScreen(controller: AppController) {
-    val user = controller.user ?: return
+    val user = controller.session.uiState.user ?: return
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     val avatarLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         selectedImageUri = uri

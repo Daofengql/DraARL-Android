@@ -109,12 +109,12 @@ internal fun AprsMapPanel(
     val fallbackMarker = remember {
         BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(null))
     }
-    var avatarMarker by remember(controller.user?.avatarUrl) {
+    var avatarMarker by remember(controller.session.uiState.user?.avatarUrl) {
         mutableStateOf<com.amap.api.maps.model.BitmapDescriptor?>(null)
     }
 
-    LaunchedEffect(controller.user?.avatarUrl) {
-        val avatarUrl = controller.user?.avatarUrl.orEmpty()
+    LaunchedEffect(controller.session.uiState.user?.avatarUrl) {
+        val avatarUrl = controller.session.uiState.user?.avatarUrl.orEmpty()
         if (avatarUrl.isBlank()) {
             avatarMarker = null
         } else {

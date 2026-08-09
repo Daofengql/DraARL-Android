@@ -38,10 +38,10 @@ fun ToolsScreen(controller: AppController) {
     BackHandler(enabled = tools.canGoBack, onBack = tools::back)
     when (tools.destination) {
         ToolDestination.HOME -> ToolsHome(
-            approved = controller.user?.isApproved == true,
+            approved = controller.session.uiState.user?.isApproved == true,
             error = tools.error,
             onClearError = tools::clearError,
-            onOpen = { tools.open(it, controller.user) }
+            onOpen = { tools.open(it, controller.session.uiState.user) }
         )
 
         ToolDestination.BLE -> BleProvisionScreen(tools = tools, onBack = tools::back)

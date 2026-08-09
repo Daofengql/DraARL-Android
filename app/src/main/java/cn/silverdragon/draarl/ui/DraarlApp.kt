@@ -112,9 +112,10 @@ fun DraarlApp(controller: AppController) {
 
 @Composable
 private fun DraarlAppContent(controller: AppController) {
+    val sessionState = controller.session.uiState
     when {
-        controller.initializing -> LoadingScreen()
-        !controller.authenticated -> LoginScreen(controller)
+        sessionState.initializing -> LoadingScreen()
+        !sessionState.authenticated -> LoginScreen(controller)
         else -> AuthenticatedApp(controller)
     }
 }
@@ -324,13 +325,13 @@ private fun AuthenticatedApp(controller: AppController) {
 
                                 SettingsMenuAction.OpenAprsSettings -> controller.navigate(AppPage.APRS_SETTINGS)
 
-                                SettingsMenuAction.Logout -> controller.logout()
+                                SettingsMenuAction.Logout -> controller.session.logout()
                             }
                         }
 
                         AppPage.SYSTEM_SETTINGS -> SystemSettingsScreen(
                             settings = controller.settings,
-                            userApproved = controller.user?.isApproved == true,
+                            userApproved = controller.session.uiState.user?.isApproved == true,
                             update = SystemSettingsUpdateState(
                                 currentVersionName = controller.currentAppVersionName,
                                 status = controller.appUpdateStatus,
@@ -362,7 +363,7 @@ private fun AuthenticatedApp(controller: AppController) {
 
                         AppPage.APRS_SETTINGS -> AprsSettingsScreen(
                             state = controller.aprs.uiState,
-                            defaultCallsign = controller.user?.callsign.orEmpty(),
+                            defaultCallsign = controller.session.uiState.user?.callsign.orEmpty(),
                             onBack = { controller.navigate(AppPage.SETTINGS) },
                             onEvent = controller.aprs::onEvent,
                             onNotice = controller::showNotice

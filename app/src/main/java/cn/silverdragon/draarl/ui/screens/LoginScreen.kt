@@ -70,18 +70,18 @@ fun LoginScreen(controller: AppController) {
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 24.dp),
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.Center
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp),
-                verticalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = "DraARL 麟链",
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.sp,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.primary
                 )
                 Text(
                     text = when (mode) {
@@ -90,7 +90,7 @@ fun LoginScreen(controller: AppController) {
                         AuthMode.FORGOT -> "找回密码"
                     },
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(28.dp))
                 when (mode) {
@@ -98,23 +98,25 @@ fun LoginScreen(controller: AppController) {
                         controller = controller,
                         captchaBitmap = captchaBitmap,
                         onRegister = { mode = AuthMode.REGISTER },
-                        onForgot = { mode = AuthMode.FORGOT },
+                        onForgot = { mode = AuthMode.FORGOT }
                     )
+
                     AuthMode.REGISTER -> RegisterFormStepped(
                         controller = controller,
                         captchaBitmap = captchaBitmap,
                         onLogin = {
                             mode = AuthMode.LOGIN
                             controller.publicAuth.loadCaptcha()
-                        },
+                        }
                     )
+
                     AuthMode.FORGOT -> ForgotPasswordFormStepped(
                         controller = controller,
                         captchaBitmap = captchaBitmap,
                         onLogin = {
                             mode = AuthMode.LOGIN
                             controller.publicAuth.loadCaptcha()
-                        },
+                        }
                     )
                 }
             }
@@ -127,15 +129,21 @@ private fun LoginForm(
     controller: AppController,
     captchaBitmap: androidx.compose.ui.graphics.ImageBitmap?,
     onRegister: () -> Unit,
-    onForgot: () -> Unit,
+    onForgot: () -> Unit
 ) {
+    val sessionState = controller.session.uiState
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var captchaCode by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     val submit = {
         if (username.isNotBlank() && password.isNotBlank() && captchaCode.isNotBlank()) {
-            controller.login(username, password, captchaCode)
+            controller.session.login(
+                username = username,
+                password = password,
+                captchaId = controller.publicAuth.captchaId,
+                captchaCode = captchaCode
+            )
         }
     }
     LaunchedEffect(controller.publicAuth.captchaId) { captchaCode = "" }
@@ -147,7 +155,7 @@ private fun LoginForm(
         label = { Text("账号或邮箱") },
         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
     )
     Spacer(Modifier.height(12.dp))
     PasswordField(
@@ -156,7 +164,7 @@ private fun LoginForm(
         label = "密码",
         visible = passwordVisible,
         onVisibleChange = { passwordVisible = it },
-        imeAction = ImeAction.Next,
+        imeAction = ImeAction.Next
     )
     Spacer(Modifier.height(12.dp))
     CaptchaRow(
@@ -164,26 +172,26 @@ private fun LoginForm(
         onValueChange = { captchaCode = it },
         captchaBitmap = captchaBitmap,
         loading = controller.publicAuth.captchaLoading,
-        enabled = !controller.loginBusy,
+        enabled = !sessionState.loginBusy,
         onRefresh = controller.publicAuth::loadCaptcha,
-        keyboardActions = KeyboardActions(onDone = { submit() }),
+        keyboardActions = KeyboardActions(onDone = { submit() })
     )
-    if (controller.loginError.isNotBlank()) ErrorText(controller.loginError)
+    if (sessionState.loginError.isNotBlank()) ErrorText(sessionState.loginError)
     Spacer(Modifier.height(20.dp))
     Button(
         onClick = submit,
-        enabled = !controller.loginBusy &&
+        enabled = !sessionState.loginBusy &&
             username.isNotBlank() &&
             password.isNotBlank() &&
             controller.publicAuth.captchaId.isNotBlank() &&
             captchaCode.isNotBlank(),
-        modifier = Modifier.fillMaxWidth().height(50.dp),
+        modifier = Modifier.fillMaxWidth().height(50.dp)
     ) {
-        BusyButtonContent(controller.loginBusy, "登录")
+        BusyButtonContent(sessionState.loginBusy, "登录")
     }
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         TextButton(onClick = onForgot) { Text("忘记密码") }
         TextButton(onClick = onRegister) { Text("注册账号") }

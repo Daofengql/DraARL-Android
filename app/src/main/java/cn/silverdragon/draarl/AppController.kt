@@ -33,7 +33,6 @@ import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
-import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.data.VoicePlaybackQueue
 import cn.silverdragon.draarl.devices.DeviceManagementController
 import cn.silverdragon.draarl.groups.GroupManagementController
@@ -56,6 +55,10 @@ import cn.silverdragon.draarl.radio.session.RadioSessionEffects
 import cn.silverdragon.draarl.radio.session.RadioSessionExecution
 import cn.silverdragon.draarl.radio.session.StoredRadioSessionStorage
 import cn.silverdragon.draarl.radio.session.createAndroidRadioServiceGateway
+import cn.silverdragon.draarl.session.ApiSessionRemoteDataSource
+import cn.silverdragon.draarl.session.SessionController
+import cn.silverdragon.draarl.session.SessionEffects
+import cn.silverdragon.draarl.session.SessionEntryPoint
 import cn.silverdragon.draarl.settings.AndroidSettingsStorage
 import cn.silverdragon.draarl.settings.RadioAudioSettings
 import cn.silverdragon.draarl.settings.SecureSettingsStore
@@ -104,25 +107,17 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val periodicRadioSync = object : Runnable {
         override fun run() {
             if (disposed.get()) return
-            if (authenticated && user?.isApproved == true) {
+            if (session.uiState.authenticated && session.uiState.user?.isApproved == true) {
                 refreshGroupOnlineCounts()
                 if (page == AppPage.RADIO) refreshRadioData()
             }
             mainHandler.postDelayed(this, RADIO_SYNC_INTERVAL_MS)
         }
     }
-    private val api: ApiClient = ApiClient(sessionStore) { session ->
+    private val api: ApiClient = ApiClient(sessionStore) { updatedSession ->
         mainHandler.post {
             if (disposed.get()) return@post
-            user = session?.user
-            radioSession.onAccountChanged(session?.toRadioSessionAccount())
-            if (session == null) {
-                refreshAllCoordinator.cancel()
-                invalidateBackgroundRequests()
-                contentLoading = false
-                authenticated = false
-                syncPttOverlay()
-            }
+            session.onRemoteSessionChanged(updatedSession)
         }
     }
     val messageController: RadioMessageController = RadioMessageController(
@@ -159,7 +154,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
             currentGroups = { groups },
             updateGroups = {
                 groups = it
-                radioSession.onAvailableGroupsChanged(it, user?.lastGroupId ?: 999)
+                radioSession.onAvailableGroupsChanged(it, session.uiState.user?.lastGroupId ?: 999)
                 syncPttOverlay()
             },
             refreshAll = ::refreshAll,
@@ -174,8 +169,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
             api = api,
             executor = executor,
             mainHandler = mainHandler,
-            currentUser = { user },
-            updateUser = { user = it },
+            currentUser = { session.uiState.user },
+            updateUser = session::acceptUser,
             showNotice = { notice = it },
             friendlyError = ::friendlyError
         )
@@ -187,14 +182,14 @@ class AppController internal constructor(application: Application, ioDispatcher:
             api = api,
             executor = executor,
             mainHandler = mainHandler,
-            showLoginError = { loginError = it },
+            showLoginError = session::reportLoginError,
             friendlyError = ::friendlyError
         )
     }
     val publicAuth: PublicAuthController
         get() = publicAuthDelegate.value
     private val settingsEffects = object : SettingsEffects {
-        override fun isPttOverlayAllowed(): Boolean = user?.isApproved == true
+        override fun isPttOverlayAllowed(): Boolean = session.uiState.user?.isApproved == true
 
         override fun canDrawPttOverlay(): Boolean = Settings.canDrawOverlays(appContext)
 
@@ -242,7 +237,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
                 updatedAccount = api.currentSession()?.toRadioMessageAccount(),
                 groupId = groupId
             )
-            if (selectionChanged && authenticated) {
+            if (selectionChanged && session.uiState.authenticated) {
                 if (page == AppPage.RADIO && groupId > 0) refreshRadioData()
             }
         }
@@ -356,17 +351,36 @@ class AppController internal constructor(application: Application, ioDispatcher:
         ioDispatcher = ioDispatcher
     )
 
-    var initializing by mutableStateOf(true)
-        private set
-    var authenticated by mutableStateOf(false)
-        private set
-    var loginBusy by mutableStateOf(false)
-        private set
-    var loginError by mutableStateOf("")
-        private set
-    val serverUrl: String = AppConfig.BASE_URL
-    var user by mutableStateOf<User?>(null)
-        private set
+    private val sessionEffects = object : SessionEffects {
+        override fun onStoredSessionPrepared(session: Session) = prepareSessionResources(session)
+
+        override fun onSessionActivated(session: Session, entryPoint: SessionEntryPoint) {
+            when (entryPoint) {
+                SessionEntryPoint.LOGIN, SessionEntryPoint.RESTORE -> activateSession(session)
+            }
+        }
+
+        override fun onSessionUpdated(session: Session) {
+            radioSession.onAccountChanged(session.toRadioSessionAccount())
+            syncPttOverlay()
+        }
+
+        override fun onSessionCleared() = clearSessionResources()
+
+        override fun requestLoginCaptcha() {
+            publicAuth.loadCaptcha()
+        }
+
+        override fun friendlyError(error: Throwable): String = this@AppController.friendlyError(error)
+    }
+    val session = SessionController(
+        remote = ApiSessionRemoteDataSource(api),
+        effects = sessionEffects,
+        scope = viewModelScope,
+        ioDispatcher = ioDispatcher,
+        serverUrl = AppConfig.BASE_URL
+    )
+
     var page by mutableStateOf(AppPage.RADIO)
         private set
     var contentLoading by mutableStateOf(false)
@@ -410,85 +424,12 @@ class AppController internal constructor(application: Application, ioDispatcher:
         private set
 
     init {
-        restoreSession()
+        session.start()
         mainHandler.postDelayed(periodicRadioSync, RADIO_SYNC_INTERVAL_MS)
     }
 
-    fun login(username: String, password: String, captchaCode: String) {
-        if (loginBusy) return
-        if (publicAuth.captchaId.isBlank() || captchaCode.isBlank()) {
-            loginError = "请输入图片验证码"
-            if (publicAuth.captchaId.isBlank()) publicAuth.loadCaptcha()
-            return
-        }
-        val submittedCaptchaId = publicAuth.captchaId
-        loginBusy = true
-        loginError = ""
-        executor.execute {
-            runCatching { api.login(AppConfig.BASE_URL, username, password, submittedCaptchaId, captchaCode) }
-                .onSuccess { session ->
-                    mainHandler.post {
-                        user = session.user
-                        aprs.onUserChanged(session.user.id)
-                        dashboard = dashboardStore.load(session.user.id) ?: DashboardData()
-                        authenticated = true
-                        loginBusy = false
-                        radioSession.onAccountChanged(session.toRadioSessionAccount())
-                        page = AppPage.RADIO
-                        syncPttOverlay()
-                    }
-                    mainHandler.post {
-                        refreshAll()
-                        radioSession.discoverAccessPoints()
-                        if (settings.uiState.autoCheckAppUpdate) checkAppUpdate(manual = false)
-                        if (session.user.isApproved) refreshRadioData()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        loginBusy = false
-                        loginError = friendlyError(error)
-                        publicAuth.loadCaptcha()
-                    }
-                }
-        }
-    }
-
-    fun logout() {
-        stopVoiceAutoPlay(stopCurrent = false)
-        if (toolsDelegate.isInitialized()) toolsDelegate.value.reset()
-        refreshAllCoordinator.cancel()
-        invalidateBackgroundRequests()
-        contentLoading = false
-        radioSession.onAccountChanged(null)
-        executor.execute { api.logout() }
-        authenticated = false
-        user = null
-        aprs.onUserChanged(null)
-        dashboard = DashboardData()
-        devices = emptyList()
-        groups = emptyList()
-        if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.reset()
-        if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.reset()
-        if (profileDelegate.isInitialized()) profileDelegate.value.reset()
-        if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.reset()
-        onlineDevices = emptyList()
-        playingMessageId = null
-        playbackLevelThrottler.reset()
-        transmitLevelThrottler.reset()
-        playbackLevel = 0f
-        transmitLevel = 0f
-        cwTransmitting = false
-        cwPreviewing = false
-        appUpdateStatus = AppUpdateStatus.IDLE
-        appUpdateInfo = null
-        appUpdateMessage = ""
-        appUpdateProgress = 0f
-        page = AppPage.RADIO
-    }
-
     fun navigate(target: AppPage) {
-        if (target in APPROVAL_REQUIRED_PAGES && user?.isApproved != true) {
+        if (target in APPROVAL_REQUIRED_PAGES && session.uiState.user?.isApproved != true) {
             notice = "账号审核通过后才能使用该功能"
             return
         }
@@ -662,13 +603,13 @@ class AppController internal constructor(application: Application, ioDispatcher:
                         deviceManagement.applyDefaultGroup(snapshot.defaultDeviceGroup.getOrNull())
                     }
                     snapshot.user?.let {
-                        user = it
+                        session.acceptUser(it)
                         api.acceptCurrentUser(it)
-                        api.currentSession()?.let { session ->
-                            radioSession.onAccountChanged(session.toRadioSessionAccount())
-                        }
                     }
-                    radioSession.onAvailableGroupsChanged(snapshot.groups, user?.lastGroupId ?: 999)
+                    radioSession.onAvailableGroupsChanged(
+                        snapshot.groups,
+                        session.uiState.user?.lastGroupId ?: 999
+                    )
                     syncPttOverlay()
                     dashboard = DashboardData(
                         devices = snapshot.devices.size,
@@ -679,7 +620,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
                             snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs,
                         communicationTrend = snapshot.trend
                     )
-                    user?.id?.let { dashboardStore.save(it, dashboard) }
+                    session.uiState.user?.id?.let { dashboardStore.save(it, dashboard) }
                 }
                 val nextGeneration = decision.nextGeneration
                 if (nextGeneration != null && api.currentSession() != null) {
@@ -692,7 +633,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     }
 
     fun refreshGroupOnlineCounts() {
-        val userId = user?.id ?: return
+        val userId = session.uiState.user?.id ?: return
         if (api.currentSession() == null || !syncingGroupCounts.compareAndSet(false, true)) return
         val generation = groupCountsGeneration.incrementAndGet()
         executor.execute {
@@ -700,12 +641,10 @@ class AppController internal constructor(application: Application, ioDispatcher:
                 val stats = runCatching(api::getGroupStats).getOrDefault(emptyMap())
                 if (stats.isEmpty()) return@execute
                 mainHandler.post {
-                    if (
-                        disposed.get() || generation != groupCountsGeneration.get() ||
-                        user?.id != userId || !authenticated
-                    ) {
-                        return@post
-                    }
+                    val staleRequest = generation != groupCountsGeneration.get()
+                    val accountChanged = session.uiState.user?.id != userId
+                    if (disposed.get() || staleRequest || accountChanged) return@post
+                    if (!session.uiState.authenticated) return@post
                     groups = groups.map { group ->
                         stats[group.id]?.let { (online, total) ->
                             group.copy(onlineCount = online, totalCount = total)
@@ -942,7 +881,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     }
 
     private fun refreshOnlineDevices() {
-        val userId = user?.id
+        val userId = session.uiState.user?.id
         if (userId == null || api.currentSession() == null) return
         if (!syncingOnlineDevices.compareAndSet(false, true)) {
             pendingOnlineDevicesSync.set(true)
@@ -955,8 +894,9 @@ class AppController internal constructor(application: Application, ioDispatcher:
                     val onlineResult = runCatching { api.getOnlineDevices(groupId) }
                     mainHandler.post {
                         val sameRequest = generation == onlineDevicesGeneration.get() &&
-                            groupId == radioSession.uiState.selectedGroupId && user?.id == userId
-                        val active = !disposed.get() && authenticated
+                            groupId == radioSession.uiState.selectedGroupId &&
+                            session.uiState.user?.id == userId
+                        val active = !disposed.get() && session.uiState.authenticated
                         if (active && sameRequest) {
                             onlineResult.onSuccess {
                                 onlineDevices = it
@@ -1008,6 +948,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.close()
         if (profileDelegate.isInitialized()) profileDelegate.value.close()
         if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.close()
+        session.close()
         settings.close()
         aprs.close()
         messageController.close()
@@ -1015,61 +956,57 @@ class AppController internal constructor(application: Application, ioDispatcher:
         executor.shutdownNow()
     }
 
-    private fun restoreSession() {
-        val savedSession = api.currentSession()
-        if (savedSession == null) {
-            initializing = false
-            return
-        }
-        val stored = if (savedSession.baseUrl != AppConfig.BASE_URL) {
-            savedSession.copy(baseUrl = AppConfig.BASE_URL).also(sessionStore::save)
-        } else {
-            savedSession
-        }
-        user = stored.user
-        aprs.onUserChanged(stored.user.id)
-        dashboard = dashboardStore.load(stored.user.id) ?: DashboardData()
-        executor.execute {
-            runCatching(api::restoreAndValidate)
-                .onSuccess { session ->
-                    mainHandler.post {
-                        user = session.user
-                        aprs.onUserChanged(session.user.id)
-                        authenticated = true
-                        initializing = false
-                        radioSession.onAccountChanged(session.toRadioSessionAccount())
-                        page = AppPage.RADIO
-                        syncPttOverlay()
-                    }
-                    mainHandler.post {
-                        refreshAll()
-                        radioSession.discoverAccessPoints()
-                        if (settings.uiState.autoCheckAppUpdate) checkAppUpdate(manual = false)
-                        if (session.user.isApproved) refreshRadioData()
-                    }
-                }
-                .onFailure { error ->
-                    mainHandler.post {
-                        initializing = false
-                        authenticated = false
-                        user = null
-                        aprs.onUserChanged(null)
-                        radioSession.onAccountChanged(null)
-                        syncPttOverlay()
-                        loginError = if (error is ApiException && error.code == 403) {
-                            friendlyError(error)
-                        } else {
-                            "登录状态已过期，请重新登录"
-                        }
-                    }
-                }
-        }
+    private fun prepareSessionResources(session: Session) {
+        aprs.onUserChanged(session.user.id)
+        dashboard = dashboardStore.load(session.user.id) ?: DashboardData()
+    }
+
+    private fun activateSession(session: Session) {
+        prepareSessionResources(session)
+        radioSession.onAccountChanged(session.toRadioSessionAccount())
+        page = AppPage.RADIO
+        syncPttOverlay()
+        refreshAll()
+        radioSession.discoverAccessPoints()
+        if (settings.uiState.autoCheckAppUpdate) checkAppUpdate(manual = false)
+        if (session.user.isApproved) refreshRadioData()
+    }
+
+    private fun clearSessionResources() {
+        stopVoiceAutoPlay(stopCurrent = false)
+        if (toolsDelegate.isInitialized()) toolsDelegate.value.reset()
+        refreshAllCoordinator.cancel()
+        invalidateBackgroundRequests()
+        contentLoading = false
+        radioSession.onAccountChanged(null)
+        aprs.onUserChanged(null)
+        dashboard = DashboardData()
+        devices = emptyList()
+        groups = emptyList()
+        if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.reset()
+        if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.reset()
+        if (profileDelegate.isInitialized()) profileDelegate.value.reset()
+        if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.reset()
+        onlineDevices = emptyList()
+        playingMessageId = null
+        playbackLevelThrottler.reset()
+        transmitLevelThrottler.reset()
+        playbackLevel = 0f
+        transmitLevel = 0f
+        cwTransmitting = false
+        cwPreviewing = false
+        appUpdateStatus = AppUpdateStatus.IDLE
+        appUpdateInfo = null
+        appUpdateMessage = ""
+        appUpdateProgress = 0f
+        page = AppPage.RADIO
+        syncPttOverlay()
     }
 
     private fun syncPttOverlay() {
         val enabled = settings.uiState.pttOverlayEnabled &&
-            authenticated &&
-            user?.isApproved == true &&
+            session.uiState.authenticated &&
+            session.uiState.user?.isApproved == true &&
             Settings.canDrawOverlays(appContext)
         radioSession.configurePttOverlay(
             RadioPttOverlayConfig(

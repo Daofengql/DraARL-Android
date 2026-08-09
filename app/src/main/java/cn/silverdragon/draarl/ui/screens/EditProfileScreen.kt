@@ -37,7 +37,7 @@ import cn.silverdragon.draarl.AppPage
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditProfileScreen(controller: AppController) {
-    val user = controller.user ?: return
+    val user = controller.session.uiState.user ?: return
     var nickname by remember(user.id) { mutableStateOf(user.nickname) }
     var phone by remember(user.id) { mutableStateOf(user.phone) }
     var address by remember(user.id) { mutableStateOf(user.address) }
@@ -57,7 +57,7 @@ fun EditProfileScreen(controller: AppController) {
             dmrid = dmrId.toIntOrNull() ?: 0,
             mdcid = mdcId.trim(),
             alarmMsg = user.alarmMsg,
-            onSuccess = { controller.navigate(AppPage.PROFILE) },
+            onSuccess = { controller.navigate(AppPage.PROFILE) }
         )
     }
 
@@ -69,14 +69,14 @@ fun EditProfileScreen(controller: AppController) {
                     IconButton(onClick = { controller.navigate(AppPage.PROFILE) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                },
+                }
             )
-        },
+        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding).imePadding(),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item { EditSectionTitle("基本资料") }
             item { ProfileEditField(nickname, { nickname = it }, "昵称") }
@@ -87,7 +87,7 @@ fun EditProfileScreen(controller: AppController) {
                     label = { Text("个人简介") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
-                    maxLines = 6,
+                    maxLines = 6
                 )
             }
             item { ProfileEditField(phone, { phone = it }, "手机号", KeyboardType.Phone) }
@@ -102,7 +102,7 @@ fun EditProfileScreen(controller: AppController) {
                 Button(
                     onClick = ::save,
                     enabled = !controller.profile.busy,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 ) {
                     if (controller.profile.busy) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -111,7 +111,7 @@ fun EditProfileScreen(controller: AppController) {
                     }
                     Text(
                         if (controller.profile.busy) "正在保存" else "保存资料",
-                        modifier = Modifier.padding(start = 8.dp),
+                        modifier = Modifier.padding(start = 8.dp)
                     )
                 }
             }
@@ -126,7 +126,7 @@ private fun EditSectionTitle(text: String) {
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 4.dp),
+        modifier = Modifier.padding(top = 4.dp)
     )
 }
 
@@ -135,7 +135,7 @@ private fun ProfileEditField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    keyboardType: KeyboardType = KeyboardType.Text,
+    keyboardType: KeyboardType = KeyboardType.Text
 ) {
     OutlinedTextField(
         value = value,
@@ -143,6 +143,6 @@ private fun ProfileEditField(
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth(),
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType)
     )
 }

@@ -336,7 +336,7 @@ fun RadioScreen(
                                             state = MessageItemState(
                                                 message = message,
                                                 profile = if (message.mine) {
-                                                    controller.user
+                                                    controller.session.uiState.user
                                                 } else {
                                                     messageState.publicProfiles[message.senderUsername.lowercase()]
                                                 },

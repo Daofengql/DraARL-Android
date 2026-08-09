@@ -3,6 +3,9 @@ package cn.silverdragon.draarl.network
 import cn.silverdragon.draarl.auth.accountLoginRejection
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.CaptchaChallenge
+import cn.silverdragon.draarl.data.ChannelMessage
+import cn.silverdragon.draarl.data.ChannelMessagePage
+import cn.silverdragon.draarl.data.ChannelMessageSender
 import cn.silverdragon.draarl.data.ClientResourceArtifact
 import cn.silverdragon.draarl.data.ClientResourceArtifactTarget
 import cn.silverdragon.draarl.data.ClientResourceDownload
@@ -10,9 +13,6 @@ import cn.silverdragon.draarl.data.ClientResourceManifest
 import cn.silverdragon.draarl.data.ClientResourceManifestItem
 import cn.silverdragon.draarl.data.ClientResourceRelease
 import cn.silverdragon.draarl.data.ClientResourceSummary
-import cn.silverdragon.draarl.data.ChannelMessage
-import cn.silverdragon.draarl.data.ChannelMessagePage
-import cn.silverdragon.draarl.data.ChannelMessageSender
 import cn.silverdragon.draarl.data.CommunicationRecord
 import cn.silverdragon.draarl.data.CommunicationRecordPage
 import cn.silverdragon.draarl.data.CommunicationStats
@@ -25,43 +25,49 @@ import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.PlatformInfo
-import cn.silverdragon.draarl.data.RegistrationResult
-import cn.silverdragon.draarl.data.RadioSession
 import cn.silverdragon.draarl.data.RadioRouting
+import cn.silverdragon.draarl.data.RadioSession
+import cn.silverdragon.draarl.data.RegistrationResult
+import cn.silverdragon.draarl.data.ReplaceableDevice
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
-import cn.silverdragon.draarl.data.ReplaceableDevice
+import cn.silverdragon.draarl.profile.emailChangeRequestJson
 import cn.silverdragon.draarl.tools.LogbookEntry
 import cn.silverdragon.draarl.tools.LogbookPage
 import cn.silverdragon.draarl.tools.RadioPreset
 import cn.silverdragon.draarl.tools.RelayStation
 import cn.silverdragon.draarl.tools.ToolApiJson
-import cn.silverdragon.draarl.profile.emailChangeRequestJson
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.BufferedReader
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import org.json.JSONArray
+import org.json.JSONObject
 
 class ApiException(
     val code: Int,
     override val message: String,
     val errorCode: String = "",
-    val retryAfterSeconds: Int? = null,
+    val retryAfterSeconds: Int? = null
 ) : Exception(message)
 
-class ApiClient(
-    private val sessionStore: SecureSessionStore,
-    private val onSessionChanged: (Session?) -> Unit = {},
-) {
+class ApiClient(private val sessionStore: SecureSessionStore, private val onSessionChanged: (Session?) -> Unit = {}) {
     private val refreshLock = Any()
+    private val authOperationGeneration = AtomicInteger(0)
     private val sessionRef = AtomicReference(sessionStore.load())
 
     fun currentSession(): Session? = sessionRef.get()
+
+    internal fun prepareCurrentSession(baseUrl: String): Session? = synchronized(refreshLock) {
+        val current = currentSession() ?: return@synchronized null
+        val normalizedUrl = normalizeBaseUrl(baseUrl)
+        if (current.baseUrl == normalizedUrl) return@synchronized current
+        current.copy(baseUrl = normalizedUrl).also(::updateSession)
+    }
 
     fun freshAccessToken(): String {
         val current = currentSession() ?: throw ApiException(401, "请先登录")
@@ -84,24 +90,19 @@ class ApiClient(
             method = "GET",
             path = "/api/captcha",
             body = null,
-            accessToken = null,
+            accessToken = null
         ).requireSuccess().requireObject("data")
         return CaptchaChallenge(
             id = data.requireString("captcha_id"),
             imageBase64 = data.optStringClean("captcha_image")
                 .ifBlank { data.optStringClean("image_base64") }
                 .ifBlank { throw ApiException(500, "服务器响应缺少验证码图片") },
-            expiresInSeconds = data.optInt("expire", 300),
+            expiresInSeconds = data.optInt("expire", 300)
         )
     }
 
-    fun login(
-        baseUrl: String,
-        username: String,
-        password: String,
-        captchaId: String,
-        captchaCode: String,
-    ): Session {
+    fun login(baseUrl: String, username: String, password: String, captchaId: String, captchaCode: String): Session {
+        val operationGeneration = authOperationGeneration.incrementAndGet()
         val normalizedUrl = normalizeBaseUrl(baseUrl)
         val response = rawRequest(
             baseUrl = normalizedUrl,
@@ -112,7 +113,7 @@ class ApiClient(
                 .put("password", password)
                 .put("captcha_id", captchaId)
                 .put("captcha_code", captchaCode.trim()),
-            accessToken = null,
+            accessToken = null
         ).requireSuccess()
         val data = response.requireObject("data")
         val now = System.currentTimeMillis()
@@ -122,12 +123,17 @@ class ApiClient(
             refreshToken = data.optStringClean("refresh_token"),
             accessExpiresAt = now + data.optLong("expires_in", 10_800L) * 1_000L,
             refreshExpiresAt = now + data.optLong("refresh_expires_in", 1_209_600L) * 1_000L,
-            user = parseUser(data.requireObject("user"), normalizedUrl),
+            user = parseUser(data.requireObject("user"), normalizedUrl)
         )
         accountLoginRejection(session.user)?.let { message ->
             throw ApiException(403, message)
         }
-        updateSession(session)
+        synchronized(refreshLock) {
+            if (operationGeneration != authOperationGeneration.get()) {
+                throw ApiException(AUTH_OPERATION_CANCELLED, "登录请求已取消")
+            }
+            updateSession(session)
+        }
         return session
     }
 
@@ -138,7 +144,7 @@ class ApiClient(
             method = "GET",
             path = "/api/config/public",
             body = null,
-            accessToken = null,
+            accessToken = null
         ).requireSuccess().requireObject("data")
         return data.optJSONObject("registration")
             ?.optBoolean("require_email_verification", true)
@@ -150,7 +156,7 @@ class ApiClient(
         email: String,
         purpose: String,
         captchaId: String,
-        captchaCode: String,
+        captchaCode: String
     ): EmailCodeSession {
         val normalizedUrl = normalizeBaseUrl(baseUrl)
         val data = rawRequest(
@@ -162,11 +168,11 @@ class ApiClient(
                 .put("purpose", purpose)
                 .put("captcha_id", captchaId)
                 .put("captcha_code", captchaCode.trim()),
-            accessToken = null,
+            accessToken = null
         ).requireSuccess().requireObject("data")
         return EmailCodeSession(
             sessionId = data.requireString("session_id"),
-            expiresInSeconds = data.optInt("expires_in", 600),
+            expiresInSeconds = data.optInt("expires_in", 600)
         )
     }
 
@@ -179,7 +185,7 @@ class ApiClient(
         nickname: String,
         email: String,
         sessionId: String,
-        emailCode: String,
+        emailCode: String
     ): RegistrationResult {
         val normalizedUrl = normalizeBaseUrl(baseUrl)
         val body = JSONObject()
@@ -196,14 +202,14 @@ class ApiClient(
             method = "POST",
             path = "/api/auth/register",
             body = body,
-            accessToken = null,
+            accessToken = null
         ).requireSuccess().requireObject("data")
         return RegistrationResult(
             id = data.optInt("id"),
             username = data.optStringClean("username"),
             nickname = data.optStringClean("nickname"),
             approvalStatus = data.optInt("approval_status"),
-            devicePassword = data.optStringClean("device_password"),
+            devicePassword = data.optStringClean("device_password")
         )
     }
 
@@ -217,24 +223,46 @@ class ApiClient(
                 .put("session_id", sessionId)
                 .put("code", code.trim())
                 .put("new_password", newPassword),
-            accessToken = null,
+            accessToken = null
         ).requireSuccess()
     }
 
     fun restoreAndValidate(): Session {
+        val operationGeneration = authOperationGeneration.get()
         currentSession() ?: throw ApiException(401, "登录状态不存在")
         val user = getMe(updateSession = false)
         accountLoginRejection(user)?.let { message ->
             updateSession(null)
             throw ApiException(403, message)
         }
-        return currentSession()?.copy(user = user)?.also(::updateSession)
-            ?: throw ApiException(401, "登录状态已失效")
+        return synchronized(refreshLock) {
+            if (operationGeneration != authOperationGeneration.get()) {
+                throw ApiException(AUTH_OPERATION_CANCELLED, "登录恢复已取消")
+            }
+            currentSession()?.copy(user = user)?.also(::updateSession)
+                ?: throw ApiException(401, "登录状态已失效")
+        }
     }
 
-    fun logout() {
-        runCatching { request("POST", "/api/auth/logout", JSONObject()) }
+    internal fun detachSessionForLogout(expected: Session? = null): Session? = synchronized(refreshLock) {
+        val current = currentSession()
+        if (expected != null && current != expected) return@synchronized null
+        authOperationGeneration.incrementAndGet()
+        if (current == null) return@synchronized null
         updateSession(null)
+        current
+    }
+
+    internal fun revokeSession(session: Session) {
+        runCatching {
+            rawRequest(
+                baseUrl = normalizeBaseUrl(session.baseUrl),
+                method = "POST",
+                path = "/api/auth/logout",
+                body = JSONObject(),
+                accessToken = session.accessToken
+            ).requireSuccess()
+        }
     }
 
     fun getMe(updateSession: Boolean = true): User {
@@ -270,7 +298,7 @@ class ApiClient(
         return PlatformInfo(
             name = data.optStringClean("name").ifBlank { "DraARL 麟链" },
             version = data.optStringClean("version"),
-            protocolVersion = data.optStringClean("protocol_version").ifBlank { "DraARLv1" },
+            protocolVersion = data.optStringClean("protocol_version").ifBlank { "DraARLv1" }
         )
     }
 
@@ -280,7 +308,7 @@ class ApiClient(
         clientVersion: String = "",
         channel: String = "stable",
         osVersion: String = "",
-        androidApi: Int = 0,
+        androidApi: Int = 0
     ): ClientResourceManifest {
         val query = buildString {
             append("/api/public/client-resources/manifest?platform=").append(urlEncode(platform))
@@ -298,12 +326,12 @@ class ApiClient(
         val data = request(
             "GET",
             "/api/public/client-resources/artifacts/${artifactId.coerceAtLeast(1)}/download",
-            requiresAuth = false,
+            requiresAuth = false
         ).requireObject("data")
         return ClientResourceDownload(
             artifactId = data.optInt("artifact_id", artifactId),
             downloadUrl = optionalHttpsUrl(data.optStringClean("download_url")),
-            urlExpiresAt = data.optStringClean("url_expires_at"),
+            urlExpiresAt = data.optStringClean("url_expires_at")
         )
     }
 
@@ -321,7 +349,7 @@ class ApiClient(
                 port = port,
                 region = item.optStringClean("region"),
                 network = item.optStringClean("network"),
-                priority = item.optInt("priority", 100),
+                priority = item.optInt("priority", 100)
             )
         }.sortedWith(compareBy(AccessPoint::priority, AccessPoint::displayName))
     }
@@ -358,7 +386,7 @@ class ApiClient(
         deviceId: Int,
         name: String? = null,
         disableSend: Boolean? = null,
-        disableReceive: Boolean? = null,
+        disableReceive: Boolean? = null
     ): Device {
         val body = JSONObject().apply {
             name?.let { put("name", it) }
@@ -379,7 +407,7 @@ class ApiClient(
             JSONObject()
                 .put("device_id", deviceId)
                 .put("group_id", groupId)
-                .put("password", password),
+                .put("password", password)
         )
     }
 
@@ -403,7 +431,7 @@ class ApiClient(
             password = data.optStringClean("device_password"),
             hasPassword = data.optBoolean("has_password"),
             isNew = data.optBoolean("is_new"),
-            createdAt = data.optStringClean("created_at"),
+            createdAt = data.optStringClean("created_at")
         )
     }
 
@@ -413,7 +441,7 @@ class ApiClient(
             password = data.optStringClean("device_password"),
             hasPassword = true,
             isNew = true,
-            createdAt = data.optStringClean("created_at"),
+            createdAt = data.optStringClean("created_at")
         )
     }
 
@@ -421,7 +449,7 @@ class ApiClient(
         val data = request(
             "POST",
             "/api/device/bind",
-            JSONObject().put("dynamic_code", dynamicCode),
+            JSONObject().put("dynamic_code", dynamicCode)
         ).requireObject("data")
         val availableSsids = data.optJSONArray("available_ssids") ?: JSONArray()
         val replacements = data.optJSONArray("replaceable_devices") ?: JSONArray()
@@ -440,9 +468,9 @@ class ApiClient(
                     callsign = item.optStringClean("callsign"),
                     ssid = item.optInt("ssid"),
                     lastOnlineIp = item.optStringClean("last_online_ip"),
-                    onlineTime = item.optStringClean("online_time"),
+                    onlineTime = item.optStringClean("online_time")
                 )
-            },
+            }
         )
     }
 
@@ -458,7 +486,7 @@ class ApiClient(
             ssid = data.optNullableInt("ssid"),
             username = auth.optStringClean("username"),
             devicePassword = auth.optStringClean("device_password"),
-            dmrId = data.optInt("dmr_id"),
+            dmrId = data.optInt("dmr_id")
         )
     }
 
@@ -475,7 +503,7 @@ class ApiClient(
             val total = response.optInt("total", pagination?.optInt("total", -1) ?: -1)
             val hasMore = response.optBoolean(
                 "has_more",
-                response.optBoolean("hasMore", pagination?.optBoolean("has_more", false) ?: false),
+                response.optBoolean("hasMore", pagination?.optBoolean("has_more", false) ?: false)
             )
             val shouldContinue = pageGroups.isNotEmpty() && (
                 hasMore ||
@@ -499,7 +527,7 @@ class ApiClient(
         return data.objects().associate { item ->
             item.optInt("id") to Pair(
                 item.optInt("online_dev_number", item.optInt("online_count")),
-                item.optInt("total_dev_number", item.optInt("total_count")),
+                item.optInt("total_dev_number", item.optInt("total_count"))
             )
         }
     }
@@ -518,7 +546,7 @@ class ApiClient(
                 ghost = item.optBoolean("is_ghost"),
                 disableSend = item.optBoolean("disable_send"),
                 disableReceive = item.optBoolean("disable_recv"),
-                lastActivity = item.optStringClean("last_activity"),
+                lastActivity = item.optStringClean("last_activity")
             )
         }
     }
@@ -535,7 +563,7 @@ class ApiClient(
             "/api/radio/sessions/${urlEncode(sessionId)}/routing",
             JSONObject()
                 .put("tx_group_id", routing.txGroupId)
-                .put("rx_group_ids", JSONArray(routing.rxGroupIds)),
+                .put("rx_group_ids", JSONArray(routing.rxGroupIds))
         ).requireObject("data")
         return parseRadioSession(data)
     }
@@ -544,7 +572,7 @@ class ApiClient(
         groupId: Int,
         limit: Int? = null,
         cursor: String = "",
-        messageType: String = "all",
+        messageType: String = "all"
     ): ChannelMessagePage {
         val path = groupMessagesPath(groupId, limit, cursor, messageType)
         val data = request("GET", path).requireObject("data")
@@ -552,15 +580,15 @@ class ApiClient(
             messages = (data.optJSONArray("messages") ?: JSONArray()).objects().map(::parseChannelMessage),
             nextCursor = data.optStringClean("next_cursor"),
             hasMore = data.optBoolean("has_more"),
-            serverTime = data.optStringClean("server_time"),
+            serverTime = data.optStringClean("server_time")
         )
     }
 
     fun getGroupMessage(groupId: Int, messageId: Int): ChannelMessage = parseChannelMessage(
         request(
             "GET",
-            "/api/groups/${groupId.coerceAtLeast(1)}/messages/${messageId.coerceAtLeast(1)}",
-        ).requireObject("data"),
+            "/api/groups/${groupId.coerceAtLeast(1)}/messages/${messageId.coerceAtLeast(1)}"
+        ).requireObject("data")
     )
 
     fun joinGroup(groupId: Int, password: String) {
@@ -575,7 +603,7 @@ class ApiClient(
         val data = request(
             "POST",
             "/api/groups/search",
-            JSONObject().put("keyword", keyword).put("page", 1).put("page_size", 50),
+            JSONObject().put("keyword", keyword).put("page", 1).put("page_size", 50)
         ).requireObject("data")
         return (data.optJSONArray("items") ?: JSONArray()).objects().map(::parseGroup)
     }
@@ -592,7 +620,7 @@ class ApiClient(
         type: Int? = null,
         password: String? = null,
         note: String? = null,
-        status: Int? = null,
+        status: Int? = null
     ): Group {
         val body = JSONObject().apply {
             name?.let { put("name", it) }
@@ -617,12 +645,12 @@ class ApiClient(
         groupId: Int,
         deviceId: Int,
         disableSend: Boolean,
-        disableReceive: Boolean,
+        disableReceive: Boolean
     ): Pair<Boolean, Boolean> {
         val data = request(
             "PUT",
             "/api/groups/$groupId/devices/$deviceId/comm-control",
-            JSONObject().put("disable_send", disableSend).put("disable_recv", disableReceive),
+            JSONObject().put("disable_send", disableSend).put("disable_recv", disableReceive)
         ).requireObject("data")
         return data.optBoolean("disable_send") to data.optBoolean("disable_recv")
     }
@@ -636,7 +664,7 @@ class ApiClient(
         return CommunicationStats(
             totalCount = data.optInt("total_count"),
             totalSize = data.optLong("total_size"),
-            totalDurationMs = data.optLong("total_duration"),
+            totalDurationMs = data.optLong("total_duration")
         )
     }
 
@@ -646,16 +674,12 @@ class ApiClient(
             DailyCommunicationStats(
                 date = item.optStringClean("date"),
                 count = item.optInt("count"),
-                durationMs = item.optLong("duration"),
+                durationMs = item.optLong("duration")
             )
         }
     }
 
-    fun getCommunicationRecords(
-        page: Int = 1,
-        pageSize: Int = 100,
-        groupId: Int? = null,
-    ): CommunicationRecordPage {
+    fun getCommunicationRecords(page: Int = 1, pageSize: Int = 100, groupId: Int? = null): CommunicationRecordPage {
         val safePage = page.coerceAtLeast(1)
         val safePageSize = pageSize.coerceIn(1, 100)
         val query = buildString {
@@ -668,7 +692,7 @@ class ApiClient(
             records = records.objects().map(::parseCommunicationRecord),
             total = data.optInt("total"),
             page = data.optInt("page", safePage),
-            pageSize = data.optInt("page_size", safePageSize).coerceAtLeast(1),
+            pageSize = data.optInt("page_size", safePageSize).coerceAtLeast(1)
         )
     }
 
@@ -682,7 +706,7 @@ class ApiClient(
         val items = request(
             "GET",
             "/api/public/relays?location=$encoded",
-            requiresAuth = false,
+            requiresAuth = false
         ).requireObject("data").optJSONArray("items") ?: JSONArray()
         return List(items.length()) { index ->
             ToolApiJson.relay(items.getJSONObject(index))
@@ -703,7 +727,7 @@ class ApiClient(
             items = List(items.length()) { ToolApiJson.logbook(items.getJSONObject(it)) },
             total = data.optInt("total"),
             page = data.optInt("page", page),
-            pageSize = data.optInt("page_size", pageSize),
+            pageSize = data.optInt("page_size", pageSize)
         )
     }
 
@@ -742,7 +766,7 @@ class ApiClient(
         request(
             "DELETE",
             "/api/logbooks/batch",
-            JSONObject().put("ids", JSONArray().apply { ids.distinct().forEach(::put) }),
+            JSONObject().put("ids", JSONArray().apply { ids.distinct().forEach(::put) })
         )
     }
 
@@ -784,7 +808,7 @@ class ApiClient(
         sex: Int = 0,
         dmrid: Int = 0,
         mdcid: String = "",
-        alarmMsg: Boolean = false,
+        alarmMsg: Boolean = false
     ): User {
         val body = JSONObject()
             .put("nickname", nickname)
@@ -806,13 +830,15 @@ class ApiClient(
         val boundary = "----WebKitFormBoundary${System.currentTimeMillis()}"
         val lineEnd = "\r\n"
 
+        val fileTypePart =
+            "Content-Disposition: form-data; name=\"file_type\"$lineEnd$lineEnd" +
+                "$fileType$lineEnd--$boundary--$lineEnd"
         val body = buildString {
             append("--$boundary$lineEnd")
             append("Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"$lineEnd")
             append("Content-Type: application/octet-stream$lineEnd")
             append(lineEnd)
-        }.toByteArray() + fileBytes + "$lineEnd--$boundary$lineEnd".toByteArray() +
-            "Content-Disposition: form-data; name=\"file_type\"$lineEnd$lineEnd$fileType$lineEnd--$boundary--$lineEnd".toByteArray()
+        }.toByteArray() + fileBytes + "$lineEnd--$boundary$lineEnd".toByteArray() + fileTypePart.toByteArray()
 
         val url = URL("${baseUrl.trimEnd('/')}/api/upload/file")
         val connection = url.openConnection() as HttpURLConnection
@@ -841,7 +867,7 @@ class ApiClient(
             val data = response.optJSONObject("data") ?: response
             return resolveHttpsUrl(
                 baseUrl,
-                data.optStringClean("url").ifBlank { data.optStringClean("file_url") },
+                data.optStringClean("url").ifBlank { data.optStringClean("file_url") }
             )
         } finally {
             connection.disconnect()
@@ -855,16 +881,11 @@ class ApiClient(
         request("PUT", "/api/me/password", body)
     }
 
-    fun changeEmail(
-        oldSessionId: String,
-        oldCode: String,
-        newSessionId: String,
-        newCode: String,
-    ): User {
+    fun changeEmail(oldSessionId: String, oldCode: String, newSessionId: String, newCode: String): User {
         request(
             "PUT",
             "/api/me/email",
-            emailChangeRequestJson(oldSessionId, oldCode, newSessionId, newCode),
+            emailChangeRequestJson(oldSessionId, oldCode, newSessionId, newCode)
         )
         return getMe()
     }
@@ -874,7 +895,7 @@ class ApiClient(
         path: String,
         body: JSONObject? = null,
         requiresAuth: Boolean = true,
-        allowRefresh: Boolean = true,
+        allowRefresh: Boolean = true
     ): JSONObject {
         val session = currentSession()
         if (requiresAuth && session == null) throw ApiException(401, "请先登录")
@@ -902,7 +923,7 @@ class ApiClient(
                 "POST",
                 "/api/auth/refresh",
                 JSONObject().put("refresh_token", current.refreshToken),
-                accessToken = null,
+                accessToken = null
             ).requireSuccess()
         }.getOrElse {
             updateSession(null)
@@ -915,8 +936,8 @@ class ApiClient(
                 accessToken = data.requireString("token"),
                 refreshToken = data.optStringClean("refresh_token").ifBlank { current.refreshToken },
                 accessExpiresAt = now + data.optLong("expires_in", 10_800L) * 1_000L,
-                refreshExpiresAt = now + data.optLong("refresh_expires_in", 1_209_600L) * 1_000L,
-            ),
+                refreshExpiresAt = now + data.optLong("refresh_expires_in", 1_209_600L) * 1_000L
+            )
         )
         true
     }
@@ -926,7 +947,7 @@ class ApiClient(
         method: String,
         path: String,
         body: JSONObject?,
-        accessToken: String?,
+        accessToken: String?
     ): JSONObject {
         val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
         val connection = URL(normalizedBaseUrl + path).openConnection() as HttpURLConnection
@@ -947,8 +968,12 @@ class ApiClient(
             val status = connection.responseCode
             val stream = if (status in 200..399) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader()?.use(BufferedReader::readText).orEmpty()
-            val json = if (text.isBlank()) JSONObject() else runCatching { JSONObject(text) }.getOrElse {
-                throw ApiException(status, "服务器返回了无法识别的数据")
+            val json = if (text.isBlank()) {
+                JSONObject()
+            } else {
+                runCatching { JSONObject(text) }.getOrElse {
+                    throw ApiException(status, "服务器返回了无法识别的数据")
+                }
             }
             connection.getHeaderField("Retry-After")?.trim()?.toIntOrNull()?.takeIf { it > 0 }?.let {
                 json.put(HTTP_RETRY_AFTER_SECONDS, it)
@@ -965,20 +990,19 @@ class ApiClient(
         }
     }
 
-    private fun updateSession(session: Session?) {
+    private fun updateSession(session: Session?) = synchronized(refreshLock) {
         sessionRef.set(session)
         if (session == null) sessionStore.clearSession() else sessionStore.save(session)
         onSessionChanged(session)
     }
 
-    private fun parseUser(
-        json: JSONObject,
-        baseUrl: String = currentSession()?.baseUrl.orEmpty(),
-    ): User {
+    private fun parseUser(json: JSONObject, baseUrl: String = currentSession()?.baseUrl.orEmpty()): User {
         val roles = json.opt("roles")
         val role = when (roles) {
             is JSONArray -> roles.optString(0, "user")
+
             is String -> roles.substringBefore(',').trim().ifBlank { "user" }
+
             else -> json.optStringClean("role").ifBlank {
                 if (json.optBoolean("isAdmin")) "admin" else "user"
             }
@@ -995,7 +1019,7 @@ class ApiClient(
             reviewNote = json.optStringClean("review_note"),
             avatarUrl = optionalHttpsUrl(
                 json.optStringClean("avatar_thumb").ifBlank { json.optStringClean("avatar") },
-                baseUrl,
+                baseUrl
             ),
             address = json.optStringClean("address"),
             phone = json.optStringClean("phone"),
@@ -1009,7 +1033,7 @@ class ApiClient(
             status = json.optInt("status", 1),
             lastLoginTime = json.optStringClean("last_login_time"),
             lastLoginIp = json.optStringClean("last_login_ip"),
-            lastLoginIpLocation = json.optStringClean("last_login_ip_location"),
+            lastLoginIpLocation = json.optStringClean("last_login_ip_location")
         )
     }
 
@@ -1038,7 +1062,7 @@ class ApiClient(
         ownerName = item.optStringClean("owner_name"),
         ownerCallsign = item.optStringClean("owner_callsign"),
         createdAt = item.optStringClean("create_time"),
-        updatedAt = item.optStringClean("update_time"),
+        updatedAt = item.optStringClean("update_time")
     )
 
     private fun parseGroup(json: JSONObject) = Group(
@@ -1055,7 +1079,7 @@ class ApiClient(
         onlineCount = json.optInt("online_count"),
         totalCount = json.optInt("total_count"),
         createdAt = json.optStringClean("create_time"),
-        updatedAt = json.optStringClean("update_time"),
+        updatedAt = json.optStringClean("update_time")
     )
 
     private fun parseCommunicationRecord(item: JSONObject) = CommunicationRecord(
@@ -1071,7 +1095,7 @@ class ApiClient(
         durationMs = item.optLong("duration_ms"),
         messageType = item.optInt("msg_type"),
         text = item.optStringClean("text_content"),
-        audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
+        audioUrl = optionalHttpsUrl(item.optStringClean("audio_url"))
     )
 
     private fun parseRadioSession(item: JSONObject) = RadioSession(
@@ -1085,7 +1109,7 @@ class ApiClient(
         txGroupId = item.optInt("tx_group_id"),
         rxGroupIds = item.optJSONArray("rx_group_ids")?.ints().orEmpty(),
         disableSend = item.optBoolean("disable_send"),
-        disableReceive = item.optBoolean("disable_recv"),
+        disableReceive = item.optBoolean("disable_recv")
     )
 
     private fun parseChannelMessage(item: JSONObject): ChannelMessage {
@@ -1103,14 +1127,14 @@ class ApiClient(
                 nickname = sender.optStringClean("nickname"),
                 ssid = sender.optInt("ssid"),
                 model = sender.optInt("dev_model"),
-                ghost = sender.optBoolean("is_ghost"),
+                ghost = sender.optBoolean("is_ghost")
             ),
             sentAt = item.optStringClean("sent_at"),
             endTime = item.optStringClean("end_time"),
             durationMs = item.optLong("duration_ms"),
             text = item.optStringClean("text_content"),
             audioUrl = optionalHttpsUrl(item.optStringClean("audio_url")),
-            status = item.optInt("status"),
+            status = item.optInt("status")
         )
     }
 
@@ -1123,9 +1147,11 @@ class ApiClient(
             ClientResourceManifestItem(
                 resource = parseClientResourceSummary(item.requireObject("resource")),
                 release = parseClientResourceRelease(item.requireObject("release")),
-                artifacts = (item.optJSONArray("artifacts") ?: JSONArray()).objects().map(::parseClientResourceArtifact),
+                artifacts = (item.optJSONArray("artifacts") ?: JSONArray())
+                    .objects()
+                    .map(::parseClientResourceArtifact)
             )
-        },
+        }
     )
 
     private fun parseClientResourceSummary(json: JSONObject) = ClientResourceSummary(
@@ -1133,7 +1159,7 @@ class ApiClient(
         resourceKey = json.optStringClean("resource_key"),
         name = json.optStringClean("name"),
         category = json.optStringClean("category"),
-        required = json.optBoolean("required"),
+        required = json.optBoolean("required")
     )
 
     private fun parseClientResourceRelease(json: JSONObject) = ClientResourceRelease(
@@ -1147,7 +1173,7 @@ class ApiClient(
         minServerVersion = json.optStringClean("min_server_version"),
         requiredProtocolVersion = json.optInt("required_protocol_version"),
         requiredCapabilities = json.optJSONArray("required_capabilities")?.strings().orEmpty(),
-        publishedAt = json.optStringClean("published_at"),
+        publishedAt = json.optStringClean("published_at")
     )
 
     private fun parseClientResourceArtifact(json: JSONObject) = ClientResourceArtifact(
@@ -1163,17 +1189,18 @@ class ApiClient(
         contentSignature = json.optStringClean("content_signature"),
         signatureAlgorithm = json.optStringClean("signature_algorithm"),
         externalUrl = optionalHttpsUrl(json.optStringClean("external_url")),
-        targets = (json.optJSONArray("targets") ?: JSONArray()).objects().map(::parseClientResourceArtifactTarget),
+        targets = (json.optJSONArray("targets") ?: JSONArray()).objects().map(::parseClientResourceArtifactTarget)
     )
 
     private fun parseClientResourceArtifactTarget(json: JSONObject) = ClientResourceArtifactTarget(
         platform = json.optStringClean("platform"),
         arch = json.optStringClean("arch"),
         minOsVersion = json.optStringClean("min_os_version"),
-        minAndroidApi = json.optInt("min_android_api"),
+        minAndroidApi = json.optInt("min_android_api")
     )
 
     companion object {
+        private const val AUTH_OPERATION_CANCELLED = 409
         private const val GROUP_PAGE_SIZE = 100
         private const val MAX_GROUP_PAGES = 100
         private const val CONNECT_TIMEOUT_MS = 10_000
@@ -1205,10 +1232,7 @@ class ApiClient(
         }
     }
 
-    private fun optionalHttpsUrl(
-        value: String,
-        baseUrl: String = currentSession()?.baseUrl.orEmpty(),
-    ): String {
+    private fun optionalHttpsUrl(value: String, baseUrl: String = currentSession()?.baseUrl.orEmpty()): String {
         if (value.isBlank() || baseUrl.isBlank()) return ""
         return runCatching { resolveHttpsUrl(baseUrl, value) }.getOrDefault("")
     }
@@ -1233,7 +1257,7 @@ private fun JSONObject.requireSuccess(): JSONObject {
             code = code,
             message = friendlyApiErrorMessage(errorCode, serverMessage, retryAfterSeconds),
             errorCode = errorCode,
-            retryAfterSeconds = retryAfterSeconds,
+            retryAfterSeconds = retryAfterSeconds
         )
     }
     return this

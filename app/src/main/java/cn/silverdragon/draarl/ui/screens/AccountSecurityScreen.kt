@@ -36,7 +36,7 @@ import cn.silverdragon.draarl.AppPage
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun AccountSecurityScreen(controller: AppController) {
-    val user = controller.user ?: return
+    val user = controller.session.uiState.user ?: return
     var showChangePassword by remember { mutableStateOf(false) }
     var showChangeEmail by remember { mutableStateOf(false) }
 
@@ -48,14 +48,14 @@ fun AccountSecurityScreen(controller: AppController) {
                     IconButton(onClick = { controller.navigate(AppPage.SETTINGS) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
-                },
+                }
             )
-        },
+        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
@@ -78,14 +78,14 @@ fun AccountSecurityScreen(controller: AppController) {
                         SectionHeader(icon = Icons.Default.Email, title = "邮箱")
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(user.email.ifBlank { "未设置" }, style = MaterialTheme.typography.bodyLarge)
                                 Text(
                                     if (user.email.isBlank()) "设置邮箱可用于找回密码" else "修改邮箱需要验证当前邮箱",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Button(onClick = { showChangeEmail = !showChangeEmail }) {

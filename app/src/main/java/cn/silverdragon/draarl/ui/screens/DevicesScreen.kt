@@ -821,7 +821,7 @@ private fun DevicePasswordDialog(controller: AppController, onClose: () -> Unit)
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(controller.user?.username.orEmpty(), fontFamily = FontFamily.Monospace)
+                    Text(controller.session.uiState.user?.username.orEmpty(), fontFamily = FontFamily.Monospace)
                     Text(
                         "设备密码",
                         style = MaterialTheme.typography.labelMedium,
