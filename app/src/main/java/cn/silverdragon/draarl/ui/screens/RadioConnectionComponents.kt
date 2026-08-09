@@ -24,8 +24,6 @@ import cn.silverdragon.draarl.ui.state.groupNamesById
 internal data class RadioConnectionPanelState(
     val strip: RadioStatusStripState,
     val avatarUrl: String,
-    val receiveLevel: Float,
-    val transmitLevel: Float,
     val receiving: Boolean,
     val transmitting: Boolean
 )
@@ -81,6 +79,14 @@ internal fun ConnectionPanel(
     )
     RadioConnectionPanel(
         state = panelState,
+        audioLevel = { modifier ->
+            ControllerAudioLevelMeter(
+                controller = controller,
+                receiving = panelState.receiving,
+                transmitting = panelState.transmitting,
+                modifier = modifier
+            )
+        },
         onAction = { action ->
             when (action) {
                 RadioConnectionPanelAction.SELECT_NODE -> accessMenu = true
@@ -134,27 +140,37 @@ private fun radioConnectionPanelState(
             error = status.error
         ),
         avatarUrl = user?.avatarUrl.orEmpty(),
-        receiveLevel = controller.playbackLevel,
-        transmitLevel = controller.transmitLevel,
         receiving = receivingAudio,
         transmitting = status.transmitting
     )
 }
 
 @Composable
-internal fun RadioConnectionPanel(state: RadioConnectionPanelState, onAction: (RadioConnectionPanelAction) -> Unit) {
+private fun ControllerAudioLevelMeter(
+    controller: AppController,
+    receiving: Boolean,
+    transmitting: Boolean,
+    modifier: Modifier = Modifier
+) {
+    RadioAudioLevelMeter(
+        receiveLevel = controller.playbackLevel,
+        transmitLevel = controller.transmitLevel,
+        receiving = receiving,
+        transmitting = transmitting,
+        modifier = modifier
+    )
+}
+
+@Composable
+internal fun RadioConnectionPanel(
+    state: RadioConnectionPanelState,
+    onAction: (RadioConnectionPanelAction) -> Unit,
+    audioLevel: @Composable (Modifier) -> Unit
+) {
     RadioStatusStrip(
         state = state.strip,
         avatar = { UserAvatar(state.avatarUrl, Modifier.size(40.dp)) },
-        audioLevel = { modifier ->
-            RadioAudioLevelMeter(
-                receiveLevel = state.receiveLevel,
-                transmitLevel = state.transmitLevel,
-                receiving = state.receiving,
-                transmitting = state.transmitting,
-                modifier = modifier
-            )
-        },
+        audioLevel = audioLevel,
         onSelectNode = { onAction(RadioConnectionPanelAction.SELECT_NODE) },
         onShowOnlineDevices = { onAction(RadioConnectionPanelAction.SHOW_ONLINE_DEVICES) },
         onToggleDenoise = { onAction(RadioConnectionPanelAction.TOGGLE_DENOISE) },

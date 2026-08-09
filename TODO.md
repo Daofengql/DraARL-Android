@@ -51,10 +51,9 @@
 
 - [ ] **缩小 Compose 重组范围**
 
-- 将音频电平、连接瞬态、播放位置和下载进度限制在最小 Composable 范围。
+- 将连接瞬态、播放位置和下载进度限制在最小 Composable 范围。
 - 页面订阅细粒度 `UiState`，列表项使用稳定 key 和不可变模型。
-- 对高频 Canvas/动画数据使用绘制层状态，避免引起整个页面重组。
-- 使用 Layout Inspector 或 Compose compiler metrics 记录改造前后结果。
+- 使用 Layout Inspector 在真机记录剩余热点改造前后的重组结果。
 
 验收：PTT、播放、下载和周期刷新时，非相关页面和列表项不持续重组。
 

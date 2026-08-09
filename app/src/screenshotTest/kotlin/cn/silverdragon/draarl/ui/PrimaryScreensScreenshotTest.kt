@@ -12,6 +12,7 @@ import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.User
+import cn.silverdragon.draarl.ui.components.RadioAudioLevelMeter
 import cn.silverdragon.draarl.ui.components.RadioStatusStripState
 import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.screens.DevicesContent
@@ -251,7 +252,16 @@ private fun RadioBaseline(darkTheme: Boolean, hasSyncError: Boolean = false) {
         Column(Modifier.fillMaxSize()) {
             RadioConnectionPanel(
                 state = SampleRadioState,
-                onAction = {}
+                onAction = {},
+                audioLevel = { modifier ->
+                    RadioAudioLevelMeter(
+                        receiveLevel = 0.42f,
+                        transmitLevel = 0f,
+                        receiving = SampleRadioState.receiving,
+                        transmitting = SampleRadioState.transmitting,
+                        modifier = modifier
+                    )
+                }
             )
             RadioModeSwitcher(
                 mapSelected = false,
@@ -400,8 +410,6 @@ private val SampleRadioState = RadioConnectionPanelState(
         error = ""
     ),
     avatarUrl = "",
-    receiveLevel = 0.42f,
-    transmitLevel = 0f,
     receiving = false,
     transmitting = false
 )

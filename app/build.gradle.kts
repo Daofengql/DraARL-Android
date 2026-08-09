@@ -17,8 +17,18 @@ val localProperties = Properties().apply {
 }
 val amapApiKey = providers.gradleProperty("AMAP_API_KEY").orNull
     ?: localProperties.getProperty("AMAP_API_KEY").orEmpty()
+val enableComposeCompilerReports = providers.gradleProperty("enableComposeCompilerReports")
+    .map(String::toBoolean)
+    .getOrElse(false)
 val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
     .all { !releaseSigning.getProperty(it).isNullOrBlank() }
+
+if (enableComposeCompilerReports) {
+    composeCompiler {
+        metricsDestination = layout.buildDirectory.dir("compose_compiler")
+        reportsDestination = layout.buildDirectory.dir("compose_compiler")
+    }
+}
 
 android {
     experimentalProperties["android.experimental.enableScreenshotTest"] = true
