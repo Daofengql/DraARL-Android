@@ -14,6 +14,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.ui.components.InlineNotice
+import cn.silverdragon.draarl.ui.components.PageFeedback
+import cn.silverdragon.draarl.ui.components.PageFeedbackKind
 import cn.silverdragon.draarl.ui.components.StatusTone
 
 @Composable
@@ -44,5 +46,15 @@ internal fun ToolError(message: String, onDismiss: () -> Unit) {
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         tone = StatusTone.ERROR,
         onDismiss = onDismiss
+    )
+}
+
+@Composable
+internal fun ToolListFeedback(loading: Boolean, title: String, detail: String, modifier: Modifier = Modifier) {
+    PageFeedback(
+        kind = if (loading) PageFeedbackKind.LOADING else PageFeedbackKind.EMPTY,
+        title = title,
+        detail = detail,
+        modifier = modifier
     )
 }

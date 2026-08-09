@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,7 +24,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -52,6 +53,7 @@ import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.tools.LogbookEntry
 import cn.silverdragon.draarl.tools.LogbookTime
 import cn.silverdragon.draarl.tools.ToolsController
+import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlConfirmation
 import cn.silverdragon.draarl.ui.components.DraarlConfirmationDialog
@@ -189,8 +191,10 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            if (!tools.logbookBusy && tools.logbooks.isEmpty()) {
-                item { Text("暂无通联日志", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (tools.logbooks.isEmpty()) {
+                item {
+                    LogbookListFeedback(tools.logbookBusy, filter)
+                }
             }
             items(tools.logbooks.size, key = { tools.logbooks[it].id }) { index ->
                 val entry = tools.logbooks[index]
@@ -207,15 +211,20 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
             }
             if (tools.logbooks.size < tools.logbookTotal) {
                 item {
-                    Button(
+                    CommandButton(
+                        label = "加载更多",
                         onClick = { tools.loadLogbooks() },
                         enabled = !tools.logbookBusy,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("加载更多") }
+                    )
                 }
             }
-            if (tools.logbookBusy) {
-                item { CircularProgressIndicator(Modifier.size(28.dp)) }
+            if (tools.logbookBusy && tools.logbooks.isNotEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
+                    }
+                }
             }
         }
     }
@@ -253,6 +262,24 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
             confirmEnabled = !tools.logbookBusy
         )
     }
+}
+
+@Composable
+private fun LogbookListFeedback(busy: Boolean, filter: String) {
+    val filtered = filter.isNotBlank()
+    ToolListFeedback(
+        loading = busy,
+        title = when {
+            busy -> "正在加载通联日志"
+            filtered -> "没有匹配的通联日志"
+            else -> "暂无通联日志"
+        },
+        detail = when {
+            busy -> "正在同步本机记录与服务端数据"
+            filtered -> "可调整呼号后重新搜索"
+            else -> "新增记录后会按时间显示在这里"
+        }
+    )
 }
 
 @Composable
