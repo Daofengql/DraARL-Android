@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SettingsInputAntenna
@@ -25,7 +24,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -50,6 +48,7 @@ import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.ui.components.DraarlIconButtonOptions
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.DraarlSettings
 import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
 import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
@@ -261,16 +260,10 @@ fun AprsSettingsScreen(
 internal fun AprsSettingsContent(state: AprsSettingsContentState, onAction: (AprsSettingsContentAction) -> Unit) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("APRS 设置") },
-                navigationIcon = {
-                    DraarlIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = { onAction(AprsSettingsContentAction.Back) }
-                    )
-                },
-                actions = {
+            DraarlScreenHeader(
+                title = "APRS 设置",
+                onBack = { onAction(AprsSettingsContentAction.Back) },
+                action = {
                     DraarlIconButton(
                         icon = Icons.Default.Save,
                         label = "保存",

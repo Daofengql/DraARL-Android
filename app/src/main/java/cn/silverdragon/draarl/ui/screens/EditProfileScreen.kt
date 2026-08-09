@@ -10,17 +10,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,9 +29,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.AppPage
-import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditProfileScreen(controller: AppController) {
     val user = controller.session.uiState.user ?: return
@@ -63,15 +59,9 @@ fun EditProfileScreen(controller: AppController) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("编辑资料") },
-                navigationIcon = {
-                    DraarlIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = { controller.navigate(AppPage.PROFILE) }
-                    )
-                }
+            DraarlScreenHeader(
+                title = "编辑资料",
+                onBack = { controller.navigate(AppPage.PROFILE) }
             )
         }
     ) { innerPadding ->

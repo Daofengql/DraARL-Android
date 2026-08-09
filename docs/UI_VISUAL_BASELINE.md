@@ -8,7 +8,7 @@
 `app/src/screenshotTestDebug/reference`。测试直接组合生产代码中的壳层和页面内容，不创建或启动
 `AppController`，因此不会触发会话恢复、服务绑定、网络请求或本地存储写入。
 
-当前 33 张参考图在 Windows 本地通过 JVM/Layoutlib 渲染，不依赖模拟器、真机或远程服务。
+当前 34 张参考图在 Windows 本地通过 JVM/Layoutlib 渲染，不依赖模拟器、真机或远程服务。
 
 | 场景 | 浅色 | 深色 | 额外覆盖 |
 | --- | --- | --- | --- |
@@ -18,6 +18,7 @@
 | PTT | 411 x 891 / 360 x 800 dp | 360 x 800 dp | 状态条、频道、空日志、1.5 倍字体同步失败态和发送控制 |
 | 工具 | 800 x 360 / 360 x 640 / 360 x 800 dp | 360 x 700 / 411 x 891 dp | 横屏、账号审核、工具子页加载态，以及 1.5 倍字体错误/空态 |
 | 个人 | 411 x 891 dp | 360 x 800 dp | 长中文资料和 1.5 倍字体 |
+| 页面顶部栏 | 360 x 140 dp | - | 返回、长中文双行标题、尾部保存操作和 1.5 倍字体 |
 | 认证与账号安全 | 360 x 560 dp | 360 x 300 / 360 x 520 dp | 1.3 倍字体注册成功/一次性密码，以及 1.5 倍字体错误、登录忙碌和密码表单忙碌态 |
 | 设置行 | 360 x 520 dp | 360 x 620 dp | 长说明、危险操作和 1.5 倍字体 |
 | APRS 设置 | 360 x 800 dp | - | 服务器表单、自动上报入口和 1.3 倍字体 |
@@ -45,9 +46,10 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 - 应用级通知保留 `SnackbarHost` 的队列和可访问性语义，但内容统一渲染为可关闭的 `InlineNotice`，不再显示默认 Material Snackbar 外观。
 - 认证错误、注册成功和密码重置成功使用统一反馈层级；登录、注册和重置的主要动作使用支持忙碌态的命令按钮，一次性准入密码使用警告容器与等宽数据样式。
 - 账号安全页一次只展开密码或邮箱表单；发送验证码、重新获取和确认修改使用同一命令层级，邮箱错误继续复用认证错误提示。
+- 非地图二级页面使用 `DraarlScreenHeader`，由组件统一顶部与横向安全区、返回命令、双行标题收缩、可选尾部操作和底部分隔线；地图页保留与地图交互绑定的专用顶部栏。
 - APRS 设置使用细边框设置组组织链路、登录参数、后台上报和链路测试；状态反馈复用 `StatusTone`，不再以默认 Card 和裸状态文本建立层级。
 - BLE 配网使用相同设置组组织设备类型、认证和配置表单；扫描、断开与写入使用命令按钮，连接阶段使用 `StatusIndicator`，设备类型弹窗使用单选行而非嵌套 Card。
-- 图标命令通过 `DraarlTooltip` 统一长按/悬停提示，提示文案同时作为 `contentDescription`；TopAppBar、表单尾部、列表动作、通信控制和地图浮动图标不再直接使用裸 `IconButton`。
+- 图标命令通过 `DraarlTooltip` 统一长按/悬停提示，提示文案同时作为 `contentDescription`；页面顶部栏、表单尾部、列表动作、通信控制和地图浮动图标不再直接使用裸 `IconButton`。
 
 浅色和深色主题的 12 组关键前景/背景组合均按 WCAG 对比度公式检查，最低结果为 5.98:1。
 
@@ -66,9 +68,9 @@ Layoutlib 像素基线，后续仍需在有 Key 的真机上检查地图页。
 | 类型 | 主要位置 | 当前用途 | 后续规则 |
 | --- | --- | --- | --- |
 | `Card` | `RadioMessageComponents.kt`、`LogbookScreen.kt`、`RadioPresetsScreen.kt`、`RelaySearchScreen.kt` | 消息、日志、预设和中继结果对象 | 只保留独立或可比较的数据对象；页面分区不使用 Card |
-| `Surface` | `DraarlBottomBar.kt`、`DraarlComponents.kt`、`DraarlContainers.kt`、`DraarlSettings.kt`、`DraarlSegmentedControl.kt`、`RadioStatusStrip.kt`、`CommunicationTrendChart.kt` 和 `ProfileOverview.kt`，以及设备、群组、地图、消息、登录和工具页面 | 背景、状态容器、可点击行、统计对象、弹层和控制面 | 保留承载语义、状态色、细边框或点击反馈的 Surface；纯页面分区不增加浮层和阴影 |
+| `Surface` | `DraarlBottomBar.kt`、`DraarlScreenHeader.kt`、`DraarlComponents.kt`、`DraarlContainers.kt`、`DraarlSettings.kt`、`DraarlSegmentedControl.kt`、`RadioStatusStrip.kt`、`CommunicationTrendChart.kt` 和 `ProfileOverview.kt`，以及设备、群组、地图、消息、登录和工具页面 | 背景、状态容器、可点击行、统计对象、弹层和控制面 | 保留承载语义、状态色、细边框或点击反馈的 Surface；纯页面分区不增加浮层和阴影 |
 | 圆角按钮 | 认证次级操作、设备/群组管理、地图、日志编辑、资料与设置页面中的 `Button`、`OutlinedButton`、`TextButton` | 明确确认、取消和危险操作 | 认证主要提交动作使用 `CommandButton`；图标已有通用语义时使用图标按钮；普通行入口不使用胶囊按钮 |
-| 图标命令 | `DraarlIconButton.kt`、`DraarlComponents.kt`、地图控制和各页面工具栏 | 返回、搜索、复制、编辑、删除、播放与地图控制 | 标准图标、tooltip 与 `contentDescription` 使用同一文案；危险操作保留独立状态色 |
+| 图标命令 | `DraarlIconButton.kt`、`DraarlComponents.kt`、页面顶部栏、地图控制和各页面工具栏 | 返回、搜索、复制、编辑、删除、播放与地图控制 | 标准图标、tooltip 与 `contentDescription` 使用同一文案；危险操作保留独立状态色 |
 | 分段控件 | `DraarlSegmentedControl.kt`、`AprsMapPanel.kt`、`SystemSettingsScreen.kt` | PTT 地图/日志模式与设置选项 | 只用于同级互斥模式，保持紧凑 0-6 dp 圆角，不扩展为页面导航 |
 | 状态色 | `Theme.kt`、`DraarlComponents.kt`、`RadioStatusStrip.kt`、设备/群组/PTT/APRS/设置页面 | 连接、接收、发射、在线、等待、离线和错误 | 所有业务状态从 `appColors` 或 `StatusTone` 获取；页面不得直接发明新的成功/警告色 |
 

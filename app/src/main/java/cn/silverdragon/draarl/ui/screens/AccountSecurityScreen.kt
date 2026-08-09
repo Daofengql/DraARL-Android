@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
@@ -19,7 +18,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,97 +32,112 @@ import cn.silverdragon.draarl.AppPage
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.ui.components.CommandIconButton
 import cn.silverdragon.draarl.ui.components.DataRow
-import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.DraarlSettings
 import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
 import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
 import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
 import cn.silverdragon.draarl.ui.theme.appColors
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun AccountSecurityScreen(controller: AppController) {
     val user = controller.session.uiState.user ?: return
-    var showChangePassword by remember { mutableStateOf(false) }
-    var showChangeEmail by remember { mutableStateOf(false) }
+    var editor by remember(user.id) { mutableStateOf<CredentialEditor?>(null) }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("账号与安全") },
-                navigationIcon = {
-                    DraarlIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = { controller.navigate(AppPage.SETTINGS) }
-                    )
-                }
+            DraarlScreenHeader(
+                title = "账号与安全",
+                onBack = { controller.navigate(AppPage.SETTINGS) }
             )
         }
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            item {
-                DraarlSettingsSectionTitle("凭据", detail = "修改凭据后，当前设备会继续保持登录")
-                DraarlSettingsGroup {
-                    if (showChangePassword) {
-                        AccountSecurityForm(
-                            icon = Icons.Default.Lock,
-                            title = "修改登录密码",
-                            onClose = { showChangePassword = false }
-                        ) {
-                            ChangePasswordSection(controller, onDone = { showChangePassword = false })
-                        }
-                    } else {
-                        DraarlSettingsRow(
-                            item = DraarlSettings(
-                                icon = Icons.Default.Lock,
-                                title = "登录密码",
-                                detail = "使用当前密码验证后设置新密码",
-                                onClick = {
-                                    showChangeEmail = false
-                                    showChangePassword = true
-                                }
-                            ),
-                            showDivider = true
-                        )
-                    }
+        AccountSecurityContent(
+            user = user,
+            controller = controller,
+            editor = editor,
+            onEditorChange = { editor = it },
+            modifier = Modifier.padding(innerPadding)
+        )
+    }
+}
 
-                    if (showChangeEmail) {
-                        AccountSecurityForm(
-                            icon = Icons.Default.Email,
-                            title = if (user.email.isBlank()) "设置邮箱" else "修改邮箱",
-                            onClose = { showChangeEmail = false }
-                        ) {
-                            ChangeEmailSection(controller, onDone = { showChangeEmail = false })
-                        }
-                    } else {
-                        DraarlSettingsRow(
-                            item = DraarlSettings(
-                                icon = Icons.Default.Email,
-                                title = user.email.ifBlank { "未设置邮箱" },
-                                detail = if (user.email.isBlank()) {
-                                    "设置邮箱后可用于找回密码"
-                                } else {
-                                    "修改邮箱需要验证当前邮箱"
-                                },
-                                onClick = {
-                                    showChangePassword = false
-                                    showChangeEmail = true
-                                }
-                            )
-                        )
-                    }
-                }
-            }
+private enum class CredentialEditor {
+    PASSWORD,
+    EMAIL
+}
 
-            item {
-                DraarlSettingsSectionTitle("登录信息", detail = "用于核对当前账户与最近登录来源")
-                LoginInfoGroup(user)
+@Composable
+private fun AccountSecurityContent(
+    user: User,
+    controller: AppController,
+    editor: CredentialEditor?,
+    onEditorChange: (CredentialEditor?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        item { CredentialsGroup(user, controller, editor, onEditorChange) }
+        item {
+            DraarlSettingsSectionTitle("登录信息", detail = "用于核对当前账户与最近登录来源")
+            LoginInfoGroup(user)
+        }
+    }
+}
+
+@Composable
+private fun CredentialsGroup(
+    user: User,
+    controller: AppController,
+    editor: CredentialEditor?,
+    onEditorChange: (CredentialEditor?) -> Unit
+) {
+    DraarlSettingsSectionTitle("凭据", detail = "修改凭据后，当前设备会继续保持登录")
+    DraarlSettingsGroup {
+        if (editor == CredentialEditor.PASSWORD) {
+            AccountSecurityForm(
+                icon = Icons.Default.Lock,
+                title = "修改登录密码",
+                onClose = { onEditorChange(null) }
+            ) {
+                ChangePasswordSection(controller, onDone = { onEditorChange(null) })
             }
+        } else {
+            DraarlSettingsRow(
+                item = DraarlSettings(
+                    icon = Icons.Default.Lock,
+                    title = "登录密码",
+                    detail = "使用当前密码验证后设置新密码",
+                    onClick = { onEditorChange(CredentialEditor.PASSWORD) }
+                ),
+                showDivider = true
+            )
+        }
+
+        if (editor == CredentialEditor.EMAIL) {
+            AccountSecurityForm(
+                icon = Icons.Default.Email,
+                title = if (user.email.isBlank()) "设置邮箱" else "修改邮箱",
+                onClose = { onEditorChange(null) }
+            ) {
+                ChangeEmailSection(controller, onDone = { onEditorChange(null) })
+            }
+        } else {
+            DraarlSettingsRow(
+                item = DraarlSettings(
+                    icon = Icons.Default.Email,
+                    title = user.email.ifBlank { "未设置邮箱" },
+                    detail = if (user.email.isBlank()) {
+                        "设置邮箱后可用于找回密码"
+                    } else {
+                        "修改邮箱需要验证当前邮箱"
+                    },
+                    onClick = { onEditorChange(CredentialEditor.EMAIL) }
+                )
+            )
         }
     }
 }

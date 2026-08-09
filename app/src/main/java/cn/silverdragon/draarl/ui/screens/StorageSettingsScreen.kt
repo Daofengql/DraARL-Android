@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.GraphicEq
@@ -22,7 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,7 +40,7 @@ import cn.silverdragon.draarl.ui.components.CommandIconButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
-import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.DraarlSettings
 import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
 import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
@@ -51,7 +49,6 @@ import cn.silverdragon.draarl.ui.theme.appColors
 import cn.silverdragon.draarl.ui.theme.dataTypography
 import java.util.Locale
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun StorageSettingsScreen(settings: SettingsController, onBack: () -> Unit) {
     var pendingClear by remember { mutableStateOf<StorageCategory?>(null) }
@@ -60,16 +57,7 @@ fun StorageSettingsScreen(settings: SettingsController, onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("存储管理") },
-                navigationIcon = {
-                    DraarlIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = onBack
-                    )
-                }
-            )
+            DraarlScreenHeader(title = "存储管理", onBack = onBack)
         }
     ) { innerPadding ->
         StorageSettingsContent(

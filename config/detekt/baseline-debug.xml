@@ -2,7 +2,6 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>CognitiveComplexMethod:AccountSecurityScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AccountSecurityScreen</ID>
     <ID>CognitiveComplexMethod:AppController.kt:AppController$fun checkAppUpdate</ID>
     <ID>CognitiveComplexMethod:AppController.kt:AppController$fun connectRadio</ID>
     <ID>CognitiveComplexMethod:AppController.kt:AppController$fun loadOlderRadioMessages</ID>
@@ -96,7 +95,6 @@
     <ID>InjectDispatcher:AprsService.kt:AprsService$IO</ID>
     <ID>LargeClass:AppController.kt:AppController : AndroidViewModel</ID>
     <ID>LargeClass:UdpRadioClient.kt:UdpRadioClient</ID>
-    <ID>LongMethod:AccountSecurityScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AccountSecurityScreen</ID>
     <ID>LongMethod:AprsMapPanel.kt:@Composable internal fun AprsMapPanel</ID>
     <ID>LongMethod:AprsSettingsScreen.kt:@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class) @Composable fun AprsSettingsScreen</ID>
     <ID>LongMethod:AvatarCropDialog.kt:@Composable fun AvatarCropDialog</ID>

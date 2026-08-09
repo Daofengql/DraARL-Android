@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -19,10 +21,41 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DataRow
 import cn.silverdragon.draarl.ui.components.DraarlAction
+import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.DraarlSheetContent
 import cn.silverdragon.draarl.ui.components.DraarlSheetHandle
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
 import com.android.tools.screenshot.PreviewTest
+
+@PreviewTest
+@Preview(
+    name = "Screen Header Light Large Text",
+    widthDp = 360,
+    heightDp = 140,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun ScreenHeaderLightLargeTextBaseline() {
+    DraarlTheme(darkTheme = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column {
+                DraarlScreenHeader(
+                    title = "数字中继与互联网链路设置",
+                    onBack = {},
+                    action = {
+                        DraarlIconButton(
+                            icon = Icons.Default.Save,
+                            label = "保存",
+                            onClick = {}
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
 
 @PreviewTest
 @Preview(

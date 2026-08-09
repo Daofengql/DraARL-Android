@@ -5,29 +5,30 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.DraarlSettings
 import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
 import cn.silverdragon.draarl.ui.components.DraarlSettingsRow
 import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onAction: (SettingsMenuAction) -> Unit) {
     Scaffold(
-        topBar = { SettingsTopBar { onAction(SettingsMenuAction.Back) } }
+        topBar = {
+            DraarlScreenHeader(
+                title = "设置",
+                onBack = { onAction(SettingsMenuAction.Back) }
+            )
+        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding),
@@ -97,21 +98,6 @@ fun SettingsScreen(onAction: (SettingsMenuAction) -> Unit) {
             }
         }
     }
-}
-
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable
-private fun SettingsTopBar(onBack: () -> Unit) {
-    TopAppBar(
-        title = { Text("设置") },
-        navigationIcon = {
-            DraarlIconButton(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
-                label = "返回",
-                onClick = onBack
-            )
-        }
-    )
 }
 
 @Composable

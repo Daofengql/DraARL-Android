@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Download
@@ -50,7 +49,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -65,7 +63,7 @@ import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.radio.TransmitTailTone
 import cn.silverdragon.draarl.settings.SettingsController
 import cn.silverdragon.draarl.settings.SettingsEvent
-import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import kotlin.math.roundToInt
@@ -141,15 +139,9 @@ fun SystemSettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("应用设置") },
-                navigationIcon = {
-                    DraarlIconButton(
-                        icon = Icons.AutoMirrored.Filled.ArrowBack,
-                        label = "返回",
-                        onClick = { onAction(SystemSettingsAction.Back) }
-                    )
-                }
+            DraarlScreenHeader(
+                title = "应用设置",
+                onBack = { onAction(SystemSettingsAction.Back) }
             )
         }
     ) { innerPadding ->
