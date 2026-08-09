@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -33,6 +34,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -59,6 +61,73 @@ import kotlinx.coroutines.launch
 private enum class RadioContentMode {
     MAP,
     MESSAGES
+}
+
+@Immutable
+private data class RadioTransmissionState(val connected: Boolean, val transmitting: Boolean, val receiving: Boolean) {
+    val canSend: Boolean get() = connected && !transmitting && !receiving
+}
+
+@Immutable
+private data class RadioConnectionEffectState(
+    val selectedPointId: String,
+    val selectedGroupId: Int,
+    val phase: RadioConnectionPhase,
+    val connected: Boolean,
+    val autoConnectAllowed: Boolean
+)
+
+@Composable
+private fun RadioTransmissionStateScope(
+    controller: AppController,
+    content: @Composable (RadioTransmissionState) -> Unit
+) {
+    val state by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            val status = controller.radioSession.uiState.status
+            RadioTransmissionState(
+                connected = status.connected,
+                transmitting = status.transmitting,
+                receiving = status.speaker.isNotBlank()
+            )
+        }
+    }
+    content(state)
+}
+
+@Composable
+private fun RadioConnectionEffects(controller: AppController, onConnect: () -> Unit) {
+    val state by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            val session = controller.radioSession.uiState
+            RadioConnectionEffectState(
+                selectedPointId = session.selectedAccessPoint?.id.orEmpty(),
+                selectedGroupId = session.selectedGroupId,
+                phase = session.status.phase,
+                connected = session.status.connected,
+                autoConnectAllowed = session.autoConnectAllowed
+            )
+        }
+    }
+    val currentOnConnect by rememberUpdatedState(onConnect)
+
+    LaunchedEffect(state.selectedGroupId, state.connected) {
+        if (state.connected) controller.refreshRadioData()
+    }
+    LaunchedEffect(state.selectedPointId, state.phase) {
+        if (
+            state.selectedPointId.isNotBlank() &&
+            state.phase == RadioConnectionPhase.DISCONNECTED &&
+            state.autoConnectAllowed
+        ) {
+            currentOnConnect()
+        }
+    }
+}
+
+@Composable
+private fun ControllerOnlineDeviceStrip(controller: AppController) {
+    OnlineDeviceStrip(controller.onlineDevices)
 }
 
 @Composable
@@ -109,9 +178,9 @@ fun RadioScreen(
     val scope = rememberCoroutineScope()
     val locationProvider = remember(context) { CurrentLocationProvider(context) }
     val messageState = controller.messageController.uiState
-    val sessionState = controller.radioSession.uiState
-    val radioStatus = sessionState.status
-    val selectedGroupId = sessionState.selectedGroupId
+    val selectedGroupId by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { controller.radioSession.uiState.selectedGroupId }
+    }
     val messages = messageState.messages
     val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
     val unplayedVoiceCount = messageState.unplayedVoiceCount
@@ -168,8 +237,6 @@ fun RadioScreen(
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             if (result.values.any { it }) sendCurrentLocation() else controller.showNotice("需要定位权限才能发送当前位置")
         }
-    val canSendText = controller.canSendText()
-
     BackHandler(enabled = extrasExpanded && !showLocationChoices && !showCwSheet) { onExtrasExpandedChange(false) }
 
     LaunchedEffect(extrasExpanded) {
@@ -228,10 +295,6 @@ fun RadioScreen(
                 }
             }
     }
-    LaunchedEffect(selectedGroupId, radioStatus.connected) {
-        if (radioStatus.connected) controller.refreshRadioData()
-    }
-
     val connect = {
         if (
             Build.VERSION.SDK_INT >= 33 &&
@@ -253,24 +316,14 @@ fun RadioScreen(
             false
         }
     }
-    val selectedPointId = sessionState.selectedAccessPoint?.id.orEmpty()
-    LaunchedEffect(selectedPointId, radioStatus.phase) {
-        if (
-            selectedPointId.isNotBlank() &&
-            radioStatus.phase == RadioConnectionPhase.DISCONNECTED &&
-            sessionState.autoConnectAllowed
-        ) {
-            connect()
-        }
-    }
+    RadioConnectionEffects(controller = controller, onConnect = connect)
 
     Column(Modifier.fillMaxSize()) {
         ConnectionPanel(
             controller = controller,
-            sessionState = sessionState,
             onToggleDevices = { showDevices = !showDevices }
         )
-        if (showDevices) OnlineDeviceStrip(controller.onlineDevices)
+        if (showDevices) ControllerOnlineDeviceStrip(controller)
         RadioModeSwitcher(
             mapSelected = contentMode == RadioContentMode.MAP,
             onMap = {
@@ -373,56 +426,59 @@ fun RadioScreen(
             }
         }
         if (contentMode == RadioContentMode.MESSAGES) {
-            RadioComposer(
-                textMode = textMode,
-                text = text,
-                connected = radioStatus.connected,
-                transmitting = radioStatus.transmitting,
-                receiving = radioStatus.speaker.isNotBlank(),
-                canSendText = canSendText,
-                onTextModeChange = {
-                    textMode = it
-                    onExtrasExpandedChange(false)
-                },
-                onTextChange = { text = it },
-                onTextInputFocused = { onExtrasExpandedChange(false) },
-                onSendText = {
-                    onExtrasExpandedChange(false)
-                    if (controller.sendText(text)) {
-                        text = ""
-                    }
-                },
-                onMoreMessage = {
-                    showLocationChoices = false
-                    showCwSheet = false
-                    onExtrasExpandedChange(!extrasExpanded)
-                },
-                onStartPtt = {
-                    onExtrasExpandedChange(false)
-                    startPtt()
-                },
-                onStopPtt = controller::stopPtt
-            )
+            RadioTransmissionStateScope(controller) { transmission ->
+                RadioComposer(
+                    textMode = textMode,
+                    text = text,
+                    connected = transmission.connected,
+                    transmitting = transmission.transmitting,
+                    receiving = transmission.receiving,
+                    canSendText = transmission.canSend,
+                    onTextModeChange = {
+                        textMode = it
+                        onExtrasExpandedChange(false)
+                    },
+                    onTextChange = { text = it },
+                    onTextInputFocused = { onExtrasExpandedChange(false) },
+                    onSendText = {
+                        onExtrasExpandedChange(false)
+                        if (controller.sendText(text)) {
+                            text = ""
+                        }
+                    },
+                    onMoreMessage = {
+                        showLocationChoices = false
+                        showCwSheet = false
+                        onExtrasExpandedChange(!extrasExpanded)
+                    },
+                    onStartPtt = {
+                        onExtrasExpandedChange(false)
+                        startPtt()
+                    },
+                    onStopPtt = controller::stopPtt
+                )
+            }
             AnimatedVisibility(
                 visible = extrasExpanded,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
-                RadioExtraPanel(
-                    locating = locating,
-                    cwEnabled = radioStatus.connected &&
-                        !radioStatus.transmitting && radioStatus.speaker.isBlank(),
-                    cwTransmitting = controller.cwTransmitting,
-                    onLocationClick = {
-                        showCwSheet = false
-                        showLocationChoices = true
-                    },
-                    onCwClick = {
-                        showLocationChoices = false
-                        showCwSheet = true
-                    },
-                    onStopCw = controller::stopCw
-                )
+                RadioTransmissionStateScope(controller) { transmission ->
+                    RadioExtraPanel(
+                        locating = locating,
+                        cwEnabled = transmission.canSend,
+                        cwTransmitting = controller.cwTransmitting,
+                        onLocationClick = {
+                            showCwSheet = false
+                            showLocationChoices = true
+                        },
+                        onCwClick = {
+                            showLocationChoices = false
+                            showCwSheet = true
+                        },
+                        onStopCw = controller::stopCw
+                    )
+                }
             }
         }
     }
@@ -463,30 +519,32 @@ fun RadioScreen(
         )
     }
     if (showCwSheet) {
-        CwSendSheet(
-            text = cwText,
-            wordsPerMinute = cwWordsPerMinute,
-            toneHz = cwToneHz,
-            enabled = radioStatus.connected && !radioStatus.transmitting && radioStatus.speaker.isBlank(),
-            previewEnabled = !radioStatus.transmitting && radioStatus.speaker.isBlank(),
-            transmitting = controller.cwTransmitting,
-            previewing = controller.cwPreviewing,
-            onDismiss = {
-                controller.stopCwPreview()
-                showCwSheet = false
-                onExtrasExpandedChange(false)
-            },
-            onTextChange = { value -> cwText = value.uppercase().take(80) },
-            onWordsPerMinuteChange = { cwWordsPerMinute = it.coerceIn(8, 40) },
-            onToneHzChange = { cwToneHz = it.coerceIn(400, 1_000) },
-            onPreview = {
-                controller.previewCw(cwText, cwWordsPerMinute, cwToneHz)
-            },
-            onStopPreview = controller::stopCwPreview,
-            onSend = {
-                controller.sendCw(cwText, cwWordsPerMinute, cwToneHz)
-            },
-            onStop = controller::stopCw
-        )
+        RadioTransmissionStateScope(controller) { transmission ->
+            CwSendSheet(
+                text = cwText,
+                wordsPerMinute = cwWordsPerMinute,
+                toneHz = cwToneHz,
+                enabled = transmission.canSend,
+                previewEnabled = !transmission.transmitting && !transmission.receiving,
+                transmitting = controller.cwTransmitting,
+                previewing = controller.cwPreviewing,
+                onDismiss = {
+                    controller.stopCwPreview()
+                    showCwSheet = false
+                    onExtrasExpandedChange(false)
+                },
+                onTextChange = { value -> cwText = value.uppercase().take(80) },
+                onWordsPerMinuteChange = { cwWordsPerMinute = it.coerceIn(8, 40) },
+                onToneHzChange = { cwToneHz = it.coerceIn(400, 1_000) },
+                onPreview = {
+                    controller.previewCw(cwText, cwWordsPerMinute, cwToneHz)
+                },
+                onStopPreview = controller::stopCwPreview,
+                onSend = {
+                    controller.sendCw(cwText, cwWordsPerMinute, cwToneHz)
+                },
+                onStop = controller::stopCw
+            )
+        }
     }
 }

@@ -2,10 +2,12 @@ package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
@@ -38,45 +40,31 @@ internal enum class RadioConnectionPanelAction {
 }
 
 @Composable
-internal fun ConnectionPanel(
-    controller: AppController,
-    sessionState: RadioSessionUiState,
-    onToggleDevices: () -> Unit
-) {
+internal fun ConnectionPanel(controller: AppController, onToggleDevices: () -> Unit) {
     var accessMenu by remember { mutableStateOf(false) }
     var groupMenu by remember { mutableStateOf(false) }
     var routingMenu by remember { mutableStateOf(false) }
     val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
 
     if (accessMenu) {
-        AccessPointDialog(
-            state = sessionState,
-            onSelect = controller.radioSession::selectAccessPoint,
-            onDismiss = { accessMenu = false }
-        )
+        ControllerAccessPointDialog(controller = controller, onDismiss = { accessMenu = false })
     }
     if (groupMenu) {
-        GroupDialog(
-            groups = controller.groups,
-            selectedGroupId = sessionState.selectedGroupId,
-            onSelect = controller.radioSession::switchGroup,
-            onDismiss = { groupMenu = false }
-        )
+        ControllerGroupDialog(controller = controller, onDismiss = { groupMenu = false })
     }
     if (routingMenu) {
-        RoutingDialog(
-            groups = controller.groups,
-            state = sessionState,
-            onApply = controller.radioSession::updateRouting,
-            onDismiss = { routingMenu = false }
-        )
+        ControllerRoutingDialog(controller = controller, onDismiss = { routingMenu = false })
     }
 
-    val panelState = radioConnectionPanelState(
-        controller = controller,
-        sessionState = sessionState,
-        groupNames = groupNames
-    )
+    val panelState by remember(controller, groupNames) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            radioConnectionPanelState(
+                controller = controller,
+                sessionState = controller.radioSession.uiState,
+                groupNames = groupNames
+            )
+        }
+    }
     RadioConnectionPanel(
         state = panelState,
         audioLevel = { modifier ->
@@ -104,6 +92,35 @@ internal fun ConnectionPanel(
                 RadioConnectionPanelAction.SELECT_RECEIVE_CHANNELS -> routingMenu = true
             }
         }
+    )
+}
+
+@Composable
+private fun ControllerAccessPointDialog(controller: AppController, onDismiss: () -> Unit) {
+    AccessPointDialog(
+        state = controller.radioSession.uiState,
+        onSelect = controller.radioSession::selectAccessPoint,
+        onDismiss = onDismiss
+    )
+}
+
+@Composable
+private fun ControllerGroupDialog(controller: AppController, onDismiss: () -> Unit) {
+    GroupDialog(
+        groups = controller.groups,
+        selectedGroupId = controller.radioSession.uiState.selectedGroupId,
+        onSelect = controller.radioSession::switchGroup,
+        onDismiss = onDismiss
+    )
+}
+
+@Composable
+private fun ControllerRoutingDialog(controller: AppController, onDismiss: () -> Unit) {
+    RoutingDialog(
+        groups = controller.groups,
+        state = controller.radioSession.uiState,
+        onApply = controller.radioSession::updateRouting,
+        onDismiss = onDismiss
     )
 }
 
