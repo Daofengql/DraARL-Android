@@ -17,6 +17,13 @@ internal data class LoginDto(
     val user: UserDto
 )
 
+internal data class TokenRefreshDto(
+    val accessToken: String,
+    val refreshToken: String,
+    val accessExpiresInSeconds: Long,
+    val refreshExpiresInSeconds: Long
+)
+
 internal data class RegistrationConfigDto(val requiresEmailVerification: Boolean)
 
 internal data class EmailCodeDto(val sessionId: String, val expiresInSeconds: Int) {
@@ -53,6 +60,16 @@ internal object AuthApiResponseMapper {
             accessExpiresInSeconds = data.optLong("expires_in", DEFAULT_ACCESS_EXPIRES_SECONDS),
             refreshExpiresInSeconds = data.optLong("refresh_expires_in", DEFAULT_REFRESH_EXPIRES_SECONDS),
             user = UserDto.fromJson(data.requireObject("user"))
+        )
+    }
+
+    fun tokenRefresh(response: JSONObject): TokenRefreshDto {
+        val data = response.requireObject("data")
+        return TokenRefreshDto(
+            accessToken = data.requireString("token"),
+            refreshToken = data.optStringClean("refresh_token"),
+            accessExpiresInSeconds = data.optLong("expires_in", DEFAULT_ACCESS_EXPIRES_SECONDS),
+            refreshExpiresInSeconds = data.optLong("refresh_expires_in", DEFAULT_REFRESH_EXPIRES_SECONDS)
         )
     }
 

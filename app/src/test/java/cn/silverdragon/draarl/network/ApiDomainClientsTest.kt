@@ -262,6 +262,81 @@ class ApiDomainClientsTest {
         assertEquals(ApiFailureStage.RESPONSE_DECODING, error.failureStage)
     }
 
+    @Test
+    fun missingProfileIdentityReportsMappingStage() {
+        val requester = RecordingApiJsonRequester {
+            JSONObject("""{"code":200,"data":{"username":"bg0abc"}}""")
+        }
+        val sessions = sessionManager(session())
+        val api: ProfileApi = ProfileApiClient(
+            requester,
+            ApiRequestExecutor(FailingHttpTransport),
+            sessions,
+            UserJsonMapper { API_BASE_URL }
+        )
+
+        val error = assertThrows(ApiException::class.java) { api.getMe() }
+
+        assertEquals("/api/me", error.requestPath)
+        assertEquals(ApiFailureStage.RESPONSE_MAPPING, error.failureStage)
+    }
+
+    @Test
+    fun missingRadioMessageIdentityReportsMappingStage() {
+        val requester = RecordingApiJsonRequester {
+            JSONObject("""{"code":200,"data":{"messages":[{"message_type":"voice"}]}}""")
+        }
+        val sessions = sessionManager(session())
+        val api: RadioApi = RadioApiClient(requester, sessions, UserJsonMapper { API_BASE_URL })
+
+        val error = assertThrows(ApiException::class.java) { api.getGroupMessages(groupId = 7) }
+
+        assertEquals("/api/groups/7/messages?message_type=all", error.requestPath)
+        assertEquals(ApiFailureStage.RESPONSE_MAPPING, error.failureStage)
+    }
+
+    @Test
+    fun missingRelayIdentityReportsMappingStage() {
+        val requester = RecordingApiJsonRequester {
+            JSONObject("""{"code":200,"data":{"items":[{"name":"Relay"}]}}""")
+        }
+        val api: ToolsApi = ToolsApiClient(requester)
+
+        val error = assertThrows(ApiException::class.java) { api.searchPublicRelays("Guangzhou") }
+
+        assertEquals("/api/public/relays?location=Guangzhou", error.requestPath)
+        assertEquals(ApiFailureStage.RESPONSE_MAPPING, error.failureStage)
+    }
+
+    @Test
+    fun missingManifestSchemaReportsMappingStage() {
+        val requester = RecordingApiJsonRequester {
+            JSONObject("""{"code":200,"data":{"resources":[]}}""")
+        }
+        val api: UpdatesApi = UpdatesApiClient(requester) { session() }
+
+        val error = assertThrows(ApiException::class.java) {
+            api.getClientResourceManifest(ClientResourceManifestQuery(platform = "android", arch = "arm64-v8a"))
+        }
+
+        assertTrue(error.requestPath.startsWith("/api/public/client-resources/manifest?"))
+        assertEquals(ApiFailureStage.RESPONSE_MAPPING, error.failureStage)
+    }
+
+    @Test
+    fun serverErrorReportsValidationStageAndRequest() {
+        val requester = RecordingApiJsonRequester {
+            JSONObject("""{"code":503,"message":"busy"}""")
+        }
+        val api: GroupsApi = GroupsApiClient(requester)
+
+        val error = assertThrows(ApiException::class.java) { api.getGroups() }
+
+        assertEquals(503, error.code)
+        assertEquals("/api/groups?page=1&page_size=100", error.requestPath)
+        assertEquals(ApiFailureStage.RESPONSE_VALIDATION, error.failureStage)
+    }
+
     private fun sessionManager(
         session: Session?,
         requests: ApiRequestExecutor = ApiRequestExecutor(FailingHttpTransport)

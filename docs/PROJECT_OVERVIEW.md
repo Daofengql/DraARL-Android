@@ -5,12 +5,12 @@
 
 ## 规模结论
 
-这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.60 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
+这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.65 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 168 | 26,034 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 55 | 3,986 | 210 个测试用例 |
+| 生产 Kotlin | 170 | 26,462 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 55 | 4,050 | 215 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 2 | 366 | 12 张壳层和一级页面参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -28,11 +28,11 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | `ui` | 56 | Compose 页面、导航和组件 |
 | `radio` | 31 | 消息状态与同步、会话、UDP、音频、重连、缓存和前台通信服务 |
 | `data` | 16 | 模型、本地存储、消息对账和路由 |
-| `tools` | 12 | BLE、中继、通联日志和预设 |
+| `tools` | 11 | BLE、中继、通联日志和预设 |
 | `maps` / `aprs` | 13 | 地图、坐标换算、网格和 APRS-IS |
 | `session` | 4 | 登录、恢复、远端会话变化和退出清理 |
 | `settings` | 4 | 设置状态、持久化和缓存清理协调 |
-| `network` | 18 | HTTP 传输、认证会话、领域 API 契约/实现、响应 DTO 和 Mapper |
+| `network` | 21 | HTTP 传输、认证会话、领域 API 契约/实现、响应 DTO 和 Mapper |
 | 其他 | 14 | 账号、设备、群组、资料、协议和更新 |
 
 当前最大的生产 Kotlin 文件是：
@@ -61,7 +61,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 ## 维护重点
 
-1. `UdpRadioClient` 和 `DevicesScreen` 仍超过 1,000 行，是当前修改冲突和回归风险最集中的位置。`AppController` 已降至 988 行，后续重点转向类型化 API 映射、UDP 状态机和大型页面。
+1. `UdpRadioClient` 和 `DevicesScreen` 仍超过 1,000 行，是当前修改冲突和回归风险最集中的位置。`AppController` 已降至 988 行，后续重点转向 UDP 状态机、异步任务所有权和大型页面。
 2. 自动化测试以 JVM 测试为主，仪器测试只有 3 个文件。BLE、定位、前台服务、弱网重连、后台麦克风和系统权限仍需要真机覆盖。
 3. CI 已固定 Android SDK 36.1、NDK 28.2 和 CMake 3.22，并执行静态检查、截图验证与 Debug 构建门禁；地图运行验收仍依赖注入高德 Key，Release 签名仍需发布环境显式配置。
 4. Android 客户端依赖同仓库之外的 DraARL Server API 与 UDP 协议文档。服务端契约变更时，应同时检查 README 的“服务端契约”、`DraarlProtocol`、`ApiClient` 和更新清单校验。
@@ -77,7 +77,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 登录、持久会话恢复、用户更新、会话失效和退出清理已集中到 `SessionController`，并由 9 个 JVM 用例覆盖失败、远端失效和退出竞态。
 - HTTP 连接、超时、HTTPS、Header、空响应、异常 JSON、multipart 和主动取消已集中到可注入的 `HttpTransport`，并由 9 个 MockWebServer 用例覆盖。
 - Token 刷新、会话持久化、认证请求重试和旧认证/资料结果丢弃已集中到 `ApiSessionManager`，并由 8 个 JVM 用例覆盖并发 401 合并、刷新失败、过期边界、Token 刷新和 Session 替换竞态。
-- `ApiClient` 已成为兼容门面；Auth、Profile、Devices 和 Groups 响应先进入类型化 DTO，再由独立 Mapper 转成业务模型，映射异常携带请求方法、路径与失败阶段。12 个领域 JVM 用例覆盖代表性路径、请求体、默认参数、异常字段、响应阶段和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
+- `ApiClient` 已成为兼容门面；Auth、Profile、Devices、Groups、Radio、Tools、Updates 及 Token 刷新响应先进入类型化 DTO，再由独立 Mapper 转成业务模型，映射异常携带请求方法、路径与失败阶段。17 个领域 API 用例和 3 个工具 DTO 用例覆盖代表性路径、兼容字段、异常字段、响应阶段和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
 - 应用壳层和五个一级页面已有 12 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文和 1.5 倍字体。
 - GitHub Actions、Spotless/ktlint、Detekt 存量基线和 Markdown 链接检查已接入，RNNoise 第三方目录被显式排除。
 - Android 仪器测试 APK 已在本次基线编译通过，但尚未连接设备执行；Release 构建和签名也需在发布候选版本上重新验证。

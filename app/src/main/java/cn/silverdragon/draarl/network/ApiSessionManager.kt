@@ -214,24 +214,27 @@ private class ApiTokenRefresher(
     }
 
     private fun refresh(current: Session): Boolean = runCatching {
-        val data = requests.executeJson(
-            baseUrl = current.baseUrl,
-            method = "POST",
-            path = "/api/auth/refresh",
-            body = JSONObject().put("refresh_token", current.refreshToken),
-            accessToken = null
+        val refresh = decodeApiResponse(
+            "POST",
+            TOKEN_REFRESH_PATH,
+            {
+                requests.executeJson(
+                    baseUrl = current.baseUrl,
+                    method = "POST",
+                    path = TOKEN_REFRESH_PATH,
+                    body = JSONObject().put("refresh_token", current.refreshToken),
+                    accessToken = null
+                )
+            },
+            AuthApiResponseMapper::tokenRefresh
         )
-            .requireSuccess()
-            .requireObject("data")
         val now = clockMillis()
         state.replace(
             current.copy(
-                accessToken = data.requireString("token"),
-                refreshToken = data.optStringClean("refresh_token").ifBlank { current.refreshToken },
-                accessExpiresAt = now +
-                    data.optLong("expires_in", DEFAULT_ACCESS_EXPIRES_SECONDS) * MILLIS_PER_SECOND,
-                refreshExpiresAt = now +
-                    data.optLong("refresh_expires_in", DEFAULT_REFRESH_EXPIRES_SECONDS) * MILLIS_PER_SECOND
+                accessToken = refresh.accessToken,
+                refreshToken = refresh.refreshToken.ifBlank { current.refreshToken },
+                accessExpiresAt = now + refresh.accessExpiresInSeconds * MILLIS_PER_SECOND,
+                refreshExpiresAt = now + refresh.refreshExpiresInSeconds * MILLIS_PER_SECOND
             )
         )
         true
@@ -281,9 +284,8 @@ private data class ApiRequestContext(val baseUrl: String, val accessToken: Strin
 
 private const val ACCESS_TOKEN_REFRESH_MARGIN_MILLIS = 60_000L
 private const val AUTH_OPERATION_CANCELLED = 409
-private const val DEFAULT_ACCESS_EXPIRES_SECONDS = 10_800L
-private const val DEFAULT_REFRESH_EXPIRES_SECONDS = 1_209_600L
 private const val HTTP_BAD_REQUEST = 400
 private const val HTTP_OK = 200
 private const val HTTP_UNAUTHORIZED = 401
 private const val MILLIS_PER_SECOND = 1_000L
+private const val TOKEN_REFRESH_PATH = "/api/auth/refresh"
