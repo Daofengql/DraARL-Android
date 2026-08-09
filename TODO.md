@@ -18,7 +18,7 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 152 个文件，约 2.52 万有效代码行；JVM 测试 53 个文件、190 个用例。
+- 生产 Kotlin 153 个文件，约 2.53 万有效代码行；JVM 测试 54 个文件、196 个用例。
 - Compose 截图测试 2 个文件、12 张参考图，覆盖应用壳层和五个一级页面的浅色/深色状态。
 - 复杂度主要集中在 `ApiClient`、`UdpRadioClient` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
@@ -28,10 +28,8 @@
 
 - [ ] **拆分 `ApiClient`**
 
-- 将 Token 刷新与 Session 持久化放入独立认证层，避免领域 API 感知刷新细节。
 - 按 auth、devices、groups、radio、profile、tools、updates 划分 API 接口。
 - 将 `JSONObject` 映射移动到独立 DTO/Mapper，逐步使用类型化序列化。
-- 使用 MockWebServer 补充并发 401 和刷新失败测试。
 
 验收：认证和各领域接口不感知传输实现，网络错误可定位到具体请求和映射阶段。
 
@@ -102,7 +100,7 @@
 - [ ] **补核心边界测试**
 
 - `AppController` 拆出的 reducer、协调器和退出清理。
-- `ApiClient` 传输、映射和并发 Token 刷新。
+- `ApiClient` 领域映射。
 - `UdpRadioClient` 状态转换、超时、重连、乱序包与资源释放。
 - `RadioConnectionService` 缓冲、绑定/解绑和前台状态。
 - `RadioMessageStore` 迁移、事务、分页与并发访问。

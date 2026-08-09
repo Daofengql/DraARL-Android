@@ -284,8 +284,9 @@ private class FakeRemote(
         return current
     }
 
-    override fun revokeSession(session: Session) {
+    override fun revokeSession(session: Session): Result<Unit> {
         revokedSessions += session
+        return Result.success(Unit)
     }
 }
 

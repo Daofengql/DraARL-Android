@@ -12,7 +12,7 @@ internal interface SessionRemoteDataSource {
 
     fun detachSessionForLogout(expected: Session? = null): Session?
 
-    fun revokeSession(session: Session)
+    fun revokeSession(session: Session): Result<Unit>
 }
 
 internal class ApiSessionRemoteDataSource(private val api: ApiClient) : SessionRemoteDataSource {
@@ -30,5 +30,5 @@ internal class ApiSessionRemoteDataSource(private val api: ApiClient) : SessionR
 
     override fun detachSessionForLogout(expected: Session?): Session? = api.detachSessionForLogout(expected)
 
-    override fun revokeSession(session: Session) = api.revokeSession(session)
+    override fun revokeSession(session: Session): Result<Unit> = api.revokeSession(session)
 }

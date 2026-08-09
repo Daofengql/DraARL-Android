@@ -40,8 +40,6 @@ import cn.silverdragon.draarl.tools.RelayStation
 import cn.silverdragon.draarl.tools.ToolApiJson
 import java.net.URI
 import java.net.URLEncoder
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -53,48 +51,28 @@ class ApiException(
     cause: Throwable? = null
 ) : Exception(message, cause)
 
-class ApiClient private constructor(
-    private val sessionStore: SecureSessionStore,
-    private val onSessionChanged: (Session?) -> Unit,
-    private val transport: HttpTransport
-) {
+class ApiClient private constructor(dependencies: ApiClientDependencies) {
+    private val requests = dependencies.requests
+    private val sessions = dependencies.sessions
+
     constructor(
         sessionStore: SecureSessionStore,
         onSessionChanged: (Session?) -> Unit = {}
-    ) : this(sessionStore, onSessionChanged, OkHttpTransport())
+    ) : this(createApiClientDependencies(sessionStore, OkHttpTransport(), onSessionChanged))
 
     internal constructor(
         sessionStore: SecureSessionStore,
         transport: HttpTransport,
         onSessionChanged: (Session?) -> Unit = {}
-    ) : this(sessionStore, onSessionChanged, transport)
+    ) : this(createApiClientDependencies(sessionStore, transport, onSessionChanged))
 
-    private val refreshLock = Any()
-    private val authOperationGeneration = AtomicInteger(0)
-    private val sessionRef = AtomicReference(sessionStore.load())
+    fun currentSession(): Session? = sessions.currentSession()
 
-    fun currentSession(): Session? = sessionRef.get()
+    internal fun prepareCurrentSession(baseUrl: String): Session? = sessions.prepareCurrentSession(baseUrl)
 
-    internal fun prepareCurrentSession(baseUrl: String): Session? = synchronized(refreshLock) {
-        val current = currentSession() ?: return@synchronized null
-        val normalizedUrl = normalizeBaseUrl(baseUrl)
-        if (current.baseUrl == normalizedUrl) return@synchronized current
-        current.copy(baseUrl = normalizedUrl).also(::updateSession)
-    }
+    fun freshAccessToken(): String = sessions.accessToken(forceRefresh = false)
 
-    fun freshAccessToken(): String {
-        val current = currentSession() ?: throw ApiException(401, "请先登录")
-        if (current.accessExpiresAt <= System.currentTimeMillis() + 60_000L) {
-            if (!refreshSession(current.accessToken)) throw ApiException(401, "登录状态已失效，请重新登录")
-        }
-        return currentSession()?.accessToken ?: throw ApiException(401, "登录状态已失效，请重新登录")
-    }
-
-    fun renewAccessToken(): String {
-        val current = currentSession() ?: throw ApiException(401, "请先登录")
-        if (!refreshSession(current.accessToken)) throw ApiException(401, "登录状态已失效，请重新登录")
-        return currentSession()?.accessToken ?: throw ApiException(401, "登录状态已失效，请重新登录")
-    }
+    fun renewAccessToken(): String = sessions.accessToken(forceRefresh = true)
 
     fun getCaptcha(baseUrl: String): CaptchaChallenge {
         val normalizedUrl = normalizeBaseUrl(baseUrl)
@@ -115,7 +93,7 @@ class ApiClient private constructor(
     }
 
     fun login(baseUrl: String, username: String, password: String, captchaId: String, captchaCode: String): Session {
-        val operationGeneration = authOperationGeneration.incrementAndGet()
+        val operationGeneration = sessions.beginAuthOperation()
         val normalizedUrl = normalizeBaseUrl(baseUrl)
         val response = rawRequest(
             baseUrl = normalizedUrl,
@@ -141,13 +119,7 @@ class ApiClient private constructor(
         accountLoginRejection(session.user)?.let { message ->
             throw ApiException(403, message)
         }
-        synchronized(refreshLock) {
-            if (operationGeneration != authOperationGeneration.get()) {
-                throw ApiException(AUTH_OPERATION_CANCELLED, "登录请求已取消")
-            }
-            updateSession(session)
-        }
-        return session
+        return sessions.completeAuthOperation(operationGeneration, session, "登录请求已取消")
     }
 
     fun getRegistrationRequiresEmailVerification(baseUrl: String): Boolean {
@@ -241,42 +213,16 @@ class ApiClient private constructor(
     }
 
     fun restoreAndValidate(): Session {
-        val operationGeneration = authOperationGeneration.get()
+        val operationGeneration = sessions.beginAuthOperation()
         currentSession() ?: throw ApiException(401, "登录状态不存在")
         val user = getMe(updateSession = false)
-        accountLoginRejection(user)?.let { message ->
-            updateSession(null)
-            throw ApiException(403, message)
-        }
-        return synchronized(refreshLock) {
-            if (operationGeneration != authOperationGeneration.get()) {
-                throw ApiException(AUTH_OPERATION_CANCELLED, "登录恢复已取消")
-            }
-            currentSession()?.copy(user = user)?.also(::updateSession)
-                ?: throw ApiException(401, "登录状态已失效")
-        }
+        val current = currentSession() ?: throw ApiException(401, "登录状态已失效")
+        return sessions.completeAuthOperation(operationGeneration, current.copy(user = user), "登录恢复已取消")
     }
 
-    internal fun detachSessionForLogout(expected: Session? = null): Session? = synchronized(refreshLock) {
-        val current = currentSession()
-        if (expected != null && current != expected) return@synchronized null
-        authOperationGeneration.incrementAndGet()
-        if (current == null) return@synchronized null
-        updateSession(null)
-        current
-    }
+    internal fun detachSessionForLogout(expected: Session? = null): Session? = sessions.detachSessionForLogout(expected)
 
-    internal fun revokeSession(session: Session) {
-        runCatching {
-            rawRequest(
-                baseUrl = normalizeBaseUrl(session.baseUrl),
-                method = "POST",
-                path = "/api/auth/logout",
-                body = JSONObject(),
-                accessToken = session.accessToken
-            ).requireSuccess()
-        }
-    }
+    internal fun revokeSession(session: Session): Result<Unit> = sessions.revokeSession(session)
 
     fun getMe(updateSession: Boolean = true): User {
         val user = parseUser(request("GET", "/api/me").requireObject("data"))
@@ -284,10 +230,10 @@ class ApiClient private constructor(
             // A successful HTTP response can still represent an account that is
             // no longer allowed to use the client. Clear the persisted session
             // immediately so every caller follows the same rejection path.
-            if (currentSession() != null) this.updateSession(null)
+            if (currentSession() != null) sessions.clearSession()
             throw ApiException(403, message)
         }
-        if (updateSession) currentSession()?.copy(user = user)?.let(::updateSession)
+        if (updateSession) sessions.acceptUser(user)
         return user
     }
 
@@ -295,10 +241,10 @@ class ApiClient private constructor(
         val current = currentSession() ?: return
         if (current.user.id != user.id) return
         if (accountLoginRejection(user) != null) {
-            this.updateSession(null)
+            sessions.clearSession()
             return
         }
-        updateSession(current.copy(user = user))
+        sessions.acceptUser(user)
     }
 
     fun getPublicUserByName(username: String): User {
@@ -840,7 +786,7 @@ class ApiClient private constructor(
     fun uploadFile(fileBytes: ByteArray, fileName: String, fileType: String): String {
         val session = currentSession() ?: throw ApiException(401, "请先登录")
         val baseUrl = normalizeBaseUrl(session.baseUrl)
-        val response = transport.executeForApi(
+        val response = requests.execute(
             HttpRequest(
                 url = "${baseUrl.trimEnd('/')}/api/upload/file",
                 method = "POST",
@@ -892,53 +838,8 @@ class ApiClient private constructor(
         method: String,
         path: String,
         body: JSONObject? = null,
-        requiresAuth: Boolean = true,
-        allowRefresh: Boolean = true
-    ): JSONObject {
-        val session = currentSession()
-        if (requiresAuth && session == null) throw ApiException(401, "请先登录")
-        val baseUrl = session?.baseUrl?.let(::normalizeBaseUrl)
-            ?: throw ApiException(400, "服务器地址未配置")
-        val token = if (requiresAuth) session.accessToken else null
-        val response = rawRequest(baseUrl, method, path, body, token)
-        val code = response.optInt("code", 200)
-        if (code == 401 && requiresAuth && allowRefresh && refreshSession(token.orEmpty())) {
-            return request(method, path, body, requiresAuth, allowRefresh = false)
-        }
-        return response.requireSuccess()
-    }
-
-    private fun refreshSession(tokenUsed: String): Boolean = synchronized(refreshLock) {
-        val current = currentSession() ?: return@synchronized false
-        if (current.accessToken != tokenUsed) return@synchronized true
-        if (current.refreshToken.isBlank() || current.refreshExpiresAt <= System.currentTimeMillis()) {
-            updateSession(null)
-            return@synchronized false
-        }
-        val response = runCatching {
-            rawRequest(
-                current.baseUrl,
-                "POST",
-                "/api/auth/refresh",
-                JSONObject().put("refresh_token", current.refreshToken),
-                accessToken = null
-            ).requireSuccess()
-        }.getOrElse {
-            updateSession(null)
-            return@synchronized false
-        }
-        val data = response.requireObject("data")
-        val now = System.currentTimeMillis()
-        updateSession(
-            current.copy(
-                accessToken = data.requireString("token"),
-                refreshToken = data.optStringClean("refresh_token").ifBlank { current.refreshToken },
-                accessExpiresAt = now + data.optLong("expires_in", 10_800L) * 1_000L,
-                refreshExpiresAt = now + data.optLong("refresh_expires_in", 1_209_600L) * 1_000L
-            )
-        )
-        true
-    }
+        requiresAuth: Boolean = true
+    ): JSONObject = sessions.execute(method, path, body, requiresAuth)
 
     private fun rawRequest(
         baseUrl: String,
@@ -946,31 +847,7 @@ class ApiClient private constructor(
         path: String,
         body: JSONObject?,
         accessToken: String?
-    ): JSONObject {
-        val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
-        val headers = buildMap {
-            put("Accept", "application/json")
-            put("Cache-Control", "no-cache")
-            if (!accessToken.isNullOrBlank()) put("Authorization", "Bearer $accessToken")
-        }
-        val requestBody = body?.toString()?.toByteArray(Charsets.UTF_8)?.let {
-            HttpRequestBody.Bytes(it, "application/json; charset=utf-8")
-        }
-        return transport.executeForApi(
-            HttpRequest(
-                url = normalizedBaseUrl + path,
-                method = method,
-                headers = headers,
-                body = requestBody
-            )
-        ).toApiJson()
-    }
-
-    private fun updateSession(session: Session?) = synchronized(refreshLock) {
-        sessionRef.set(session)
-        if (session == null) sessionStore.clearSession() else sessionStore.save(session)
-        onSessionChanged(session)
-    }
+    ): JSONObject = requests.executeJson(baseUrl, method, path, body, accessToken)
 
     private fun parseUser(json: JSONObject, baseUrl: String = currentSession()?.baseUrl.orEmpty()): User {
         val roles = json.opt("roles")
@@ -1176,7 +1053,6 @@ class ApiClient private constructor(
     )
 
     companion object {
-        private const val AUTH_OPERATION_CANCELLED = 409
         private const val GROUP_PAGE_SIZE = 100
         private const val MAX_GROUP_PAGES = 100
         private const val UPLOAD_TIMEOUT_MILLIS = 30_000L
@@ -1212,10 +1088,16 @@ class ApiClient private constructor(
     }
 }
 
-private fun HttpTransport.executeForApi(request: HttpRequest): HttpResponse = try {
-    execute(request)
-} catch (error: HttpTransportException) {
-    throw ApiException(0, error.message ?: "无法连接服务器", cause = error)
+private data class ApiClientDependencies(val requests: ApiRequestExecutor, val sessions: ApiSessionManager)
+
+private fun createApiClientDependencies(
+    sessionStore: SecureSessionStore,
+    transport: HttpTransport,
+    onSessionChanged: (Session?) -> Unit
+): ApiClientDependencies {
+    val requests = ApiRequestExecutor(transport)
+    val sessions = ApiSessionManager(SecureApiSessionStorage(sessionStore), requests, onSessionChanged)
+    return ApiClientDependencies(requests, sessions)
 }
 
 private fun urlEncode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
@@ -1227,7 +1109,7 @@ internal fun groupMessagesPath(groupId: Int, limit: Int?, cursor: String, messag
     if (cursor.isNotBlank()) append("&cursor=").append(urlEncode(cursor))
 }
 
-private fun JSONObject.requireSuccess(): JSONObject {
+internal fun JSONObject.requireSuccess(): JSONObject {
     val code = optInt("code", 200)
     if (code !in 200..299) {
         val errorCode = optStringClean("error")
@@ -1255,13 +1137,13 @@ internal fun friendlyApiErrorMessage(errorCode: String, serverMessage: String, r
     }
 }
 
-private fun JSONObject.requireObject(key: String): JSONObject = optJSONObject(key)
+internal fun JSONObject.requireObject(key: String): JSONObject = optJSONObject(key)
     ?: throw ApiException(optInt("code", 500), "服务器响应缺少 $key")
 
-private fun JSONObject.requireString(key: String): String = optStringClean(key)
+internal fun JSONObject.requireString(key: String): String = optStringClean(key)
     .ifBlank { throw ApiException(optInt("code", 500), "服务器响应缺少 $key") }
 
-private fun JSONObject.optStringClean(key: String): String {
+internal fun JSONObject.optStringClean(key: String): String {
     if (!has(key) || isNull(key)) return ""
     return optString(key).takeUnless { it == "null" } ?: ""
 }
