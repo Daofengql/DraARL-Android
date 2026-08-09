@@ -4,42 +4,56 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import cn.silverdragon.draarl.data.AccessPoint
 import java.net.InetAddress
-import java.util.concurrent.Callable
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 
-data class AccessPointProbe(
-    val accessPoint: AccessPoint,
-    val latencyMs: Int?,
-) {
+data class AccessPointProbe(val accessPoint: AccessPoint, val latencyMs: Int?) {
     val reachable: Boolean get() = latencyMs != null
 }
 
-data class AccessPointSelection(
-    val selected: AccessPoint,
-    val probes: List<AccessPointProbe>,
-    val measured: Boolean,
-)
+data class AccessPointSelection(val selected: AccessPoint, val probes: List<AccessPointProbe>, val measured: Boolean)
 
 object AccessPointSelector {
-    fun select(points: List<AccessPoint>): AccessPointSelection {
+    suspend fun select(
+        points: List<AccessPoint>,
+        probePoint: (AccessPoint) -> AccessPointProbe = ::probe
+    ): AccessPointSelection {
         require(points.isNotEmpty())
-        val executor = Executors.newFixedThreadPool(minOf(points.size, MAX_PARALLEL_PROBES))
-        return try {
-            val futures = points.map { point -> executor.submit(Callable { probe(point) }) }
-            val probes = futures.mapIndexed { index, future ->
-                runCatching { future.get(PROBE_BUDGET_MS, TimeUnit.MILLISECONDS) }
-                    .getOrElse { AccessPointProbe(points[index], null) }
-            }
-            val reachable = probes.filter(AccessPointProbe::reachable)
-            val selectedProbe = reachable.minWithOrNull(
-                compareBy<AccessPointProbe> { it.latencyMs ?: Int.MAX_VALUE }
-                    .thenBy { it.accessPoint.priority },
-            ) ?: probes.minWith(compareBy { it.accessPoint.priority })
-            AccessPointSelection(selectedProbe.accessPoint, probes, reachable.isNotEmpty())
-        } finally {
-            executor.shutdownNow()
+        val permits = Semaphore(minOf(points.size, MAX_PARALLEL_PROBES))
+        val probes = coroutineScope {
+            points.map { point ->
+                async {
+                    permits.withPermit {
+                        measure(point, probePoint)
+                    }
+                }
+            }.awaitAll()
         }
+        val reachable = probes.filter(AccessPointProbe::reachable)
+        val selectedProbe = reachable.minWithOrNull(
+            compareBy<AccessPointProbe> { it.latencyMs ?: Int.MAX_VALUE }
+                .thenBy { it.accessPoint.priority }
+        ) ?: probes.minWith(compareBy { it.accessPoint.priority })
+        return AccessPointSelection(selectedProbe.accessPoint, probes, reachable.isNotEmpty())
+    }
+
+    private suspend fun measure(point: AccessPoint, probePoint: (AccessPoint) -> AccessPointProbe): AccessPointProbe {
+        val result = runCatching {
+            withTimeoutOrNull(PROBE_BUDGET_MS) {
+                runInterruptible { probePoint(point) }
+            }
+        }
+        result.exceptionOrNull()?.let { failure ->
+            if (failure is CancellationException) throw failure
+        }
+        return result.getOrNull() ?: AccessPointProbe(point, null)
     }
 
     private fun probe(point: AccessPoint): AccessPointProbe {

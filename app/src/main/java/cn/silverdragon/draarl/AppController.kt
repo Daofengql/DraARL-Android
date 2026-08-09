@@ -21,6 +21,7 @@ import cn.silverdragon.draarl.concurrency.ControllerTaskRunner
 import cn.silverdragon.draarl.data.ApiAppDataSource
 import cn.silverdragon.draarl.data.AppDataFallback
 import cn.silverdragon.draarl.data.AppDataRefresher
+import cn.silverdragon.draarl.data.DashboardCacheController
 import cn.silverdragon.draarl.data.DashboardCacheStore
 import cn.silverdragon.draarl.data.DashboardData
 import cn.silverdragon.draarl.data.Device
@@ -88,7 +89,12 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val mainHandler = Handler(Looper.getMainLooper())
     private val sessionStore = SecureSessionStore(appContext)
     private val messageStore = RadioMessageStore(appContext)
-    private val dashboardStore = DashboardCacheStore(appContext)
+    private val dashboardCache = DashboardCacheController(
+        cache = DashboardCacheStore(appContext),
+        scope = viewModelScope,
+        ioDispatcher = ioDispatcher,
+        applyDashboard = { dashboard = it }
+    )
     private val disposed = AtomicBoolean(false)
     private val refreshAllCoordinator = RefreshCoordinator()
     private val onlineDevicesCoordinator = RefreshCoordinator()
@@ -516,7 +522,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
                     session.uiState.user?.lastGroupId ?: 999
                 )
                 syncPttOverlay()
-                dashboard = DashboardData(
+                val refreshedDashboard = DashboardData(
                     devices = snapshot.devices.size,
                     onlineDevices = snapshot.devices.count(Device::online),
                     groups = snapshot.groups.size,
@@ -525,7 +531,8 @@ class AppController internal constructor(application: Application, ioDispatcher:
                         snapshot.stats?.totalDurationMs ?: dashboard.communicationDurationMs,
                     communicationTrend = snapshot.trend
                 )
-                session.uiState.user?.id?.let { dashboardStore.save(it, dashboard) }
+                dashboard = refreshedDashboard
+                session.uiState.user?.id?.let { dashboardCache.store(it, refreshedDashboard) }
             }
             val nextGeneration = decision.nextGeneration
             if (nextGeneration != null && api.currentSession() != null) {
@@ -837,6 +844,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.close()
         if (profileDelegate.isInitialized()) profileDelegate.value.close()
         if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.close()
+        dashboardCache.close()
         session.close()
         settings.close()
         aprs.close()
@@ -846,7 +854,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
 
     private fun prepareSessionResources(session: Session) {
         aprs.onUserChanged(session.user.id)
-        dashboard = dashboardStore.load(session.user.id) ?: DashboardData()
+        dashboardCache.onUserChanged(session.user.id)
     }
 
     private fun activateSession(session: Session) {
@@ -868,7 +876,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         contentLoading = false
         radioSession.onAccountChanged(null)
         aprs.onUserChanged(null)
-        dashboard = DashboardData()
+        dashboardCache.onUserChanged(null)
         devices = emptyList()
         groups = emptyList()
         if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.reset()

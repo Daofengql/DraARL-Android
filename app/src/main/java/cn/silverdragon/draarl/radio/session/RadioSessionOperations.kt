@@ -34,7 +34,7 @@ internal data class RadioSessionDependencies(
 internal data class RadioSessionExecution(
     val scope: CoroutineScope,
     val ioDispatcher: CoroutineDispatcher,
-    val selectAccessPoint: (List<AccessPoint>) -> AccessPointSelection = AccessPointSelector::select,
+    val selectAccessPoint: suspend (List<AccessPoint>) -> AccessPointSelection = AccessPointSelector::select,
     val periodicDiscoveryIntervalMs: Long = ACCESS_POINT_PROBE_INTERVAL_MS
 )
 

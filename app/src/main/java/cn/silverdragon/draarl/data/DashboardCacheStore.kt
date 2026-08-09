@@ -4,10 +4,16 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-class DashboardCacheStore(context: Context) {
+interface DashboardCache {
+    fun load(userId: Int): DashboardData?
+
+    fun save(userId: Int, data: DashboardData)
+}
+
+class DashboardCacheStore(context: Context) : DashboardCache {
     private val preferences = context.getSharedPreferences("draarl_dashboard_cache", Context.MODE_PRIVATE)
 
-    fun load(userId: Int): DashboardData? = runCatching {
+    override fun load(userId: Int): DashboardData? = runCatching {
         if (userId <= 0) return null
         val raw = preferences.getString(key(userId), "").orEmpty()
         if (raw.isBlank()) return null
@@ -24,13 +30,13 @@ class DashboardCacheStore(context: Context) {
                 DailyCommunicationStats(
                     date = item.optString("date"),
                     count = item.optInt("count"),
-                    durationMs = item.optLong("duration_ms"),
+                    durationMs = item.optLong("duration_ms")
                 )
-            },
+            }
         )
     }.getOrNull()
 
-    fun save(userId: Int, data: DashboardData) {
+    override fun save(userId: Int, data: DashboardData) {
         if (userId <= 0) return
         val trend = JSONArray()
         data.communicationTrend.forEach { item ->
@@ -38,7 +44,7 @@ class DashboardCacheStore(context: Context) {
                 JSONObject()
                     .put("date", item.date)
                     .put("count", item.count)
-                    .put("duration_ms", item.durationMs),
+                    .put("duration_ms", item.durationMs)
             )
         }
         val json = JSONObject()

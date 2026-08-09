@@ -1,22 +1,29 @@
 package cn.silverdragon.draarl.radio
 
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 
 class OpusAudioEngine(
     audioCache: RadioAudioStore,
     private val historicalAudioLoader: HistoricalAudioLoader = HistoricalAudioLoader(audioCache),
     onPlaybackLevel: (Float) -> Unit = {},
-    private val onCaptureLevel: (Float) -> Unit = {}
+    private val onCaptureLevel: (Float) -> Unit = {},
+    ioDispatcher: CoroutineDispatcher = defaultAudioIoDispatcher()
 ) {
     private val released = AtomicBoolean(false)
     private val recordingPlaybackGeneration = AtomicInteger(0)
     private val capture = OpusCaptureController()
     private val playback = OpusPlaybackController(onPlaybackLevel)
-    private val downloadExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "draarl-audio-download")
-    }
+    private val downloadScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     fun startCapture(onPacket: (ByteArray) -> Unit, onError: (String) -> Unit): Boolean {
         if (released.get()) return false
@@ -54,14 +61,15 @@ class OpusAudioEngine(
             return false
         }
         val generation = recordingPlaybackGeneration.incrementAndGet()
-        val submitted = executeIfActive(
-            downloadExecutor,
-            { isRecordingPlaybackActive(generation) }
-        ) {
-            val result = runCatching { historicalAudioLoader.load(audioCacheKey, audioUrl) }
+        val download = downloadScope.launch(start = CoroutineStart.LAZY) {
+            if (!isRecordingPlaybackActive(generation)) return@launch
+            val result = runCatching {
+                runInterruptible { historicalAudioLoader.load(audioCacheKey, audioUrl) }
+            }
+            if (result.exceptionOrNull() is CancellationException) return@launch
             if (result.isFailure) {
                 failRecordingPlayback(generation, result.exceptionOrNull()?.message ?: "语音回放失败", onError)
-                return@executeIfActive
+                return@launch
             }
             val playbackSubmitted = playback.playRecording(
                 bytes = result.getOrThrow(),
@@ -73,6 +81,7 @@ class OpusAudioEngine(
                 failRecordingPlayback(generation, "语音播放线程不可用", onError)
             }
         }
+        val submitted = isRecordingPlaybackActive(generation) && download.start()
         if (!submitted && !released.get()) onError("无法启动语音回放")
         return submitted
     }
@@ -101,7 +110,7 @@ class OpusAudioEngine(
     fun release() {
         if (!released.compareAndSet(false, true)) return
         recordingPlaybackGeneration.incrementAndGet()
-        downloadExecutor.shutdownNow()
+        downloadScope.cancel()
         capture.release()
         playback.release()
     }
@@ -131,3 +140,6 @@ class OpusAudioEngine(
         private const val DEFAULT_LIVE_STREAM = "local-monitor"
     }
 }
+
+@Suppress("InjectDispatcher")
+private fun defaultAudioIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
