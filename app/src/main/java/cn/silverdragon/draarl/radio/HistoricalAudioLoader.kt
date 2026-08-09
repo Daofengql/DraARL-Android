@@ -5,8 +5,8 @@ import java.net.URI
 import java.net.URL
 
 class HistoricalAudioLoader(
-    private val audioCache: RadioAudioCache,
-    private val downloader: (String) -> ByteArray = ::downloadHttps,
+    private val audioCache: RadioAudioStore,
+    private val downloader: (String) -> ByteArray = ::downloadHttps
 ) {
     fun load(audioCacheKey: String, audioUrl: String): ByteArray {
         val cacheKey = audioCacheKey.ifBlank { audioUrl }

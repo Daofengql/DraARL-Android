@@ -30,26 +30,22 @@ interface UdpRadioListener {
 }
 
 class UdpRadioClient internal constructor(
-    context: Context,
     private val listener: UdpRadioListener,
+    audioRuntime: RadioAudioRuntime,
     private val transportFactory: UdpTransportFactory,
     private val clock: RadioClock,
     scheduler: RadioScheduler
 ) {
     constructor(context: Context, listener: UdpRadioListener) : this(
-        context = context,
         listener = listener,
+        audioRuntime = AndroidRadioAudioRuntime.create(context, listener),
         transportFactory = DatagramUdpTransportFactory(),
         clock = SystemRadioClock,
         scheduler = ExecutorRadioScheduler(threadCount = 2, threadName = "draarl-udp-scheduler")
     )
 
-    private val audioCache = RadioAudioCache(context.applicationContext.filesDir.resolve("radio_audio"))
-    private val audioEngine = OpusAudioEngine(
-        audioCache = audioCache,
-        onPlaybackLevel = listener::onPlaybackLevel,
-        onCaptureLevel = listener::onTransmitLevel
-    )
+    private val audioCache = audioRuntime.store
+    private val audioEngine = audioRuntime.engine
     private val connectionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-udp-connect")
     }
@@ -105,7 +101,7 @@ class UdpRadioClient internal constructor(
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
         sessionTasks.stopSession()
-        audioEngine.stopCapture()
+        audioEngine.capture.stop()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
         closeTransport()
@@ -125,7 +121,7 @@ class UdpRadioClient internal constructor(
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
         sessionTasks.stopSession()
-        audioEngine.stopCapture()
+        audioEngine.capture.stop()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
         closeTransport()
@@ -181,7 +177,7 @@ class UdpRadioClient internal constructor(
         if (!cwTransmitActive.compareAndSet(false, true)) return false
 
         stopPlayback()
-        audioEngine.resetDecoder()
+        audioEngine.playback.resetDecoder()
         synchronized(outgoingVoiceLock) { outgoingVoiceBuffer = ByteArrayOutputStream() }
         val currentGeneration = connectionState.generation()
         val startedAt = clock.nowMillis()
@@ -214,7 +210,7 @@ class UdpRadioClient internal constructor(
 
     fun stopCw(): Boolean {
         if (!cwTransmitActive.compareAndSet(true, false)) return false
-        audioEngine.stopRecordingPlayback()
+        audioEngine.playback.stopRecording()
         listener.onTransmitLevel(0f)
         return true
     }
@@ -229,7 +225,7 @@ class UdpRadioClient internal constructor(
         val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
         if (!cwPreviewActive.compareAndSet(false, true)) return false
         stopPlayback()
-        audioEngine.resetDecoder()
+        audioEngine.playback.resetDecoder()
         listener.onCwPreviewState(true)
         val currentGeneration = connectionState.generation()
         return runCatching {
@@ -245,7 +241,7 @@ class UdpRadioClient internal constructor(
 
     fun stopCwPreview(): Boolean {
         if (!cwPreviewActive.compareAndSet(true, false)) return false
-        audioEngine.stopRecordingPlayback()
+        audioEngine.playback.stopRecording()
         listener.onCwPreviewState(false)
         return true
     }
@@ -256,8 +252,8 @@ class UdpRadioClient internal constructor(
         stopPlayback()
         synchronized(outgoingVoiceLock) { outgoingVoiceBuffer = ByteArrayOutputStream() }
         val currentGeneration = connectionState.generation()
-        audioEngine.resetDecoder()
-        val started = audioEngine.startCapture(
+        audioEngine.playback.resetDecoder()
+        val started = audioEngine.capture.start(
             onPacket = { opus ->
                 if (status.transmitting && send(sessionVoice(opus), currentGeneration)) {
                     synchronized(outgoingVoiceLock) { appendVoiceData(outgoingVoiceBuffer, opus) }
@@ -270,7 +266,7 @@ class UdpRadioClient internal constructor(
             if (!current.connected) current else current.copy(transmitting = true, speaker = "")
         }
         if (!statusUpdated || !status.transmitting) {
-            audioEngine.stopCapture()
+            audioEngine.capture.stop()
             return false
         }
         pttStartedAt = clock.nowMillis()
@@ -284,13 +280,13 @@ class UdpRadioClient internal constructor(
         if (!finishingPtt.compareAndSet(false, true)) return
         sessionTasks.cancelPttTimeout()
         val currentGeneration = connectionState.generation()
-        audioEngine.stopCapture()
+        audioEngine.capture.stop()
         val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
         if (tailSamples.isEmpty()) {
             finishPttTransmission(currentGeneration)
             return
         }
-        audioEngine.resetDecoder()
+        audioEngine.playback.resetDecoder()
         runCatching {
             sessionTasks.execute {
                 try {
@@ -353,7 +349,7 @@ class UdpRadioClient internal constructor(
         stopPlayback()
         playingMessageId = message.id
         listener.onPlaybackState(message.id)
-        val started = audioEngine.playRecording(
+        val started = audioEngine.playback.playRecording(
             audioCacheKey = message.audioCacheKey,
             audioUrl = message.audioUrl,
             onFinished = { completePlayback(message.id) },
@@ -367,18 +363,18 @@ class UdpRadioClient internal constructor(
     }
 
     fun stopPlayback() {
-        audioEngine.stopRecordingPlayback()
+        audioEngine.playback.stopRecording()
         if (playingMessageId != null) {
             playingMessageId = null
             listener.onPlaybackState(null)
         }
     }
 
-    fun setMuted(muted: Boolean) = audioEngine.setMuted(muted)
+    fun setMuted(muted: Boolean) = audioEngine.playback.setMuted(muted)
 
-    fun setPlaybackDenoiseEnabled(enabled: Boolean) = audioEngine.setDenoiseEnabled(enabled)
+    fun setPlaybackDenoiseEnabled(enabled: Boolean) = audioEngine.playback.setDenoiseEnabled(enabled)
 
-    fun setPlaybackDenoiseWetMix(value: Float) = audioEngine.setDenoiseWetMix(value)
+    fun setPlaybackDenoiseWetMix(value: Float) = audioEngine.playback.setDenoiseWetMix(value)
 
     @Synchronized
     fun setTransmitTimeoutSeconds(seconds: Int) {
@@ -416,7 +412,9 @@ class UdpRadioClient internal constructor(
 
     fun snapshot(): RadioStatus = status
 
+    @Synchronized
     fun release() {
+        if (connectionState.isClosed()) return
         disconnect()
         connectionState.dispatch(UdpConnectionEvent.Close)
         audioEngine.release()
@@ -463,7 +461,7 @@ class UdpRadioClient internal constructor(
         val activeBeforeCleanup = isActive(attempt.generation)
         if (activeBeforeCleanup) {
             sessionTasks.stopSession()
-            audioEngine.stopCapture()
+            audioEngine.capture.stop()
             closeTransport()
         }
         return activeBeforeCleanup &&
@@ -669,7 +667,9 @@ class UdpRadioClient internal constructor(
         }
         if (playImmediately) {
             updateStatusIfActive(currentGeneration) { it.copy(speaker = speaker) }
-            audioEngine.play(speakerKey.playbackKey, payload) { message -> reportNonFatal(message, currentGeneration) }
+            audioEngine.playback.playStream(speakerKey.playbackKey, payload) { message ->
+                reportNonFatal(message, currentGeneration)
+            }
         }
     }
 
@@ -775,7 +775,7 @@ class UdpRadioClient internal constructor(
                 synchronized(outgoingVoiceLock) { appendVoiceData(outgoingVoiceBuffer, payload) }
             }
             if (monitorLocally) {
-                audioEngine.play(payload) { message ->
+                audioEngine.playback.playLocal(payload) { message ->
                     reportNonFatal("本地音频播放失败：$message", currentGeneration)
                 }
             }
@@ -847,7 +847,7 @@ class UdpRadioClient internal constructor(
         finishingPtt.set(false)
         listener.onTransmitLevel(0f)
         sessionTasks.stopSession()
-        audioEngine.stopCapture()
+        audioEngine.capture.stop()
         finishAllIncomingVoices().forEach(listener::onMessage)
         closeTransport()
         if (!updateStatusIfActive(reconnectGeneration) {
@@ -968,7 +968,7 @@ class UdpRadioClient internal constructor(
         if (!receiveTailToneEnabled || status.transmitting || status.speaker.isNotBlank()) return
         val samples = TransmitTailToneGenerator.generate(transmitTailTone)
         if (samples.isEmpty()) return
-        audioEngine.resetDecoder()
+        audioEngine.playback.resetDecoder()
         try {
             streamPcmPackets(
                 samples = samples,
@@ -1010,7 +1010,7 @@ class UdpRadioClient internal constructor(
                 }
                 val backlog = next.buffer.toByteArray()
                 if (backlog.isNotEmpty()) {
-                    audioEngine.play(nextKey.playbackKey, backlog) { message ->
+                    audioEngine.playback.playStream(nextKey.playbackKey, backlog) { message ->
                         reportNonFatal(message, currentGeneration)
                     }
                 }
@@ -1033,7 +1033,7 @@ class UdpRadioClient internal constructor(
     private fun finishIncomingVoiceLocked(key: VoiceStreamKey): RadioMessage? {
         val stream = incomingVoiceStreams.remove(key) ?: return null
         voicePlaybackQueue.remove(key)
-        audioEngine.endLiveStream(key.playbackKey)
+        audioEngine.playback.endStream(key.playbackKey)
         val networkPayload = stream.buffer.toByteArray()
         val endedAt = stream.lastPacketAt + VOICE_PACKET_DURATION_MS
         val messageId = UUID.randomUUID().toString()

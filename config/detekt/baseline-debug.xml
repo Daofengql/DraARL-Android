@@ -539,7 +539,6 @@
     <ID>ReturnCount:PlaybackDenoise.kt:RnnoisePlaybackDenoiser$private fun ensureHandleLocked: Boolean</ID>
     <ID>ReturnCount:PlaybackDenoise.kt:internal fun blendDenoisedPcm: ShortArray</ID>
     <ID>ReturnCount:PttOverlayWindow.kt:PttOverlayWindow$fun show: Boolean</ID>
-    <ID>ReturnCount:RadioAudioCache.kt:RadioAudioCache$@Synchronized fun get: ByteArray?</ID>
     <ID>ReturnCount:RadioMessageReconciler.kt:RadioMessageReconciler$fun isLikelySameEvent: Boolean</ID>
     <ID>ReturnCount:RadioMessageReconciler.kt:RadioMessageReconciler$fun shouldRemoveFromAuthoritativeWindow: Boolean</ID>
     <ID>ReturnCount:RefreshCoordinator.kt:RefreshCoordinator$@Synchronized fun complete: RefreshDecision</ID>

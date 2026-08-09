@@ -81,6 +81,8 @@ internal class UdpConnectionStateMachine {
     fun isWaitingToReconnect(expectedGeneration: Int): Boolean =
         state.generation == expectedGeneration && state.stage == UdpConnectionStage.RECONNECT_DELAY
 
+    fun isClosed(): Boolean = state.stage == UdpConnectionStage.CLOSED
+
     internal fun snapshot(): UdpConnectionState = state
 
     private fun UdpConnectionState.attempt(reconnecting: Boolean): UdpConnectionAttempt = UdpConnectionAttempt(

@@ -5,10 +5,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class OpusAudioEngine(
-    audioCache: RadioAudioCache,
+    audioCache: RadioAudioStore,
     private val historicalAudioLoader: HistoricalAudioLoader = HistoricalAudioLoader(audioCache),
     onPlaybackLevel: (Float) -> Unit = {},
-    private val onCaptureLevel: (Float) -> Unit = {},
+    private val onCaptureLevel: (Float) -> Unit = {}
 ) {
     private val released = AtomicBoolean(false)
     private val recordingPlaybackGeneration = AtomicInteger(0)
@@ -45,16 +45,18 @@ class OpusAudioEngine(
         audioCacheKey: String,
         audioUrl: String,
         onFinished: () -> Unit,
-        onError: (String) -> Unit,
+        onError: (String) -> Unit
     ): Boolean {
         if (
             released.get() || capture.isCapturing ||
             (audioCacheKey.isBlank() && audioUrl.isBlank())
-        ) return false
+        ) {
+            return false
+        }
         val generation = recordingPlaybackGeneration.incrementAndGet()
         val submitted = executeIfActive(
             downloadExecutor,
-            { isRecordingPlaybackActive(generation) },
+            { isRecordingPlaybackActive(generation) }
         ) {
             val result = runCatching { historicalAudioLoader.load(audioCacheKey, audioUrl) }
             if (result.isFailure) {
@@ -65,7 +67,7 @@ class OpusAudioEngine(
                 bytes = result.getOrThrow(),
                 isActive = { isRecordingPlaybackActive(generation) },
                 onFinished = { finishRecordingPlayback(generation, onFinished) },
-                onError = { message -> failRecordingPlayback(generation, message, onError) },
+                onError = { message -> failRecordingPlayback(generation, message, onError) }
             )
             if (!playbackSubmitted) {
                 failRecordingPlayback(generation, "语音播放线程不可用", onError)

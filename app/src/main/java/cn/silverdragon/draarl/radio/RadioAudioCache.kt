@@ -3,30 +3,27 @@ package cn.silverdragon.draarl.radio
 import java.io.File
 import java.security.MessageDigest
 
-class RadioAudioCache(
-    private val directory: File,
-    private val maxBytes: Long = DEFAULT_MAX_BYTES,
-) {
+class RadioAudioCache(private val directory: File, private val maxBytes: Long = DEFAULT_MAX_BYTES) : RadioAudioStore {
     init {
         require(maxBytes > 0) { "语音缓存容量必须大于 0" }
     }
 
     @Synchronized
-    fun get(key: String): ByteArray? {
+    override fun get(key: String): ByteArray? {
         if (key.isBlank()) return null
         val file = fileFor(key)
-        if (!file.isFile) return null
-        val bytes = runCatching { file.readBytes() }.getOrNull()
-        if (bytes == null || runCatching { RawOpusRecording.decode(bytes) }.isFailure) {
+        val bytes = file.takeIf(File::isFile)?.let { runCatching { it.readBytes() }.getOrNull() }
+        return if (bytes == null || runCatching { RawOpusRecording.decode(bytes) }.isFailure) {
             file.delete()
-            return null
+            null
+        } else {
+            file.setLastModified(System.currentTimeMillis())
+            bytes
         }
-        file.setLastModified(System.currentTimeMillis())
-        return bytes
     }
 
     @Synchronized
-    fun put(key: String, bytes: ByteArray) {
+    override fun put(key: String, bytes: ByteArray) {
         require(key.isNotBlank()) { "语音缓存键不能为空" }
         RawOpusRecording.decode(bytes)
         check(directory.exists() || directory.mkdirs()) { "无法创建语音缓存目录" }
@@ -44,16 +41,16 @@ class RadioAudioCache(
     }
 
     @Synchronized
-    fun contains(key: String): Boolean = get(key) != null
+    override fun contains(key: String): Boolean = get(key) != null
 
     @Synchronized
-    fun clear() {
+    override fun clear() {
         directory.listFiles { file -> file.isFile && file.extension == CACHE_EXTENSION }
             ?.forEach(File::delete)
     }
 
     @Synchronized
-    fun sizeBytes(): Long = directory.listFiles { file ->
+    override fun sizeBytes(): Long = directory.listFiles { file ->
         file.isFile && file.extension == CACHE_EXTENSION
     }?.sumOf(File::length) ?: 0L
 
