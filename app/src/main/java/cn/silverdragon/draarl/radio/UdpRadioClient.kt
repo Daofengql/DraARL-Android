@@ -9,10 +9,6 @@ import cn.silverdragon.draarl.data.RadioStatus
 import cn.silverdragon.draarl.data.formatRadioIdentity
 import cn.silverdragon.draarl.protocol.DraarlProtocol
 import java.io.ByteArrayOutputStream
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetSocketAddress
-import java.net.SocketTimeoutException
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -35,7 +31,19 @@ interface UdpRadioListener {
     fun onCwPreviewState(active: Boolean)
 }
 
-class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
+class UdpRadioClient internal constructor(
+    context: Context,
+    private val listener: UdpRadioListener,
+    private val transportFactory: UdpTransportFactory,
+    private val clock: RadioClock
+) {
+    constructor(context: Context, listener: UdpRadioListener) : this(
+        context = context,
+        listener = listener,
+        transportFactory = DatagramUdpTransportFactory(),
+        clock = SystemRadioClock
+    )
+
     private val audioCache = RadioAudioCache(context.applicationContext.filesDir.resolve("radio_audio"))
     private val audioEngine = OpusAudioEngine(
         audioCache = audioCache,
@@ -49,7 +57,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         Thread(runnable, "draarl-udp-scheduler")
     }
     private val connectionState = UdpConnectionStateMachine()
-    private val authenticationReceiver = UdpAuthenticationReceiver(AUTH_TOTAL_TIMEOUT_MS)
+    private val authenticationReceiver = UdpAuthenticationReceiver(AUTH_TOTAL_TIMEOUT_MS, clock::nowMillis)
     private val cwTransmitActive = AtomicBoolean(false)
     private val cwPreviewActive = AtomicBoolean(false)
     private val finishingPtt = AtomicBoolean(false)
@@ -59,7 +67,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
     private val voiceSessionLock = Any()
     private val outgoingVoiceLock = Any()
 
-    @Volatile private var socket: DatagramSocket? = null
+    @Volatile private var transport: UdpTransport? = null
 
     @Volatile private var lastServerPacketAt = 0L
 
@@ -107,7 +115,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         audioEngine.stopCapture()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
-        closeSocket()
+        closeTransport()
         connectionExecutor.execute { establish(attempt) }
     }
 
@@ -127,7 +135,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         audioEngine.stopCapture()
         stopPlayback()
         finishAllIncomingVoices().forEach(listener::onMessage)
-        closeSocket()
+        closeTransport()
         synchronized(statusLock) {
             updateStatus(RadioStatus(phase = RadioConnectionPhase.DISCONNECTED))
         }
@@ -154,7 +162,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
                         senderCallsign = status.callsign,
                         senderSsid = status.ssid,
                         content = normalized,
-                        timestamp = System.currentTimeMillis(),
+                        timestamp = clock.nowMillis(),
                         mine = true,
                         groupId = status.groupId
                     )
@@ -183,7 +191,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         audioEngine.resetDecoder()
         synchronized(outgoingVoiceLock) { outgoingVoiceBuffer = ByteArrayOutputStream() }
         val currentGeneration = connectionState.generation()
-        val startedAt = System.currentTimeMillis()
+        val startedAt = clock.nowMillis()
         val statusUpdated = updateStatusIfActive(currentGeneration) { current ->
             if (!current.connected) current else current.copy(transmitting = true, speaker = "", error = "")
         }
@@ -272,7 +280,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
             audioEngine.stopCapture()
             return false
         }
-        pttStartedAt = System.currentTimeMillis()
+        pttStartedAt = clock.nowMillis()
         schedulePttTimeout(currentGeneration)
         return true
     }
@@ -428,33 +436,33 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         val currentGeneration = attempt.generation
         if (!prepareAttempt(attempt)) return
         try {
-            openSocket(config, currentGeneration)?.let { newSocket ->
-                authenticate(newSocket, config, currentGeneration)?.let { authenticated ->
-                    if (activateSession(newSocket, authenticated, currentGeneration)) {
-                        startOnlineSession(newSocket, currentGeneration)
+            openTransport(config, currentGeneration)?.let { newTransport ->
+                authenticate(newTransport, config, currentGeneration)?.let { authenticated ->
+                    if (activateSession(newTransport, authenticated, currentGeneration)) {
+                        startOnlineSession(newTransport, currentGeneration)
                     }
                 }
             }
         } catch (error: UdpAuthenticationException) {
-            closeSocket()
+            closeTransport()
             if (connectionState.dispatch(UdpConnectionEvent.AuthenticationFailed(currentGeneration))) {
                 updateStatusIfActive(currentGeneration) {
                     it.copy(phase = RadioConnectionPhase.ERROR, error = error.message.orEmpty())
                 }
             }
         } catch (error: Exception) {
-            closeSocket()
+            closeTransport()
             scheduleReconnect(error.message ?: "UDP 连接失败", currentGeneration)
         }
     }
 
-    private fun startOnlineSession(activeSocket: DatagramSocket, currentGeneration: Int) {
+    private fun startOnlineSession(activeTransport: UdpTransport, currentGeneration: Int) {
         startTasks(currentGeneration)
         if (isActive(currentGeneration)) {
-            startReceiver(activeSocket, currentGeneration)
+            startReceiver(activeTransport, currentGeneration)
         } else {
             stopTasks()
-            closeSocket(activeSocket)
+            closeTransport(activeTransport)
         }
     }
 
@@ -463,7 +471,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         if (activeBeforeCleanup) {
             stopTasks()
             audioEngine.stopCapture()
-            closeSocket()
+            closeTransport()
         }
         return activeBeforeCleanup &&
             isActive(attempt.generation) &&
@@ -483,28 +491,29 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
             }
     }
 
-    private fun openSocket(config: RadioConnectionConfig, currentGeneration: Int): DatagramSocket? {
-        val remote = InetSocketAddress(config.accessPoint.host, config.accessPoint.port)
-        val newSocket = createSocket().apply {
-            soTimeout = AUTH_SOCKET_TIMEOUT_MS
-            connect(remote)
-        }
-        var openedSocket: DatagramSocket? = null
+    private fun openTransport(config: RadioConnectionConfig, currentGeneration: Int): UdpTransport? {
+        val newTransport = transportFactory.open(
+            host = config.accessPoint.host,
+            port = config.accessPoint.port,
+            preferredLocalPort = preferredLocalPort,
+            receiveTimeoutMillis = AUTH_SOCKET_TIMEOUT_MS
+        )
+        var openedTransport: UdpTransport? = null
         if (isActive(currentGeneration)) {
-            socket = newSocket
+            transport = newTransport
             if (isActive(currentGeneration)) {
-                openedSocket = newSocket
+                openedTransport = newTransport
             } else {
-                closeSocket(newSocket)
+                closeTransport(newTransport)
             }
         } else {
-            newSocket.close()
+            newTransport.close()
         }
-        return openedSocket
+        return openedTransport
     }
 
     private fun authenticate(
-        activeSocket: DatagramSocket,
+        activeTransport: UdpTransport,
         config: RadioConnectionConfig,
         currentGeneration: Int
     ): UdpAuthenticatedSession? {
@@ -512,23 +521,23 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
             connectionState.dispatch(UdpConnectionEvent.AuthenticationStarted(currentGeneration)) &&
                 updateStatusIfActive(currentGeneration) { it.copy(phase = RadioConnectionPhase.AUTHENTICATING) }
         if (!started) {
-            closeSocket(activeSocket)
+            closeTransport(activeTransport)
         }
         val response = if (started) {
-            sendRaw(activeSocket, DraarlProtocol.ghostAuth(config.accessToken, config.clientInstanceId))
-            awaitAuthResponse(activeSocket)
+            sendRaw(activeTransport, DraarlProtocol.ghostAuth(config.accessToken, config.clientInstanceId))
+            awaitAuthResponse(activeTransport)
         } else {
             null
         }
         val activeResponse = response?.takeIf { isActive(currentGeneration) }
         if (response != null && activeResponse == null) {
-            closeSocket(activeSocket)
+            closeTransport(activeTransport)
         }
         return activeResponse?.let { UdpAuthentication.parse(it, config.clientInstanceId) }
     }
 
     private fun activateSession(
-        activeSocket: DatagramSocket,
+        activeTransport: UdpTransport,
         authenticated: UdpAuthenticatedSession,
         currentGeneration: Int
     ): Boolean {
@@ -537,8 +546,8 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         sessionTag = session.sessionTag
         sessionUsername = response.username
         sessionSsid = authenticated.ssid
-        activeSocket.soTimeout = RECEIVE_SOCKET_TIMEOUT_MS
-        lastServerPacketAt = System.currentTimeMillis()
+        activeTransport.receiveTimeoutMillis = RECEIVE_SOCKET_TIMEOUT_MS
+        lastServerPacketAt = clock.nowMillis()
         val activated = connectionState.dispatch(UdpConnectionEvent.Authenticated(currentGeneration)) &&
             updateStatusIfActive(currentGeneration) { current ->
                 current.copy(
@@ -552,36 +561,29 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
                     error = ""
                 )
             }
-        if (!activated) closeSocket(activeSocket)
+        if (!activated) closeTransport(activeTransport)
         return activated
     }
 
-    private fun awaitAuthResponse(activeSocket: DatagramSocket): cn.silverdragon.draarl.protocol.DraarlPacket {
+    private fun awaitAuthResponse(activeTransport: UdpTransport): cn.silverdragon.draarl.protocol.DraarlPacket {
         val buffer = ByteArray(4_096)
         return authenticationReceiver.await {
-            try {
-                val datagram = DatagramPacket(buffer, buffer.size)
-                activeSocket.receive(datagram)
-                DraarlProtocol.decode(datagram.data, datagram.length)
-            } catch (_: SocketTimeoutException) {
-                null
-            }
+            activeTransport.receive(buffer)?.let { length -> DraarlProtocol.decode(buffer, length) }
         }
     }
 
-    private fun startReceiver(activeSocket: DatagramSocket, currentGeneration: Int) {
-        Thread({ receiveLoop(activeSocket, currentGeneration) }, "draarl-udp-receiver").start()
+    private fun startReceiver(activeTransport: UdpTransport, currentGeneration: Int) {
+        Thread({ receiveLoop(activeTransport, currentGeneration) }, "draarl-udp-receiver").start()
     }
 
-    private fun receiveLoop(activeSocket: DatagramSocket, currentGeneration: Int) {
+    private fun receiveLoop(activeTransport: UdpTransport, currentGeneration: Int) {
         val buffer = ByteArray(4_096)
-        while (isActive(currentGeneration) && !activeSocket.isClosed) {
+        while (isActive(currentGeneration) && !activeTransport.isClosed) {
             try {
-                val datagram = DatagramPacket(buffer, buffer.size)
-                activeSocket.receive(datagram)
-                val packet = DraarlProtocol.decode(datagram.data, datagram.length) ?: continue
+                val length = activeTransport.receive(buffer) ?: continue
+                val packet = DraarlProtocol.decode(buffer, length) ?: continue
                 if (!isActive(currentGeneration)) return
-                lastServerPacketAt = System.currentTimeMillis()
+                lastServerPacketAt = clock.nowMillis()
                 when (packet.type) {
                     DraarlProtocol.TYPE_TEXT -> handleText(
                         packet.username,
@@ -600,8 +602,6 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
                         currentGeneration
                     )
                 }
-            } catch (_: SocketTimeoutException) {
-                // The watchdog owns timeout and reconnect decisions.
             } catch (error: Exception) {
                 if (isActive(currentGeneration)) {
                     scheduleReconnect(error.message ?: "UDP 接收中断", currentGeneration)
@@ -621,7 +621,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
                 senderSsid = ssid,
                 senderUsername = username,
                 content = payload.toString(Charsets.UTF_8),
-                timestamp = System.currentTimeMillis(),
+                timestamp = clock.nowMillis(),
                 mine = false,
                 groupId = groupId
             )
@@ -640,7 +640,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         val identity = callsign.ifBlank { username }
         val speaker = formatRadioIdentity(identity, ssid)
         val speakerKey = VoiceStreamKey(groupId, identity, ssid)
-        val now = System.currentTimeMillis()
+        val now = clock.nowMillis()
         var startingSession = false
         var playImmediately = false
         var evictedMessage: RadioMessage? = null
@@ -831,7 +831,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
             )
             watchdogTask = scheduler.scheduleWithFixedDelay(
                 {
-                    val now = System.currentTimeMillis()
+                    val now = clock.nowMillis()
                     val completedMessages = finishExpiredAndAdvanceVoiceQueue(now, currentGeneration)
                     completedMessages.forEach(listener::onMessage)
                     if (completedMessages.isNotEmpty()) {
@@ -860,7 +860,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         stopTasks()
         audioEngine.stopCapture()
         finishAllIncomingVoices().forEach(listener::onMessage)
-        closeSocket()
+        closeTransport()
         if (!updateStatusIfActive(reconnectGeneration) {
                 it.copy(phase = RadioConnectionPhase.RECONNECTING, error = reason, transmitting = false)
             }
@@ -869,7 +869,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
         }
         val retryDelay = RadioReconnectPolicy.retryDelayMillis(
             lastPacketSentAt = lastPacketSentAt,
-            now = System.currentTimeMillis()
+            now = clock.nowMillis()
         )
         val scheduled = runCatching {
             scheduler.schedule(
@@ -900,10 +900,10 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
 
     private fun send(bytes: ByteArray, expectedGeneration: Int = connectionState.generation()): Boolean {
         if (!isActive(expectedGeneration)) return false
-        val activeSocket = socket ?: return false
-        if (!status.connected || activeSocket.isClosed) return false
+        val activeTransport = transport ?: return false
+        if (!status.connected || activeTransport.isClosed) return false
         return runCatching {
-            synchronized(sendLock) { sendRaw(activeSocket, bytes) }
+            synchronized(sendLock) { sendRaw(activeTransport, bytes) }
             true
         }.getOrElse {
             scheduleReconnect(it.message ?: "UDP 发送失败", expectedGeneration)
@@ -934,25 +934,9 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
     private fun sourceGroupId(reserved: Long): Int =
         reserved.takeIf { it in 1..Int.MAX_VALUE.toLong() }?.toInt() ?: status.groupId
 
-    private fun sendRaw(activeSocket: DatagramSocket, bytes: ByteArray) {
-        activeSocket.send(DatagramPacket(bytes, bytes.size))
-        lastPacketSentAt = System.currentTimeMillis()
-    }
-
-    private fun createSocket(): DatagramSocket {
-        val reusablePort = preferredLocalPort
-        if (reusablePort > 0) {
-            val reusableSocket = DatagramSocket(null)
-            try {
-                return reusableSocket.apply {
-                    reuseAddress = true
-                    bind(InetSocketAddress(reusablePort))
-                }
-            } catch (_: Exception) {
-                runCatching { reusableSocket.close() }
-            }
-        }
-        return DatagramSocket()
+    private fun sendRaw(activeTransport: UdpTransport, bytes: ByteArray) {
+        activeTransport.send(bytes)
+        lastPacketSentAt = clock.nowMillis()
     }
 
     private fun stopTasks() {
@@ -972,7 +956,7 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
             pttTimeoutTask = null
             if (!isActive(expectedGeneration) || !status.transmitting) return
             val remaining = transmitTimeoutSeconds * 1_000L -
-                (System.currentTimeMillis() - pttStartedAt)
+                (clock.nowMillis() - pttStartedAt)
             pttTimeoutTask = scheduler.schedule(
                 {
                     if (isActive(expectedGeneration) && status.transmitting) stopPtt()
@@ -998,18 +982,18 @@ class UdpRadioClient(context: Context, private val listener: UdpRadioListener) {
     }
 
     @Synchronized
-    private fun closeSocket(expected: DatagramSocket? = null) {
-        val activeSocket = socket
-        if (expected != null && activeSocket !== expected) {
+    private fun closeTransport(expected: UdpTransport? = null) {
+        val activeTransport = transport
+        if (expected != null && activeTransport !== expected) {
             runCatching { expected.close() }
             return
         }
-        activeSocket?.localPort?.takeIf { it > 0 }?.let { preferredLocalPort = it }
-        socket = null
+        activeTransport?.localPort?.takeIf { it > 0 }?.let { preferredLocalPort = it }
+        transport = null
         sessionTag = 0
         sessionUsername = ""
         sessionSsid = DraarlProtocol.SSID_ANDROID
-        runCatching { activeSocket?.close() }
+        runCatching { activeTransport?.close() }
     }
 
     private fun isActive(expectedGeneration: Int): Boolean = connectionState.isActive(expectedGeneration)

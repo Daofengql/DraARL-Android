@@ -18,7 +18,7 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 176 个文件，约 2.74 万有效代码行；JVM 测试 57 个文件、231 个用例。
+- 生产 Kotlin 178 个文件，约 2.75 万有效代码行；JVM 测试 58 个文件、235 个用例。
 - Compose 截图测试 4 个文件、24 张参考图，覆盖应用壳层、五个一级页面、设置行、APRS、BLE 配网、存储页、弹窗、Bottom Sheet 和首批页面反馈状态。
 - 复杂度主要集中在 `UdpRadioClient`、`AppController` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
@@ -28,9 +28,9 @@
 
 - [ ] **明确 `UdpRadioClient` 状态机**
 
-- 分离 Socket 传输、心跳/看门狗、PTT 发送、接收语音组装和重连调度。
+- 分离心跳/看门狗、PTT 发送、接收语音组装和重连调度。
 - 尽量在单一串行执行上下文修改会话状态，减少 `Volatile`、`Atomic` 和锁的混用。
-- 注入 Clock、Scheduler、Transport 和 Audio 接口，避免测试依赖真实网络与 Android Service。
+- 注入 Scheduler 和 Audio 接口，避免测试依赖 Android Service 和真实音频设备。
 
 验收：认证、超时、重连、乱序包和主动关闭可以通过确定性 JVM 测试验证。
 
