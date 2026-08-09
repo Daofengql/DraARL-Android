@@ -84,7 +84,10 @@ fun AccountSecurityScreen(controller: AppController) {
                                 icon = Icons.Default.Lock,
                                 title = "登录密码",
                                 detail = "使用当前密码验证后设置新密码",
-                                onClick = { showChangePassword = true }
+                                onClick = {
+                                    showChangeEmail = false
+                                    showChangePassword = true
+                                }
                             ),
                             showDivider = true
                         )
@@ -108,7 +111,10 @@ fun AccountSecurityScreen(controller: AppController) {
                                 } else {
                                     "修改邮箱需要验证当前邮箱"
                                 },
-                                onClick = { showChangeEmail = true }
+                                onClick = {
+                                    showChangePassword = false
+                                    showChangeEmail = true
+                                }
                             )
                         )
                     }

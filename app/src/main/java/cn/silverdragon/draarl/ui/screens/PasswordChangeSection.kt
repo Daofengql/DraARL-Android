@@ -2,16 +2,9 @@ package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,9 +16,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
 
 @Composable
 internal fun ChangePasswordSection(controller: AppController, onDone: () -> Unit) {
+    ChangePasswordContent(
+        busy = controller.profile.busy,
+        onValidationError = controller::showNotice,
+        onSubmit = { oldPassword, newPassword ->
+            controller.profile.changePassword(oldPassword, newPassword)
+            onDone()
+        }
+    )
+}
+
+@Composable
+internal fun ChangePasswordContent(
+    busy: Boolean,
+    onValidationError: (String) -> Unit,
+    onSubmit: (oldPassword: String, newPassword: String) -> Unit
+) {
     var oldPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -37,7 +48,7 @@ internal fun ChangePasswordSection(controller: AppController, onDone: () -> Unit
             label = { Text("当前密码") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = PasswordVisualTransformation()
         )
         OutlinedTextField(
             value = newPassword,
@@ -46,7 +57,7 @@ internal fun ChangePasswordSection(controller: AppController, onDone: () -> Unit
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            supportingText = { Text("密码长度至少6位") },
+            supportingText = { Text("密码长度至少6位") }
         )
         OutlinedTextField(
             value = confirmPassword,
@@ -54,30 +65,22 @@ internal fun ChangePasswordSection(controller: AppController, onDone: () -> Unit
             label = { Text("确认新密码") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = PasswordVisualTransformation()
         )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Button(
-                onClick = {
-                    when {
-                        newPassword != confirmPassword -> controller.showNotice("两次输入的密码不一致")
-                        newPassword.length < 6 -> controller.showNotice("密码长度至少6位")
-                        else -> {
-                            controller.profile.changePassword(oldPassword, newPassword)
-                            onDone()
-                        }
-                    }
-                },
-                enabled = !controller.profile.busy,
-            ) {
-                if (controller.profile.busy) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Icon(Icons.Default.Save, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("确认修改")
+        CommandButton(
+            label = "确认修改",
+            onClick = {
+                when {
+                    newPassword != confirmPassword -> onValidationError("两次输入的密码不一致")
+                    newPassword.length < 6 -> onValidationError("密码长度至少6位")
+                    else -> onSubmit(oldPassword, newPassword)
                 }
-            }
-        }
+            },
+            enabled = !busy,
+            loading = busy,
+            style = CommandStyle.PRIMARY,
+            leadingIcon = Icons.Default.Save,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }

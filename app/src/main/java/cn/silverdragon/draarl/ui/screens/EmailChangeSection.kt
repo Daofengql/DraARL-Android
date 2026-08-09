@@ -2,20 +2,12 @@ package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.ui.components.CaptchaInput
+import cn.silverdragon.draarl.ui.components.CommandButton
+import cn.silverdragon.draarl.ui.components.CommandStyle
 import kotlinx.coroutines.delay
 
 @Composable
@@ -67,7 +61,8 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 enabled = !controller.publicAuth.busy,
                 onRefresh = controller.publicAuth::loadCaptcha
             )
-            Button(
+            CommandButton(
+                label = if (oldCooldown > 0) "${oldCooldown}秒后可重发" else "向当前邮箱发送验证码",
                 onClick = {
                     controller.publicAuth.sendEmailCode(user.email, "change_email", captchaCode) { session ->
                         oldSessionId = session.sessionId
@@ -77,26 +72,23 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 },
                 enabled = !controller.publicAuth.busy && captchaCode.isNotBlank() && oldCooldown == 0,
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (oldCooldown > 0) "${oldCooldown}秒后可重发" else "向当前邮箱发送验证码")
-            }
+            )
         }
 
         if (verifyCurrentEmail && oldSessionId.isNotBlank()) {
             VerificationCodeField(oldCode, { oldCode = it }, "当前邮箱验证码")
-            TextButton(
+            CommandButton(
+                label = if (oldCooldown > 0) "${oldCooldown}秒后可重新获取" else "重新获取当前邮箱验证码",
                 onClick = {
                     oldSessionId = ""
                     oldCode = ""
                     captchaCode = ""
                     controller.publicAuth.loadCaptcha()
                 },
-                enabled = !controller.publicAuth.busy && oldCooldown == 0
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (oldCooldown > 0) "${oldCooldown}秒后可重新获取" else "重新获取当前邮箱验证码")
-            }
+                enabled = !controller.publicAuth.busy && oldCooldown == 0,
+                leadingIcon = Icons.Default.Refresh,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         if (!verifyCurrentEmail || oldSessionId.isNotBlank()) {
@@ -119,7 +111,8 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 enabled = !controller.publicAuth.busy && newSessionId.isBlank(),
                 onRefresh = controller.publicAuth::loadCaptcha
             )
-            Button(
+            CommandButton(
+                label = if (newCooldown > 0) "${newCooldown}秒后可重发" else "向新邮箱发送验证码",
                 onClick = {
                     controller.publicAuth.sendEmailCode(newEmail, "change_email", captchaCode) { session ->
                         newSessionId = session.sessionId
@@ -130,56 +123,45 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                 enabled = !controller.publicAuth.busy &&
                     newEmail.isNotBlank() && captchaCode.isNotBlank() && newCooldown == 0,
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (newCooldown > 0) "${newCooldown}秒后可重发" else "向新邮箱发送验证码")
-            }
+            )
         }
 
         if (newSessionId.isNotBlank()) {
             VerificationCodeField(newCode, { newCode = it }, "新邮箱验证码")
-            TextButton(
+            CommandButton(
+                label = if (newCooldown > 0) "${newCooldown}秒后可重新获取" else "重新获取新邮箱验证码",
                 onClick = {
                     newSessionId = ""
                     newCode = ""
                     captchaCode = ""
                     controller.publicAuth.loadCaptcha()
                 },
-                enabled = !controller.publicAuth.busy && newCooldown == 0
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(if (newCooldown > 0) "${newCooldown}秒后可重新获取" else "重新获取新邮箱验证码")
-            }
+                enabled = !controller.publicAuth.busy && newCooldown == 0,
+                leadingIcon = Icons.Default.Refresh,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         if (controller.publicAuth.error.isNotBlank()) {
-            Text(
-                controller.publicAuth.error,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
+            AuthErrorNotice(controller.publicAuth.error)
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Button(
-                onClick = {
-                    controller.profile.changeEmail(
-                        oldSessionId = oldSessionId,
-                        oldCode = oldCode,
-                        newSessionId = newSessionId,
-                        newCode = newCode,
-                        onSuccess = onDone
-                    )
-                },
-                enabled = !controller.profile.busy && newSessionId.isNotBlank() && newCode.isNotBlank() &&
-                    (!verifyCurrentEmail || oldCode.isNotBlank())
-            ) {
-                if (controller.profile.busy) {
-                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("确认修改")
-                }
-            }
-        }
+        CommandButton(
+            label = "确认修改",
+            onClick = {
+                controller.profile.changeEmail(
+                    oldSessionId = oldSessionId,
+                    oldCode = oldCode,
+                    newSessionId = newSessionId,
+                    newCode = newCode,
+                    onSuccess = onDone
+                )
+            },
+            enabled = !controller.profile.busy && newSessionId.isNotBlank() && newCode.isNotBlank() &&
+                (!verifyCurrentEmail || oldCode.isNotBlank()),
+            loading = controller.profile.busy,
+            style = CommandStyle.PRIMARY,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

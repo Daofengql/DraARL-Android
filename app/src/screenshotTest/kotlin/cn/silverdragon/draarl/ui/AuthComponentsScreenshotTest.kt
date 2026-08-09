@@ -15,6 +15,7 @@ import cn.silverdragon.draarl.data.RegistrationResult
 import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.screens.AuthErrorNotice
+import cn.silverdragon.draarl.ui.screens.ChangePasswordContent
 import cn.silverdragon.draarl.ui.screens.RegistrationSuccess
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
 import com.android.tools.screenshot.PreviewTest
@@ -71,6 +72,29 @@ fun RegistrationSuccessLightBaseline() {
                         devicePassword = "DRAARL-7K4M-92QX"
                     ),
                     onLogin = {}
+                )
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Account Password Dark Large Text",
+    widthDp = 360,
+    heightDp = 520,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun AccountPasswordDarkLargeTextBaseline() {
+    DraarlTheme(darkTheme = true) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.padding(24.dp)) {
+                ChangePasswordContent(
+                    busy = true,
+                    onValidationError = {},
+                    onSubmit = { _, _ -> }
                 )
             }
         }
