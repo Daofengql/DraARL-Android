@@ -145,7 +145,9 @@ private fun radioConnectionPanelState(
     val user = controller.session.uiState.user
     val radioSettings = controller.settings.uiState
     val callsign = user?.let { it.callsign.ifBlank { it.displayName } }.orEmpty().ifBlank { "DraARL" }
-    val receivingAudio = status.speaker.isNotBlank() || controller.playingMessageId != null
+    val receivingAudio = status.speaker.isNotBlank() ||
+        controller.playingMessageId != null ||
+        controller.playbackLevel >= 0.02f
     return RadioConnectionPanelState(
         strip = RadioStatusStripState(
             stationIdentity = formatRadioIdentity(callsign, status.ssid),

@@ -83,6 +83,19 @@ class UdpSessionMonitorTest {
         assertTrue(fixture.scheduler.periodic.takeLast(2).all(FakeTask::cancelled))
     }
 
+    @Test
+    fun `restart refreshes the server silence window`() {
+        val fixture = fixture()
+        var timeouts = 0
+        fixture.monitor.recordServerPacket()
+        fixture.clock.now += 30_000L
+
+        fixture.monitor.start({}, {}, { timeouts++ })
+        fixture.scheduler.periodic.last().run()
+
+        assertEquals(0, timeouts)
+    }
+
     private fun fixture(): Fixture {
         val scheduler = FakeRadioScheduler()
         val clock = MutableRadioClock(FIXED_NOW)

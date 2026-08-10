@@ -132,7 +132,7 @@ class SessionController internal constructor(
 
     private fun activate(session: Session, entryPoint: SessionEntryPoint) {
         activeSession = session
-        uiState = SessionUiState(authenticated = true, user = session.user)
+        uiState = SessionUiState(initializing = false, authenticated = true, user = session.user)
         try {
             effects.onSessionActivated(session, entryPoint)
         } catch (error: CancellationException) {

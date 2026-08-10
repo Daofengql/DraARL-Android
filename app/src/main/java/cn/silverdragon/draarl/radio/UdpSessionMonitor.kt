@@ -23,6 +23,9 @@ internal class UdpSessionMonitor(
     @Synchronized
     fun start(heartbeat: () -> Unit, watchdog: (Long) -> Unit, onServerSilence: () -> Unit) {
         stopLocked()
+        // A restarted session must get a fresh silence window. Reusing a packet
+        // timestamp from the previous transport can trigger an immediate reconnect.
+        lastServerPacketAt = clock.nowMillis()
         heartbeatTask = scheduler.scheduleWithFixedDelay(
             initialDelayMillis = 0L,
             delayMillis = heartbeatIntervalMillis,

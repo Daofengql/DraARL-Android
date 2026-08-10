@@ -4,7 +4,10 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
+import android.system.Os
+import android.system.OsConstants
 import android.util.LruCache
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -443,7 +446,27 @@ internal fun ManagedAmapView(
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val mapView = remember(context) { MapView(context) }
+    if (!isAmapNativeSupported()) {
+        Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Text(
+                "当前设备无法安全加载高德地图 native 库",
+                modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    val mapView = remember(context) { runCatching { MapView(context) }.getOrNull() }
+    if (mapView == null) {
+        Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Text(
+                "地图组件无法在当前系统加载，请使用支持 16K 页的地图 SDK",
+                modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
     val lifecycleController = remember(mapView) {
         MapViewLifecycleController(
             resumeView = mapView::onResume,
@@ -698,17 +721,25 @@ internal fun hasAmapApiKey(context: Context): Boolean = runCatching {
 }.getOrDefault(false)
 
 internal fun initializeAmapServices(context: Context): Boolean {
-    MapsInitializer.updatePrivacyShow(context, true, true)
-    MapsInitializer.updatePrivacyAgree(context, true)
-    ServiceSettings.updatePrivacyShow(context, true, true)
-    ServiceSettings.updatePrivacyAgree(context, true)
-    ServiceSettings.getInstance().setProtocol(ServiceSettings.HTTPS)
-    return true
+    if (!isAmapNativeSupported() || !hasAmapApiKey(context)) return false
+    return runCatching {
+        MapsInitializer.updatePrivacyShow(context, true, true)
+        MapsInitializer.updatePrivacyAgree(context, true)
+        ServiceSettings.updatePrivacyShow(context, true, true)
+        ServiceSettings.updatePrivacyAgree(context, true)
+        ServiceSettings.getInstance().setProtocol(ServiceSettings.HTTPS)
+    }.isSuccess
 }
+
+internal fun isAmapNativeSupported(): Boolean = runCatching {
+    Build.SUPPORTED_ABIS.any { it == "arm64-v8a" } &&
+        Os.sysconf(OsConstants._SC_PAGESIZE) <= AMAP_MAX_PAGE_SIZE_BYTES
+}.getOrDefault(false)
 
 internal const val MAP_PREFERENCES = "map_preferences"
 internal const val MAP_PRIVACY_ACCEPTED = "amap_privacy_accepted"
 private val DEFAULT_MAP_CENTER = LatLng(34.3416, 108.9398)
+private const val AMAP_MAX_PAGE_SIZE_BYTES = 4_096L
 private const val MAP_GRID_BOUNDS_PADDING_PX = 96
 private const val MAP_MEASUREMENT_BOUNDS_PADDING_PX = 144
 private const val MAP_GRID_STROKE_COLOR = 0xFF2856D7.toInt()

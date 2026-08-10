@@ -1025,11 +1025,11 @@ class UdpRadioClient internal constructor(
     }
 
     companion object {
-        private const val AUTH_SOCKET_TIMEOUT_MS = 1_000
-        private const val AUTH_TOTAL_TIMEOUT_MS = 5_000L
-        private const val RECEIVE_SOCKET_TIMEOUT_MS = 1_000
+        private const val AUTH_SOCKET_TIMEOUT_MS = 2_000
+        private const val AUTH_TOTAL_TIMEOUT_MS = 10_000L
+        private const val RECEIVE_SOCKET_TIMEOUT_MS = 2_000
         private const val HEARTBEAT_INTERVAL_MS = 2_000L
-        private const val SERVER_SILENCE_TIMEOUT_MS = 8_000L
+        private const val SERVER_SILENCE_TIMEOUT_MS = 15_000L
         private const val VOICE_END_TIMEOUT_MS = 700L
         private const val VOICE_PACKET_DURATION_MS = 120L
         private const val WATCHDOG_INTERVAL_MS = 250L

@@ -28,6 +28,12 @@ add_library(
 
 target_compile_definitions(draarl_rnnoise PRIVATE RNNOISE_BUILD)
 target_compile_options(draarl_rnnoise PRIVATE -O3)
+target_link_options(
+    draarl_rnnoise
+    PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384"
+)
 target_include_directories(
     draarl_rnnoise
     PRIVATE

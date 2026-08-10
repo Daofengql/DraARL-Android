@@ -1,6 +1,7 @@
 package cn.silverdragon.draarl.maps
 
 import android.content.Context
+import android.os.Build
 import com.amap.api.services.core.LatLonPoint
 import com.amap.api.services.core.PoiItem
 import com.amap.api.services.core.PoiItemV2
@@ -27,8 +28,10 @@ data class AmapPlace(
 
 class AmapPlaceService(context: Context) {
     private val appContext = context.applicationContext
+    private val nativeSupported = Build.SUPPORTED_ABIS.firstOrNull() in SUPPORTED_AMAP_ABIS
 
     suspend fun reverse(latitude: Double, longitude: Double): AmapPlace = withContext(Dispatchers.IO) {
+        check(nativeSupported) { "当前设备架构未提供高德地点服务" }
         val result = GeocodeSearch(appContext).getFromLocation(
             RegeocodeQuery(
                 LatLonPoint(latitude, longitude),
@@ -48,6 +51,7 @@ class AmapPlaceService(context: Context) {
 
     suspend fun search(keyword: String, latitude: Double?, longitude: Double?): List<AmapPlace> =
         withContext(Dispatchers.IO) {
+            check(nativeSupported) { "当前设备架构未提供高德地点服务" }
             val normalized = keyword.trim()
             if (normalized.isBlank()) return@withContext emptyList()
             val query = PoiSearchV2.Query(normalized, "", "").apply {
@@ -95,6 +99,7 @@ class AmapPlaceService(context: Context) {
     }
 
     private companion object {
+        val SUPPORTED_AMAP_ABIS = setOf("arm64-v8a")
         const val REVERSE_GEOCODE_RADIUS_METERS = 200f
         const val SEARCH_PAGE_SIZE = 20
     }

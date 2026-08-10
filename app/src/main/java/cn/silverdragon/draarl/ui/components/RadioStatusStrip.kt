@@ -2,7 +2,7 @@ package cn.silverdragon.draarl.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,9 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -32,7 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,8 +41,7 @@ import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.ui.theme.appColors
 import cn.silverdragon.draarl.ui.theme.appMotion
 import cn.silverdragon.draarl.ui.theme.dataTypography
-import kotlin.math.PI
-import kotlin.math.sin
+import kotlin.math.ceil
 
 @Immutable
 data class RadioStatusStripState(
@@ -165,7 +165,7 @@ fun RadioStatusStrip(
                     }
                 )
                 Spacer(Modifier.width(8.dp))
-                audioLevel(Modifier.widthIn(min = 96.dp, max = 144.dp).height(18.dp))
+                audioLevel(Modifier.requiredWidth(120.dp).height(20.dp))
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -228,25 +228,26 @@ internal fun RadioAudioLevelMeter(
     val primary = if (transmitting) MaterialTheme.appColors.transmit else MaterialTheme.appColors.receive
     val warning = MaterialTheme.appColors.warning
     val error = MaterialTheme.appColors.transmit
-    val inactive = MaterialTheme.appColors.divider.copy(alpha = 0.72f)
-    Canvas(
-        modifier = modifier.semantics {
-            contentDescription = when {
-                transmitting -> "发送电平 ${(targetLevel * 100).toInt()}%"
-                receiving -> "接收电平 ${(targetLevel * 100).toInt()}%"
-                else -> "当前没有收发音频"
-            }
-        }
+    val inactive = MaterialTheme.colorScheme.outlineVariant
+    val currentLevel = animatedLevel.value
+    val selectedSegments = if (active) ceil(currentLevel * SEGMENT_COUNT).toInt() else 0
+    Row(
+        modifier = modifier
+            .requiredWidth(120.dp)
+            .height(20.dp)
+            .semantics {
+                contentDescription = when {
+                    transmitting -> "发送电平 ${(targetLevel * 100).toInt()}%"
+                    receiving -> "接收电平 ${(targetLevel * 100).toInt()}%"
+                    else -> "当前没有收发音频"
+                }
+            },
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom
     ) {
-        val currentLevel = animatedLevel.value
-        val gap = 2.dp.toPx()
-        val segments = (size.width / 6.dp.toPx()).toInt().coerceIn(8, 18)
-        val segmentWidth = (size.width - gap * (segments - 1)) / segments
-        repeat(segments) { index ->
-            val progress = (index + 1f) / segments
-            val envelope = 0.4f + 0.6f * sin(progress * PI).toFloat()
-            val barHeight = size.height * envelope
-            val selected = active && currentLevel >= progress
+        repeat(SEGMENT_COUNT) { index ->
+            val progress = (index + 1f) / SEGMENT_COUNT
+            val selected = index < selectedSegments
             val color = if (!selected) {
                 inactive
             } else {
@@ -256,15 +257,15 @@ internal fun RadioAudioLevelMeter(
                     else -> primary
                 }
             }
-            drawRoundRect(
-                color = color,
-                topLeft = androidx.compose.ui.geometry.Offset(
-                    x = index * (segmentWidth + gap),
-                    y = size.height - barHeight
-                ),
-                size = androidx.compose.ui.geometry.Size(segmentWidth, barHeight),
-                cornerRadius = CornerRadius(segmentWidth / 2f, segmentWidth / 2f)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(color)
             )
         }
     }
 }
+
+private const val SEGMENT_COUNT = 12

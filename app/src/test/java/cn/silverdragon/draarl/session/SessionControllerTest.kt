@@ -46,6 +46,7 @@ class SessionControllerTest {
 
             awaitCondition { fixture.controller.uiState.authenticated }
 
+            assertFalse(fixture.controller.uiState.initializing)
             assertEquals(restored.user, fixture.controller.uiState.user)
             assertEquals(listOf(Activation(restored, SessionEntryPoint.RESTORE)), fixture.effects.activated)
         } finally {
@@ -127,6 +128,7 @@ class SessionControllerTest {
             fixture.controller.login("operator", "secret", "captcha-id", "1234")
             awaitCondition { fixture.controller.uiState.authenticated }
 
+            assertFalse(fixture.controller.uiState.initializing)
             assertEquals(
                 LoginRequest("https://example.test", "operator", "secret", "captcha-id", "1234"),
                 remote.loginRequests.single()

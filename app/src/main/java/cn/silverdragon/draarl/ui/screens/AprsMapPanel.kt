@@ -75,6 +75,7 @@ import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.amap.api.maps.AMap
+import com.amap.api.maps.model.BitmapDescriptor
 import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.LatLng
 import kotlinx.coroutines.CancellationException
@@ -89,6 +90,10 @@ internal fun AprsMapPanel(
     visible: Boolean = true
 ) {
     val context = LocalContext.current
+    val amapReady = remember(context, visible) {
+        visible && initializeAmapServices(context)
+    }
+    val amapEnabled = visible && amapReady
     val scope = rememberCoroutineScope()
     val provider = remember(context) { CurrentLocationProvider(context) }
     val locationStore = remember(context) { LastMapLocationStore(context) }
@@ -110,19 +115,18 @@ internal fun AprsMapPanel(
         mutableIntStateOf(if (darkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL)
     }
     var mapTypeMenuExpanded by remember { mutableStateOf(false) }
-    val fallbackMarker = remember {
-        BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(null))
+    var avatarBitmap by remember(controller.session.uiState.user?.avatarUrl) {
+        mutableStateOf<Bitmap?>(null)
     }
-    var avatarMarker by remember(controller.session.uiState.user?.avatarUrl) {
-        mutableStateOf<com.amap.api.maps.model.BitmapDescriptor?>(null)
-    }
+    var markerIcon by remember { mutableStateOf<BitmapDescriptor?>(null) }
+    var mapReadyForMarkers by remember { mutableStateOf(false) }
 
-    LaunchedEffect(controller.session.uiState.user?.avatarUrl) {
+    LaunchedEffect(controller.session.uiState.user?.avatarUrl, amapEnabled) {
         val avatarUrl = controller.session.uiState.user?.avatarUrl.orEmpty()
-        if (avatarUrl.isBlank()) {
-            avatarMarker = null
+        if (!amapEnabled || avatarUrl.isBlank()) {
+            avatarBitmap = null
         } else {
-            avatarMarker = runCatching {
+            avatarBitmap = runCatching {
                 val result = SingletonImageLoader.get(context).execute(
                     ImageRequest.Builder(context)
                         .data(avatarUrl)
@@ -130,11 +134,21 @@ internal fun AprsMapPanel(
                         .allowHardware(false)
                         .build()
                 )
-                (result as? SuccessResult)?.image?.toBitmap(AVATAR_BITMAP_SIZE, AVATAR_BITMAP_SIZE)?.let { avatar ->
-                    BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(avatar))
-                }
+                (result as? SuccessResult)?.image?.toBitmap(AVATAR_BITMAP_SIZE, AVATAR_BITMAP_SIZE)
             }.getOrNull()
         }
+    }
+
+    LaunchedEffect(amapEnabled, mapReadyForMarkers, avatarBitmap) {
+        if (!amapEnabled) {
+            mapReadyForMarkers = false
+            markerIcon = null
+            return@LaunchedEffect
+        }
+        if (!mapReadyForMarkers) return@LaunchedEffect
+        markerIcon = runCatching {
+            BitmapDescriptorFactory.fromBitmap(createAvatarMarkerBitmap(avatarBitmap))
+        }.getOrNull()
     }
 
     fun locate() {
@@ -201,7 +215,7 @@ internal fun AprsMapPanel(
     }
 
     Box(modifier.fillMaxSize()) {
-        if (hasAmapApiKey(context)) {
+        if (amapEnabled) {
             ManagedAmapView(
                 coordinate = coordinate,
                 allowSelection = false,
@@ -213,18 +227,23 @@ internal fun AprsMapPanel(
                 zoomInRequest = zoomInRequest,
                 zoomOutRequest = zoomOutRequest,
                 mapType = mapType,
-                markerIcon = avatarMarker ?: fallbackMarker,
+                markerIcon = markerIcon,
                 measurementPoints = if (measuring) measurementMarkers else emptyList(),
                 measurementPath = if (measuring) measurementPath else emptyList(),
                 onMapClick = { point ->
                     if (measuring) measurementPath = measurementPath + point
                 },
+                onMapLoaded = { mapReadyForMarkers = true },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Text(
-                    "地图 Key 未配置",
+                    when {
+                        !isAmapNativeSupported() -> "当前设备无法安全加载高德地图 native 库"
+                        hasAmapApiKey(context) -> "地图服务暂时不可用"
+                        else -> "地图 Key 未配置"
+                    },
                     modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

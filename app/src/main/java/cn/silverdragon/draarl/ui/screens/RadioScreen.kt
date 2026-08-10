@@ -349,15 +349,16 @@ fun RadioScreen(
             modifier = Modifier.fillMaxWidth()
         )
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            AprsMapPanel(
-                controller = controller,
-                onStartPtt = startPtt,
-                onStopPtt = controller::stopPtt,
-                visible = contentMode == RadioContentMode.MAP,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (contentMode == RadioContentMode.MESSAGES) {
-                androidx.compose.material3.Surface(
+            when (contentMode) {
+                RadioContentMode.MAP -> AprsMapPanel(
+                    controller = controller,
+                    onStartPtt = startPtt,
+                    onStopPtt = controller::stopPtt,
+                    visible = true,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                RadioContentMode.MESSAGES -> androidx.compose.material3.Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
@@ -376,7 +377,11 @@ fun RadioScreen(
                                         start = 12.dp,
                                         top = 12.dp,
                                         end = 12.dp,
-                                        bottom = 12.dp
+                                        bottom = if (unplayedVoiceCount > 0 || controller.voiceAutoPlayEnabled) {
+                                            92.dp
+                                        } else {
+                                            12.dp
+                                        }
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
@@ -427,16 +432,16 @@ fun RadioScreen(
                         }
                     }
                 }
-                if (extrasExpanded) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = dismissExtrasInteraction,
-                                indication = null
-                            ) { onExtrasExpandedChange(false) }
-                    )
-                }
+            }
+            if (extrasExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = dismissExtrasInteraction,
+                            indication = null
+                        ) { onExtrasExpandedChange(false) }
+                )
             }
         }
         if (contentMode == RadioContentMode.MESSAGES) {

@@ -4,7 +4,7 @@
 
 ## 构建配置
 
-Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同时执行代码压缩、混淆、优化和资源收缩。构建仅包含 `arm64-v8a`，未配置发布签名时生成可供静态检查的未签名 APK。
+Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同时执行代码压缩、混淆、优化和资源收缩。当前排障包仅包含 `arm64-v8a`，与高德地图和 RNNoise 的 ARM64 native 库保持一致。
 
 项目规则位于 `app/src/main/keepRules/release.keep`：
 
@@ -26,22 +26,21 @@ Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同�
 
 优化后 APK 为 30.54 MiB，SHA-256 为 `0284A507FEC9FC26B5994413341B17FCA6BA23352D3107FDBEBCB4B33131D3D2`。Native 库占主要剩余体积，其中高德地图约 19.07 MiB，RNNoise 约 5.72 MiB。
 
-当前代码基线 `e59e52f` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,078,999 B（30.59 MiB），SHA-256 为
-`D1FB684C0502DD393C5C4253512D755FF7BEDB4A455C385DEB8112C8270BBBA8`。与历史优化基线的体积差异来自后续业务代码和编译后的 Baseline Profile，未改变 R8/资源收缩配置。
+当前代码基线的 Release 构建通过 `assembleRelease`；APK 体积和 SHA-256 以本次构建产物为准。构建不再改写第三方高德 ELF，避免引入未经 SDK 厂商验证的 native 二进制差异。
 
 ## 静态验收
 
 - `assembleRelease` 与 Release `lintVital` 通过，生成 `mapping.txt`、`seeds.txt`、`usage.txt`、`resources.txt` 和 `configuration.txt`。
-- 最终 APK 包含 `classes.dex` 和 `classes2.dex`，并保留 `libAMapSDK_MAP_v10_0_600.so`、`libdraarl_rnnoise.so` 与 AndroidX path native 库。
+- 最终 APK 包含 `classes.dex` 和 `classes2.dex`，并保留 arm64-v8a 的 RNNoise、AndroidX path 和 `libAMapSDK_MAP_v10_0_600.so`。
 - R8 映射确认 `RnnoiseNative`、`MapView` 和 `com.autonavi` 内部类未重命名；seeds 确认四个 RNNoise native 方法均被保留。
 - 最终 Manifest 保留 `DraarlApplication`、`MainActivity`、`RadioConnectionService`、`AprsService` 和 `FileProvider` 入口。
 - `baseline-prof.txt` 与 `startup-prof.txt` 各包含 7,353 条本地采集规则；最终 APK 包含编译后的 `assets/dexopt/baseline.prof` 和 `baseline.profm`。
 
-`:app:verifyReleaseArtifact` 依赖 `assembleRelease`，将上述易回归的静态边界收敛为本地构建门禁：APK 不得超过
-36 MiB，必须包含 Manifest、至少一个 DEX、编译后的 Baseline Profile、高德地图与 RNNoise arm64 native 库，且不得
-混入其他 ABI；五份 R8 报告必须存在且非空，mapping 必须保留 RNNoise owner 类和高德 `MapView`，seeds 必须包含四个
-RNNoise JNI 方法；两份源 Profile 还必须各有至少 1,000 条非空规则。该任务检查 Manifest 文件存在，但其中的组件入口
-仍由上面的静态检查和 Release 真机回归确认。
+`:app:verifyReleaseArtifact` 依赖 `assembleRelease`，将上述易回归的静态边界收敛为本地构建门禁：arm64 APK 不得超过
+36 MiB，必须包含 Manifest、至少一个 DEX、编译后的 Baseline Profile、高德地图与 RNNoise native 库，且不得混入其他 ABI；
+五份 R8 报告必须存在且非空，mapping 必须保留 RNNoise owner 类和高德 `MapView`，seeds 必须包含四个 RNNoise JNI 方法；
+两份源 Profile 还必须各有至少 1,000 条非空规则。该任务检查 Manifest 文件存在，但其中的组件入口仍由上面的静态检查和
+Release 真机回归确认。
 
 ## Baseline Profile
 
@@ -49,6 +48,10 @@ RNNoise JNI 方法；两份源 Profile 还必须各有至少 1,000 条非空规�
 `generateReleaseBaselineProfile` 已在 Pixel 10 Pro XL、Android 17（API 37.1、x86_64、16K 页）本地模拟器实际通过，
 并将规则写入 `app/src/release/generated/baselineProfiles`。API 37 首次安装可能显示 16K 兼容提示，生成器只在该系统
 弹窗存在时关闭它，不影响其他系统版本。
+
+高德 `3dmap:10.0.600` 尚未提供 16K 对齐版本。项目不对第三方 ELF 做二进制改写；运行时会检查 ABI 和系统页大小，
+在不满足高德 SDK 原生兼容条件时显示地图不可用提示；默认地图仍只创建当前选中的地图模式，不会在消息模式下重复持有
+native 地图库。
 
 `StartupBenchmark` 提供无编译与强制 Baseline Profile 两组各 5 次冷启动，对照记录启动时间、帧耗时和启动后内存。
 AndroidX 会以 `EMULATOR` 错误拒绝模拟器指标，本轮保留该保护；可复现性能数字必须在同一台物理设备上执行。

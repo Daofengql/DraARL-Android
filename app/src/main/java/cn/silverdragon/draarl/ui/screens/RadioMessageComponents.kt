@@ -227,21 +227,34 @@ internal fun MessageListFloatingActions(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (unplayedCount > 0 || autoPlaying) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 3.dp
             ) {
-                CommandButton(
-                    label = if (autoPlaying) "停止连播" else "$unplayedCount 条未听",
-                    onClick = onToggleAutoPlay,
-                    leadingIcon = if (autoPlaying) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.PlaylistPlay,
-                    style = if (autoPlaying) CommandStyle.PRIMARY else CommandStyle.SECONDARY
-                )
-                if (unplayedCount > 0) {
-                    CommandIconButton(
-                        onClick = onClearUnplayed,
-                        contentDescription = "清除全部未听标记",
-                        icon = Icons.Default.DoneAll
+                Row(
+                    modifier = Modifier.padding(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (unplayedCount > 0) {
+                        CommandButton(
+                            label = "全部已读",
+                            onClick = onClearUnplayed,
+                            leadingIcon = Icons.Default.DoneAll,
+                            modifier = Modifier.widthIn(min = 104.dp, max = 132.dp)
+                        )
+                    }
+                    CommandButton(
+                        label = if (autoPlaying) "停止连播" else "连播 $unplayedCount 条",
+                        onClick = onToggleAutoPlay,
+                        leadingIcon = if (autoPlaying) {
+                            Icons.Default.StopCircle
+                        } else {
+                            Icons.AutoMirrored.Filled.PlaylistPlay
+                        },
+                        style = if (autoPlaying) CommandStyle.PRIMARY else CommandStyle.SECONDARY,
+                        modifier = Modifier.widthIn(min = 128.dp, max = 168.dp)
                     )
                 }
             }
