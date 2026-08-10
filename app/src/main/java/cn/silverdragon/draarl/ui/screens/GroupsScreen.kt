@@ -109,8 +109,7 @@ fun GroupsScreen(controller: AppController) {
     val groups = controller.groups
     val groupsById = remember(groups) { groups.associateBy(Group::id) }
     GroupsContent(
-        groups = groups,
-        loading = controller.contentLoading,
+        state = GroupsContentState(groups = groups, loading = controller.contentLoading),
         onOpenGroup = { detailGroupId = it.id },
         onSearchToJoin = {
             controller.groupManagement.clearSearch()
@@ -232,16 +231,17 @@ fun GroupsScreen(controller: AppController) {
     }
 }
 
+internal data class GroupsContentState(val groups: List<Group>, val loading: Boolean, val initialFilter: String = "")
+
 @Composable
 internal fun GroupsContent(
-    groups: List<Group>,
-    loading: Boolean,
+    state: GroupsContentState,
     onOpenGroup: (Group) -> Unit,
     onSearchToJoin: () -> Unit,
     onCreateGroup: () -> Unit
 ) {
-    var filter by rememberSaveable { mutableStateOf("") }
-    var localSearchActive by rememberSaveable { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf(state.initialFilter) }
+    var localSearchActive by rememberSaveable { mutableStateOf(state.initialFilter.isNotBlank()) }
     val searchFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -283,7 +283,7 @@ internal fun GroupsContent(
                 )
             }
         }
-        GroupsList(groups = groups, loading = loading, query = query, onOpenGroup = onOpenGroup)
+        GroupsList(groups = state.groups, loading = state.loading, query = query, onOpenGroup = onOpenGroup)
     }
 }
 

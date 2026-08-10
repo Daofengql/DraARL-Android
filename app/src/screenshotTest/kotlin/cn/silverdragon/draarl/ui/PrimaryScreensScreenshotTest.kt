@@ -18,6 +18,7 @@ import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.screens.DevicesContent
 import cn.silverdragon.draarl.ui.screens.DevicesContentState
 import cn.silverdragon.draarl.ui.screens.GroupsContent
+import cn.silverdragon.draarl.ui.screens.GroupsContentState
 import cn.silverdragon.draarl.ui.screens.ProfileContent
 import cn.silverdragon.draarl.ui.screens.RadioComposer
 import cn.silverdragon.draarl.ui.screens.RadioConnectionPanel
@@ -131,8 +132,7 @@ fun GroupsDarkBaseline() {
 fun GroupsEmptyDarkBaseline() {
     BaselineScreen(selectedKey = "groups", darkTheme = true) {
         GroupsContent(
-            groups = emptyList(),
-            loading = false,
+            state = GroupsContentState(groups = emptyList(), loading = false),
             onOpenGroup = {},
             onSearchToJoin = {},
             onCreateGroup = {}
@@ -152,8 +152,31 @@ fun GroupsEmptyDarkBaseline() {
 fun GroupsLoadingLightBaseline() {
     BaselineScreen(selectedKey = "groups", darkTheme = false) {
         GroupsContent(
-            groups = emptyList(),
-            loading = true,
+            state = GroupsContentState(groups = emptyList(), loading = true),
+            onOpenGroup = {},
+            onSearchToJoin = {},
+            onCreateGroup = {}
+        )
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Groups Filter Empty Dark Large Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun GroupsFilterEmptyDarkLargeTextBaseline() {
+    BaselineScreen(selectedKey = "groups", darkTheme = true) {
+        GroupsContent(
+            state = GroupsContentState(
+                groups = SampleGroups,
+                loading = false,
+                initialFilter = "不存在的群组"
+            ),
             onOpenGroup = {},
             onSearchToJoin = {},
             onCreateGroup = {}
@@ -261,8 +284,7 @@ private fun DevicesBaseline(darkTheme: Boolean) {
 private fun GroupsBaseline(darkTheme: Boolean) {
     BaselineScreen(selectedKey = "groups", darkTheme = darkTheme) {
         GroupsContent(
-            groups = SampleGroups,
-            loading = false,
+            state = GroupsContentState(groups = SampleGroups, loading = false),
             onOpenGroup = {},
             onSearchToJoin = {},
             onCreateGroup = {}

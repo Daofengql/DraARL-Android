@@ -9,10 +9,10 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 191 | 28,452 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 72 | 6,372 | 288 个测试用例 |
+| 生产 Kotlin | 191 | 28,453 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 72 | 6,408 | 289 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
-| Compose 截图测试 Kotlin | 6 | 1,154 | 38 张壳层、页面、状态和组件参考图 |
+| Compose 截图测试 Kotlin | 6 | 1,175 | 39 张壳层、页面、状态和组件参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
 | 自研 C++ 接入 | 1 | 121 | RNNoise JNI/CMake 桥接 |
 | 第三方 RNNoise C/H | 32 | 281,091 | 约 30.2 MB，绝大部分为模型权重数据 |
@@ -90,7 +90,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 电台消息缓存、最新页同步、历史游标、实时去重、已播放状态和资料预加载已集中到 `RadioMessageController`，并由 7 个 JVM 用例覆盖失败与上下文切换竞态。
 - 电台节点、连接、路由和 Service Binder 已集中到 `RadioSessionController`，并由 8 个 JVM 用例覆盖路由恢复、审核限制、连接参数、服务重连和账户切换竞态。
 - 登录、持久会话恢复、用户更新、会话失效和退出清理已集中到 `SessionController`，并由 9 个 JVM 用例覆盖失败、远端失效和退出竞态。
-- 设备、群组、资料、公共认证和工具 Controller 已移除各自的 `Executor`、`Handler`、原子关闭标记和代次模板，统一通过 `ControllerTaskRunner` 管理 loading、IO 调度、取消和主 scope 回投；工具缓存读写也已移出主线程，群组加入与退出不再依赖 `AppController` 的通用线程池。11 个 JVM 用例覆盖 dispatcher、迟到结果、关闭、验证码替换、流程取消、独立任务槽、串行缓存写入和群组成员关系操作。
+- 设备、群组、资料、公共认证和工具 Controller 已移除各自的 `Executor`、`Handler`、原子关闭标记和代次模板，统一通过 `ControllerTaskRunner` 管理 loading、IO 调度、取消和主 scope 回投；工具缓存读写也已移出主线程，群组加入与退出不再依赖 `AppController` 的通用线程池。12 个 JVM 用例覆盖 dispatcher、迟到结果、关闭、替换操作、验证码替换、流程取消、独立任务槽、串行缓存写入和群组成员关系操作。
 - 全量应用数据刷新已移除 `CompletableFuture` 与共享 Executor，六路请求在注入的 IO dispatcher 上并行执行并保留逐项 fallback；2 个 JVM 用例覆盖单项失败和并行启动，`RefreshCoordinator` 的 2 个用例继续覆盖合并刷新与旧结果丢弃。
 - 仪表盘缓存读写已从 `AppController` 主线程迁到按账户隔离的生命周期任务；3 个 JVM 用例覆盖 IO dispatcher、网络新快照优先级和账户切换时的迟到缓存。
 - 群组计数和当前频道在线设备同步已移除原子 busy/pending/generation 模板，改由 `ControllerTaskRunner` 与 `RefreshCoordinator` 组合管理取消和 trailing refresh；账户或频道上下文变化后不再接受旧响应。
@@ -116,7 +116,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 账号安全页的密码与邮箱表单改为互斥展开，避免共享 `ProfileController.busy` 同时影响两个可见表单；发送验证码、重新获取和确认修改均复用命令按钮，邮箱错误复用认证错误提示。密码表单拆出独立生产内容层并建立 1.5 倍字体基线。
 - 设置、账号安全、资料编辑、存储、应用设置和 APRS 页面统一使用 `DraarlScreenHeader`；组件负责全面屏顶部与横向安全区、返回命令、可收缩双行标题、可选操作位和底部分隔线，地图专用工具栏保持独立。360 dp 窄屏的 1.5 倍字体长标题与保存操作已有回归基线。
 - 启动态已移除装饰性循环缩放和光晕，只保留静态品牌与通信会话恢复状态；趋势空态、BLE 扫描空态、地图配置/定位错误、地点搜索、头像加载失败及更新错误/权限提示已统一到 `PageFeedback`、`InlineNotice`、`StatusIndicator` 与 `AppUpdateFeedback`。UI 源码不再保留裸空态/加载/错误文本或无业务意义的无限动画。
-- 应用启动与壳层、五个一级页面、页面顶部栏、趋势空态、更新反馈、认证与账号安全反馈、设置行、APRS、BLE 配网、存储页、工具子页、弹窗、Bottom Sheet 和首批页面反馈已有 38 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文、设备筛选空态以及 1.3/1.5/2.0 倍字体。
+- 应用启动与壳层、五个一级页面、页面顶部栏、趋势空态、更新反馈、认证与账号安全反馈、设置行、APRS、BLE 配网、存储页、工具子页、弹窗、Bottom Sheet 和首批页面反馈已有 39 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文、设备与群组筛选空态以及 1.3/1.5/2.0 倍字体。
 - Release 使用 AGP 9.3 `optimization.enable` 执行 R8 与资源收缩，高德 JAR 和 RNNoise JNI 边界由项目 keep rules 显式保护；arm64 APK 从 43,948,633 B 降至 32,028,495 B（-27.12%），映射、seeds、Manifest 和 native 库静态验收记录在 `docs/RELEASE_OPTIMIZATION.md`。
 - GitHub Actions、Spotless/ktlint、Detekt 存量基线和 Markdown 链接检查已接入，RNNoise 第三方目录被显式排除。
 - Android 仪器测试 APK 与优化后的未签名 Release APK 已在本次基线编译通过，但尚未连接设备执行；签名 Release 仍需在发布候选版本上重新验证。

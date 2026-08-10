@@ -109,6 +109,44 @@ class ControllerTaskRunnerTest {
         }
     }
 
+    @Test
+    fun replaceDropsBlockingPreviousResultAndPublishesReplacement() = runBlocking {
+        val firstStarted = CountDownLatch(1)
+        val firstRelease = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val callbacks = mutableListOf<String>()
+        val fixture = fixture(this) { }
+        try {
+            assertTrue(
+                fixture.runner.launch(
+                    operation = {
+                        firstStarted.countDown()
+                        awaitIgnoringInterruption(firstRelease)
+                        "old"
+                    },
+                    onSuccess = { callbacks += it },
+                    onFailure = { error("Unexpected first failure: $it") }
+                )
+            )
+            awaitCondition { firstStarted.count == 0L }
+
+            fixture.runner.replace(
+                operation = {
+                    secondStarted.countDown()
+                    "new"
+                },
+                onSuccess = { callbacks += it },
+                onFailure = { error("Unexpected replacement failure: $it") }
+            )
+            firstRelease.countDown()
+            awaitCondition { secondStarted.count == 0L }
+            awaitCondition { callbacks == listOf("new") }
+        } finally {
+            firstRelease.countDown()
+            fixture.close()
+        }
+    }
+
     private fun fixture(scope: kotlinx.coroutines.CoroutineScope, onRunningChanged: (Boolean) -> Unit): Fixture {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         return Fixture(ControllerTaskRunner(scope, dispatcher, onRunningChanged), dispatcher)
