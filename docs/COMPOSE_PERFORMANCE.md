@@ -123,6 +123,18 @@ Compose compiler 总量从 889 个 Composable、881 个可重启和 600 个可�
 本批同时为 BLE 设备选择空态增加了一个生产预览入口。强制全量编译后的最终报告为 902 个 Composable、894 个可重启、
 613 个可跳过，已知稳定参数为 13,332 个；`SessionGateState` 被识别为稳定类型。
 
+## 地图 PTT 控件状态边界
+
+改造前，`AprsMapPanel` 在包含高德 `AndroidView` 的地图根作用域直接读取完整 `RadioStatus`。端点、呼号、错误或接收者
+身份变化都会使父作用域失效，即使地图 PTT 浮钮只需要连接、发射和是否正在接收三个信号。
+
+改造后，`ControllerMapPttButton` 成为独立订阅作用域，并通过带 `structuralEqualityPolicy()` 的 `derivedStateOf` 发布
+不可变 `MapPttState`。端点、错误、路由状态和接收者呼号之间切换不会发布新值；连接、发射或接收有无变化时仍会更新
+浮钮。3 个 JVM 用例覆盖投影值与 Compose Snapshot 观察者失效边界。
+
+强制全量编译后的最终报告为 903 个 Composable、895 个可重启、614 个可跳过，已知稳定参数为 13,335 个；新增的
+`ControllerMapPttButton` 可重启、可跳过，`MapPttState` 被识别为稳定类型。
+
 ## 验证边界
 
 本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。本地 Android 17（API 37.1）模拟器已执行消息缓存和
