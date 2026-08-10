@@ -20,6 +20,7 @@ amapMap = "10.0.600"
 amapSearch = "9.7.0"
 baselineProfile = "1.5.0-beta01"
 uiautomator = "2.4.0"
+espresso = "3.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -49,6 +50,7 @@ amap-map = { group = "com.amap.api", name = "3dmap", version.ref = "amapMap" }
 amap-search = { group = "com.amap.api", name = "search", version.ref = "amapSearch" }
 androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "baselineProfile" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
