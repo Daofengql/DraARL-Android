@@ -212,6 +212,43 @@ class SessionControllerTest {
         }
     }
 
+    @Test
+    fun closeDropsLateLoginResultAndActivationEffect() = runBlocking {
+        val loginStarted = CountDownLatch(1)
+        val releaseLogin = CountDownLatch(1)
+        val loginFinished = CountDownLatch(1)
+        val remote = FakeRemote(
+            loginAction = {
+                loginStarted.countDown()
+                awaitIgnoringInterruption(releaseLogin)
+                loginFinished.countDown()
+                session()
+            }
+        )
+        val fixture = fixture(this, remote)
+        try {
+            fixture.controller.start()
+            fixture.controller.login("operator", "secret", "captcha-id", "1234")
+            yield()
+            assertTrue(loginStarted.await(1, TimeUnit.SECONDS))
+            val stateAtClose = fixture.controller.uiState
+
+            fixture.controller.close()
+            releaseLogin.countDown()
+            assertTrue(loginFinished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertEquals(stateAtClose, fixture.controller.uiState)
+            assertTrue(fixture.effects.activated.isEmpty())
+            assertTrue(fixture.effects.updated.isEmpty())
+            assertEquals(0, fixture.effects.cleared)
+            assertEquals(0, fixture.effects.captchaRequests)
+        } finally {
+            releaseLogin.countDown()
+            fixture.close()
+        }
+    }
+
     private fun fixture(
         scope: CoroutineScope,
         remote: FakeRemote = FakeRemote(),
@@ -329,6 +366,16 @@ private data class LoginRequest(
 )
 
 private data class Activation(val session: Session, val entryPoint: SessionEntryPoint)
+
+private fun awaitIgnoringInterruption(latch: CountDownLatch) {
+    while (latch.count > 0L) {
+        try {
+            latch.await(1, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            // Simulates a blocking login call that cannot be cancelled cooperatively.
+        }
+    }
+}
 
 private fun session(user: User = user()) = Session(
     baseUrl = "https://example.test",

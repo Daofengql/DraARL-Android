@@ -6,6 +6,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -105,6 +106,50 @@ class ToolsControllerTest {
     }
 
     @Test
+    fun closeDropsLateLogbookSaveWithoutClearingDraftOrInvokingCallback() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val callbackCalls = AtomicInteger(0)
+        val fixture = fixture(
+            scope = this,
+            api = FakeToolsApi(
+                saveLogbookAction = { entry ->
+                    started.countDown()
+                    awaitIgnoringInterruption(release)
+                    finished.countDown()
+                    entry
+                }
+            )
+        )
+        val draft = LogbookDraft(
+            myCallsign = "BH1ABC",
+            localTime = LogbookTime.nowLocal(),
+            txFrequency = "145.000",
+            callsign = "BH2XYZ"
+        )
+        try {
+            fixture.controller.updateDraft(draft)
+            fixture.controller.saveDraft { callbackCalls.incrementAndGet() }
+            awaitCondition { started.count == 0L }
+            assertTrue(fixture.controller.logbookBusy)
+
+            fixture.controller.close()
+            assertFalse(fixture.controller.logbookBusy)
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertEquals(draft, fixture.controller.draft)
+            assertEquals(0, callbackCalls.get())
+            assertFalse(fixture.controller.logbookBusy)
+        } finally {
+            release.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun draftCacheWritesStaySerializedAndKeepLatestValueLast() = runBlocking {
         val firstWriteStarted = CountDownLatch(1)
         val releaseFirstWrite = CountDownLatch(1)
@@ -156,13 +201,14 @@ private data class Fixture(val controller: ToolsController, val dispatcher: Exec
 private class FakeToolsApi(
     private val relayAction: (String) -> List<RelayStation> = { emptyList() },
     private val logbookAction: (Int) -> LogbookPage = { LogbookPage(emptyList(), 0, it, 20) },
-    private val presetAction: () -> List<RadioPreset> = { emptyList() }
+    private val presetAction: () -> List<RadioPreset> = { emptyList() },
+    private val saveLogbookAction: (LogbookEntry) -> LogbookEntry = { it }
 ) : ToolsApi {
     override fun searchPublicRelays(location: String): List<RelayStation> = relayAction(location)
 
     override fun getLogbooks(page: Int, pageSize: Int, callsign: String): LogbookPage = logbookAction(page)
 
-    override fun saveLogbook(entry: LogbookEntry): LogbookEntry = entry
+    override fun saveLogbook(entry: LogbookEntry): LogbookEntry = saveLogbookAction(entry)
 
     override fun deleteLogbook(id: Int) = Unit
 

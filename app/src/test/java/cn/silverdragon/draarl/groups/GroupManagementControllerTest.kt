@@ -73,6 +73,39 @@ class GroupManagementControllerTest {
         }
     }
 
+    @Test
+    fun closeDropsLateJoinResultWithoutNoticeOrRefresh() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val api = FakeGroupsApi(
+            joinAction = { _, _ ->
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                finished.countDown()
+            }
+        )
+        val fixture = fixture(this, api)
+        try {
+            fixture.controller.join(GROUP, "secret")
+            awaitCondition { started.count == 0L }
+            assertTrue(fixture.controller.busy)
+
+            fixture.controller.close()
+            assertFalse(fixture.controller.busy)
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertTrue(fixture.notices.isEmpty())
+            assertEquals(0, fixture.refreshCalls.get())
+            assertFalse(fixture.controller.busy)
+        } finally {
+            release.countDown()
+            fixture.close()
+        }
+    }
+
     private fun fixture(scope: CoroutineScope, api: FakeGroupsApi): Fixture {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         val notices = mutableListOf<String>()
