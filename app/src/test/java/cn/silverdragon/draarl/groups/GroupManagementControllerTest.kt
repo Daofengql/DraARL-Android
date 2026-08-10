@@ -74,6 +74,42 @@ class GroupManagementControllerTest {
     }
 
     @Test
+    fun resetDropsOldAccountFailureWhileNewAccountJoinCompletes() = runBlocking {
+        val oldJoinStarted = CountDownLatch(1)
+        val releaseOldJoin = CountDownLatch(1)
+        val api = FakeGroupsApi(
+            joinAction = { _, password ->
+                if (password == "old-secret") {
+                    oldJoinStarted.countDown()
+                    awaitIgnoringInterruption(releaseOldJoin)
+                    error("旧账号加入失败")
+                }
+            }
+        )
+        val fixture = fixture(this, api)
+        try {
+            fixture.controller.join(GROUP, "old-secret")
+            awaitCondition { oldJoinStarted.count == 0L }
+
+            fixture.controller.reset()
+            fixture.controller.join(NEW_ACCOUNT_GROUP, "new-secret")
+            assertTrue(fixture.controller.busy)
+            releaseOldJoin.countDown()
+            awaitCondition { fixture.refreshCalls.get() == 1 }
+
+            assertEquals(
+                listOf(GROUP.id to "old-secret", NEW_ACCOUNT_GROUP.id to "new-secret"),
+                api.joinCalls
+            )
+            assertEquals(listOf("已加入 ${NEW_ACCOUNT_GROUP.name}"), fixture.notices)
+            assertFalse(fixture.controller.busy)
+        } finally {
+            releaseOldJoin.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun closeDropsLateJoinResultWithoutNoticeOrRefresh() = runBlocking {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
@@ -135,6 +171,7 @@ class GroupManagementControllerTest {
 
     private companion object {
         val GROUP = Group(id = 1, name = "测试群组", type = 1, status = 1)
+        val NEW_ACCOUNT_GROUP = Group(id = 2, name = "新账号群组", type = 1, status = 1)
     }
 }
 
