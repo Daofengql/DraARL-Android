@@ -195,7 +195,9 @@ fun RadioScreen(
     val selectedGroupId by remember(controller) {
         derivedStateOf(structuralEqualityPolicy()) { controller.radioSession.uiState.selectedGroupId }
     }
-    val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
+    val groupNames by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { groupNamesById(controller.groups) }
+    }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0)
     )

@@ -19,7 +19,7 @@ class UiListDerivationsTest {
         val devices = listOf(
             device(1, "客厅电台", "BH1ABC", 7),
             device(2, "Portable", "BH3XYZ", 12),
-            device(3, "车载", "BG5TEST", 2),
+            device(3, "车载", "BG5TEST", 2)
         )
 
         assertEquals(listOf(1), filterDevices(devices, "客厅").map(Device::id))
@@ -33,7 +33,7 @@ class UiListDerivationsTest {
             group(1, "全国频道", type = 1),
             group(2, "应急协作", type = 2, joined = true),
             group(3, "未加入私有组", type = 2, joined = false),
-            group(20, "本地频道", type = 1),
+            group(20, "本地频道", type = 1)
         )
 
         val all = visibleGroupSections(groups, "")
@@ -52,12 +52,29 @@ class UiListDerivationsTest {
             group(2, "公开停用", type = 1, status = 0),
             group(3, "已加入私有", type = 2, joined = true),
             group(4, "自己管理私有", type = 2, owner = true),
-            group(5, "不可用私有", type = 2),
+            group(5, "不可用私有", type = 2)
         )
 
         assertEquals(mapOf(1 to "公开启用", 2 to "公开停用", 3 to "已加入私有", 4 to "自己管理私有", 5 to "不可用私有"), groupNamesById(groups))
         assertEquals(listOf(1, 3, 4, 5), activeGroups(groups).map(Group::id))
         assertEquals(listOf(1, 2, 3, 4), availableRadioGroups(groups).map(Group::id))
+    }
+
+    @Test
+    fun `group name index ignores periodic count updates`() {
+        val groups = listOf(
+            group(1, "全国频道", type = 1).copy(onlineCount = 8, totalCount = 42),
+            group(2, "应急协作", type = 2, joined = true).copy(onlineCount = 3, totalCount = 12)
+        )
+        val refreshed = groups.map { group ->
+            group.copy(onlineCount = group.onlineCount + 1, totalCount = group.totalCount + 2)
+        }
+
+        assertEquals(groupNamesById(groups), groupNamesById(refreshed))
+        assertEquals(
+            mapOf(1 to "全国频道（新）", 2 to "应急协作"),
+            groupNamesById(refreshed.map { group -> if (group.id == 1) group.copy(name = "全国频道（新）") else group })
+        )
     }
 
     private fun device(id: Int, name: String, callsign: String, ssid: Int) = Device(
@@ -68,7 +85,7 @@ class UiListDerivationsTest {
         model = 1,
         groupId = 1,
         online = true,
-        enabled = true,
+        enabled = true
     )
 
     private fun group(
@@ -77,13 +94,13 @@ class UiListDerivationsTest {
         type: Int,
         status: Int = 1,
         joined: Boolean = false,
-        owner: Boolean = false,
+        owner: Boolean = false
     ) = Group(
         id = id,
         name = name,
         type = type,
         status = status,
         joined = joined,
-        owner = owner,
+        owner = owner
     )
 }

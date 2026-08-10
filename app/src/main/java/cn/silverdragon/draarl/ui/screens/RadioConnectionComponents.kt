@@ -44,7 +44,9 @@ internal fun ConnectionPanel(controller: AppController, onToggleDevices: () -> U
     var accessMenu by remember { mutableStateOf(false) }
     var groupMenu by remember { mutableStateOf(false) }
     var routingMenu by remember { mutableStateOf(false) }
-    val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
+    val groupNames by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { groupNamesById(controller.groups) }
+    }
 
     if (accessMenu) {
         ControllerAccessPointDialog(controller = controller, onDismiss = { accessMenu = false })
@@ -149,10 +151,10 @@ private fun radioConnectionPanelState(
             denoiseEnabled = radioSettings.playbackDenoiseEnabled,
             muted = radioSettings.muted,
             sendChannel = groupNames[sessionState.selectedGroupId] ?: "群组 ${sessionState.selectedGroupId}",
-            sendChannelEnabled = controller.groups.isNotEmpty() && !sessionState.routingUpdating,
+            sendChannelEnabled = groupNames.isNotEmpty() && !sessionState.routingUpdating,
             receiveChannelCount = sessionState.receiveGroupIds.size,
             receiveChannelsEnabled =
-                controller.groups.isNotEmpty() && status.connected && !sessionState.routingUpdating,
+                groupNames.isNotEmpty() && status.connected && !sessionState.routingUpdating,
             speaker = status.speaker,
             error = status.error
         ),
