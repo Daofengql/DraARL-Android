@@ -135,6 +135,18 @@ Compose compiler 总量从 889 个 Composable、881 个可重启和 600 个可�
 强制全量编译后的最终报告为 903 个 Composable、895 个可重启、614 个可跳过，已知稳定参数为 13,335 个；新增的
 `ControllerMapPttButton` 可重启、可跳过，`MapPttState` 被识别为稳定类型。
 
+## 系统设置滑块状态边界
+
+改造前，`SystemSettingsScreen` 在根作用域读取完整 `SettingsUiState`。发射超时和播放降噪强度 Slider 的每次拖动都会
+替换状态对象，使外观、通联、权限和更新等整页分区失效。
+
+改造后，根作用域只订阅不可变 `SystemSettingsRootState` 中 7 个非滑杆展示字段；发射超时和降噪强度分别下沉到独立
+Composable，并直接派生各自的整数值。Slider 拖动只使对应控件失效，其他设置字段仍按原有语义更新。3 个 JVM 用例覆盖
+根状态投影，Compose Snapshot 观察者确认两个 Slider 字段同时变化时根失效次数为 0，主题变化时为 1。
+
+强制全量编译后的最终报告为 906 个 Composable、898 个可重启、617 个可跳过，已知稳定参数为 13,336 个；两个 Slider
+作用域及根状态均保持稳定、可跳过。
+
 ## 验证边界
 
 本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。本地 Android 17（API 37.1）模拟器已执行消息缓存和
