@@ -144,6 +144,26 @@ class SessionControllerTest {
     }
 
     @Test
+    fun activationFailureClearsSessionInsteadOfLeavingRestartLoop() = runBlocking {
+        val loggedIn = session()
+        val remote = FakeRemote(loginAction = { loggedIn })
+        val effects = FakeEffects(activationFailure = IllegalStateException("service unavailable"))
+        val fixture = fixture(this, remote, effects)
+        try {
+            fixture.controller.start()
+            fixture.controller.login("operator", "secret", "captcha-id", "1234")
+            awaitCondition { !fixture.controller.uiState.loginBusy }
+
+            assertFalse(fixture.controller.uiState.authenticated)
+            assertEquals("登录成功，但客户端初始化失败，请重试", fixture.controller.uiState.loginError)
+            assertNull(remote.currentSession)
+            assertEquals(1, fixture.effects.cleared)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun failedLoginClearsBusyStateAndReloadsCaptcha() = runBlocking {
         val remote = FakeRemote(loginAction = { throw ApiException(401, "用户名或密码错误") })
         val fixture = fixture(this, remote)
@@ -356,7 +376,7 @@ private class FakeRemote(
     }
 }
 
-private class FakeEffects : SessionEffects {
+private class FakeEffects(private val activationFailure: Exception? = null) : SessionEffects {
     val prepared = mutableListOf<Session>()
     val activated = mutableListOf<Activation>()
     val updated = mutableListOf<Session>()
@@ -368,6 +388,7 @@ private class FakeEffects : SessionEffects {
     }
 
     override fun onSessionActivated(session: Session, entryPoint: SessionEntryPoint) {
+        activationFailure?.let { throw it }
         activated += Activation(session, entryPoint)
     }
 

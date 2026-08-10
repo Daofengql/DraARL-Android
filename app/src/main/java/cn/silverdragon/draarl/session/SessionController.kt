@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
 import cn.silverdragon.draarl.network.ApiException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 
@@ -132,7 +133,14 @@ class SessionController internal constructor(
     private fun activate(session: Session, entryPoint: SessionEntryPoint) {
         activeSession = session
         uiState = SessionUiState(authenticated = true, user = session.user)
-        effects.onSessionActivated(session, entryPoint)
+        try {
+            effects.onSessionActivated(session, entryPoint)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            remote.detachSessionForLogout(session)
+            publishCleared("登录成功，但客户端初始化失败，请重试")
+        }
     }
 
     private fun discardUnexpectedSession(session: Session) {
