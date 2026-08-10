@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "麟链互联"
 include(":app")
+include(":baselineprofile")

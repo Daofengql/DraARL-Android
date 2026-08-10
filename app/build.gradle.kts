@@ -2,6 +2,7 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.baselineprofile)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.detekt)
     alias(libs.plugins.screenshot)
@@ -123,6 +124,7 @@ dependencies {
     implementation(libs.concentus)
     implementation(libs.amap.map)
     implementation(libs.amap.search)
+    baselineProfile(project(":baselineprofile"))
     testImplementation(libs.junit)
     testImplementation(libs.json)
     testImplementation(libs.okhttp.mockwebserver)
@@ -133,4 +135,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+baselineProfile {
+    dexLayoutOptimization = true
 }

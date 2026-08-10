@@ -14,6 +14,7 @@
 /.idea/runConfigurations.xml
 .DS_Store
 /build
+/baselineprofile/build/
 /captures
 .externalNativeBuild
 .cxx
