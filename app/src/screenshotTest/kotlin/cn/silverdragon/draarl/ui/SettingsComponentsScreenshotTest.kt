@@ -79,6 +79,31 @@ fun StorageContentDarkBaseline() {
 
 @PreviewTest
 @Preview(
+    name = "Storage Clearing Light Large Text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun StorageClearingLightLargeTextBaseline() {
+    DraarlTheme(darkTheme = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            StorageSettingsContent(
+                usage = StorageUsage(
+                    audioBytes = 18_432_000,
+                    avatarBytes = 3_980_000,
+                    messageBytes = 42_740_000
+                ),
+                busy = true,
+                onClear = {}
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
     name = "APRS Settings Light Medium Text",
     widthDp = 360,
     heightDp = 800,
