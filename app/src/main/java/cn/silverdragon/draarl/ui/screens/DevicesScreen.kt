@@ -74,6 +74,7 @@ import androidx.compose.ui.window.DialogProperties
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
+import cn.silverdragon.draarl.data.DeviceBindResult
 import cn.silverdragon.draarl.data.Group
 import cn.silverdragon.draarl.data.ReplaceableDevice
 import cn.silverdragon.draarl.data.deviceModelName
@@ -956,7 +957,11 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             when {
-                result != null -> BindingResultContent(result, context)
+                result != null -> DeviceBindingResultContent(
+                    result = result,
+                    onCopyUsername = { copyText(context, "UDP 账号", result.username) },
+                    onCopyPassword = { copyText(context, "设备密码", result.devicePassword) }
+                )
 
                 preview != null -> BindingPreviewContent(
                     preview = preview,
@@ -1031,7 +1036,11 @@ private fun BindingPreviewContent(
 }
 
 @Composable
-private fun BindingResultContent(result: cn.silverdragon.draarl.data.DeviceBindResult, context: Context) {
+internal fun DeviceBindingResultContent(
+    result: DeviceBindResult,
+    onCopyUsername: () -> Unit,
+    onCopyPassword: () -> Unit
+) {
     Text(
         result.message.ifBlank { "设备配置已提交" },
         color = MaterialTheme.appColors.statusConnected,
@@ -1045,7 +1054,7 @@ private fun BindingResultContent(result: cn.silverdragon.draarl.data.DeviceBindR
         DraarlIconButton(
             icon = Icons.Default.ContentCopy,
             label = "复制账号",
-            onClick = { copyText(context, "UDP 账号", result.username) }
+            onClick = onCopyUsername
         )
     }
     Text("设备密码", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1054,7 +1063,7 @@ private fun BindingResultContent(result: cn.silverdragon.draarl.data.DeviceBindR
         DraarlIconButton(
             icon = Icons.Default.ContentCopy,
             label = "复制密码",
-            onClick = { copyText(context, "设备密码", result.devicePassword) }
+            onClick = onCopyPassword
         )
     }
     if (result.dmrId > 0) Text("DMR ID ${result.dmrId}")
