@@ -440,6 +440,49 @@ class AppController internal constructor(application: Application, ioDispatcher:
     var cwPreviewing by mutableStateOf(false)
         private set
 
+    private val lifecycleCoordinator = AppControllerLifecycleCoordinator(
+        disposed = disposed,
+        removeScheduledCallbacks = { mainHandler.removeCallbacksAndMessages(null) },
+        cancelOwnedRequests = {
+            cancelRefreshAll()
+            invalidateBackgroundRequests()
+            groupCountsTasks.close()
+            onlineDevicesTasks.close()
+        },
+        closeActions = listOf(
+            AppControllerCloseAction(
+                isInitialized = appUpdateControllerDelegate::isInitialized,
+                close = { appUpdateController.close() }
+            ),
+            AppControllerCloseAction(
+                isInitialized = toolsDelegate::isInitialized,
+                close = { toolsDelegate.value.close() }
+            ),
+            AppControllerCloseAction(
+                isInitialized = deviceManagementDelegate::isInitialized,
+                close = { deviceManagementDelegate.value.close() }
+            ),
+            AppControllerCloseAction(
+                isInitialized = groupManagementDelegate::isInitialized,
+                close = { groupManagementDelegate.value.close() }
+            ),
+            AppControllerCloseAction(
+                isInitialized = profileDelegate::isInitialized,
+                close = { profileDelegate.value.close() }
+            ),
+            AppControllerCloseAction(
+                isInitialized = publicAuthDelegate::isInitialized,
+                close = { publicAuthDelegate.value.close() }
+            ),
+            AppControllerCloseAction(close = dashboardCache::close),
+            AppControllerCloseAction(close = session::close),
+            AppControllerCloseAction(close = settings::close),
+            AppControllerCloseAction(close = aprs::close),
+            AppControllerCloseAction(close = messageController::close),
+            AppControllerCloseAction(close = radioSession::close)
+        )
+    )
+
     init {
         session.start()
         mainHandler.postDelayed(periodicRadioSync, RADIO_SYNC_INTERVAL_MS)
@@ -832,24 +875,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     fun leaveGroup(group: Group) = groupManagement.leave(group)
 
     override fun onCleared() {
-        if (!disposed.compareAndSet(false, true)) return
-        mainHandler.removeCallbacksAndMessages(null)
-        cancelRefreshAll()
-        invalidateBackgroundRequests()
-        groupCountsTasks.close()
-        onlineDevicesTasks.close()
-        if (appUpdateControllerDelegate.isInitialized()) appUpdateController.close()
-        if (toolsDelegate.isInitialized()) toolsDelegate.value.close()
-        if (deviceManagementDelegate.isInitialized()) deviceManagementDelegate.value.close()
-        if (groupManagementDelegate.isInitialized()) groupManagementDelegate.value.close()
-        if (profileDelegate.isInitialized()) profileDelegate.value.close()
-        if (publicAuthDelegate.isInitialized()) publicAuthDelegate.value.close()
-        dashboardCache.close()
-        session.close()
-        settings.close()
-        aprs.close()
-        messageController.close()
-        radioSession.close()
+        lifecycleCoordinator.close()
     }
 
     private fun prepareSessionResources(session: Session) {
