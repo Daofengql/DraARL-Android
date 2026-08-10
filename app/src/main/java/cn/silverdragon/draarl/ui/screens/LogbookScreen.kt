@@ -265,7 +265,7 @@ internal fun LogbookScreen(controller: AppController, tools: ToolsController, on
 }
 
 @Composable
-private fun LogbookListFeedback(busy: Boolean, filter: String) {
+internal fun LogbookListFeedback(busy: Boolean, filter: String) {
     val filtered = filter.isNotBlank()
     ToolListFeedback(
         loading = busy,
