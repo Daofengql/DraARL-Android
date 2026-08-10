@@ -129,6 +129,6 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 设置、账号安全、资料编辑、存储、应用设置和 APRS 页面统一使用 `DraarlScreenHeader`；组件负责全面屏顶部与横向安全区、返回命令、可收缩双行标题、可选操作位和底部分隔线，地图专用工具栏保持独立。360 dp 窄屏的 1.5 倍字体长标题与保存操作已有回归基线。
 - 启动态已移除装饰性循环缩放和光晕，只保留静态品牌与通信会话恢复状态；趋势空态、BLE 扫描空态、地图配置/定位错误、地点搜索、头像加载失败及更新错误/权限提示已统一到 `PageFeedback`、`InlineNotice`、`StatusIndicator` 与 `AppUpdateFeedback`。UI 源码不再保留裸空态/加载/错误文本或无业务意义的无限动画。
 - 应用启动与壳层、五个一级页面、页面顶部栏、趋势空态、更新反馈、认证与账号安全反馈、设置行、APRS、BLE 配网、存储页、工具子页、弹窗、Bottom Sheet 和首批页面反馈已有 50 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文、强制更新下载进度、设备与群组筛选空态、设备绑定成功凭据、BLE 设备选择空态、通联日志筛选空态、电台预设空态、PTT 历史分页错误、密码重置成功、邮箱修改失败、中继查询无结果与结果列表、存储清理禁用态以及 1.3/1.5/2.0 倍字体。
-- Release 使用 AGP 9.3 `optimization.enable` 执行 R8 与资源收缩，高德 JAR 和 RNNoise JNI 边界由项目 keep rules 显式保护；arm64 APK 从 43,948,633 B 降至 32,028,495 B（-27.12%），当前构建还打包了本地生成的 Baseline Profile。`:app:verifyReleaseArtifact` 在本地构建中自动检查体积上限、Manifest/DEX、ABI、关键 native 库、五份 R8 报告、mapping、JNI seeds 和 Profile，详细验收记录见 `docs/RELEASE_OPTIMIZATION.md`。
+- Release 使用 AGP 9.3 `optimization.enable` 执行 R8 与资源收缩，高德 JAR 和 RNNoise JNI 边界由项目 keep rules 显式保护；同源码优化对照中，arm64 APK 从 43,948,633 B 降至 32,028,495 B（-27.12%），当前代码基线为 32,078,999 B（30.59 MiB）并打包了本地生成的 Baseline Profile。`:app:verifyReleaseArtifact` 在本地构建中自动检查体积上限、Manifest/DEX、ABI、关键 native 库、五份 R8 报告、mapping、JNI seeds 和 Profile，详细验收记录见 `docs/RELEASE_OPTIMIZATION.md`。
 - GitHub Actions、Spotless/ktlint、Detekt 存量基线和 Markdown 链接检查已接入，RNNoise 第三方目录被显式排除。
 - Android 仪器测试 APK 与优化后的未签名 Release APK 已在本次基线编译通过，消息缓存和大字体弹窗仪器套件已在本地模拟器执行；签名 Release 与硬件、系统服务相关流程仍需在发布候选真机上重新验证。

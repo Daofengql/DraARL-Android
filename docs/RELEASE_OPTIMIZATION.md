@@ -26,8 +26,8 @@ Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同�
 
 优化后 APK 为 30.54 MiB，SHA-256 为 `0284A507FEC9FC26B5994413341B17FCA6BA23352D3107FDBEBCB4B33131D3D2`。Native 库占主要剩余体积，其中高德地图约 19.07 MiB，RNNoise 约 5.72 MiB。
 
-当前代码基线 `e5bd081` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,078,999 B（30.59 MiB），SHA-256 为
-`52893C3AD19B84E86D734D6072F393ED74BC02D8FEA26706C75E94739B9FC3C3`。与历史优化基线的体积差异来自后续业务代码和编译后的 Baseline Profile，未改变 R8/资源收缩配置。
+当前代码基线 `231b218` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,078,999 B（30.59 MiB），SHA-256 为
+`05AD8C68C56CE6D8505B7BC9F6E7300E865C4542E50CFA1C9C1F80C8B1093B85`。与历史优化基线的体积差异来自后续业务代码和编译后的 Baseline Profile，未改变 R8/资源收缩配置。
 
 ## 静态验收
 
