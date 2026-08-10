@@ -19,6 +19,54 @@ import org.junit.Test
 
 class ProfileControllerTest {
     @Test
+    fun resetDropsLateProfileUpdateResult() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val api = FakeProfileApi(
+            updateProfileAction = {
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                finished.countDown()
+                USER.copy(nickname = "迟到结果")
+            }
+        )
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val users = mutableListOf<User>()
+        val notices = mutableListOf<String>()
+        var successCalls = 0
+        val controller = controller(
+            api = api,
+            ioDispatcher = dispatcher,
+            updateUser = users::add,
+            showNotice = notices::add
+        )
+        try {
+            controller.updateProfile("新昵称", "13800000000", "杭州", "简介") {
+                successCalls++
+            }
+            yield()
+            assertTrue(started.await(1, TimeUnit.SECONDS))
+            assertTrue(controller.busy)
+
+            controller.reset()
+            assertFalse(controller.busy)
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertTrue(users.isEmpty())
+            assertTrue(notices.isEmpty())
+            assertEquals(0, successCalls)
+            assertFalse(controller.busy)
+        } finally {
+            release.countDown()
+            controller.close()
+            dispatcher.close()
+        }
+    }
+
+    @Test
     fun closeDropsLateProfileUpdateResult() = runBlocking {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)

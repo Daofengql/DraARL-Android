@@ -23,6 +23,89 @@ import org.junit.Test
 
 class PublicAuthControllerTest {
     @Test
+    fun closeDropsLateRegistrationResultAndCallback() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val api = FakeAuthApi(
+            registrationAction = {
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                finished.countDown()
+                RegistrationResult(1, it.username, it.nickname, 0, "device-password")
+            }
+        )
+        val fixture = fixture(this, api)
+        var callbackCalled = false
+        try {
+            fixture.controller.register(
+                username = "operator",
+                callsign = "BH1ABC",
+                nickname = "Operator",
+                email = "operator@example.test",
+                phone = "",
+                password = "secret1",
+                confirmPassword = "secret1",
+                sessionId = "email-session",
+                emailCode = "123456",
+                onSuccess = { callbackCalled = true }
+            )
+            awaitCondition { started.count == 0L }
+            assertTrue(fixture.controller.busy)
+
+            fixture.controller.close()
+            assertFalse(fixture.controller.busy)
+            val closedError = fixture.controller.error
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertFalse(callbackCalled)
+            assertEquals(closedError, fixture.controller.error)
+            assertTrue(fixture.loginErrors.isEmpty())
+            assertFalse(fixture.controller.busy)
+        } finally {
+            release.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun closeDropsLateCaptchaFailureAndNotice() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val api = FakeAuthApi(
+            captchaAction = {
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                finished.countDown()
+                throw IllegalStateException("late captcha failure")
+            }
+        )
+        val fixture = fixture(this, api)
+        try {
+            fixture.controller.loadCaptcha()
+            awaitCondition { started.count == 0L }
+            assertTrue(fixture.controller.captchaLoading)
+
+            fixture.controller.close()
+            assertFalse(fixture.controller.captchaLoading)
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertEquals("", fixture.controller.captchaId)
+            assertEquals("", fixture.controller.captchaImageBase64)
+            assertTrue(fixture.loginErrors.isEmpty())
+            assertFalse(fixture.controller.captchaLoading)
+        } finally {
+            release.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun reloadingCaptchaDropsTheFirstLateResponse() = runBlocking {
         val firstStarted = CountDownLatch(1)
         val releaseFirst = CountDownLatch(1)
