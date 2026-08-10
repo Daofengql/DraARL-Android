@@ -204,6 +204,44 @@ class RadioSessionControllerTest {
         }
     }
 
+    @Test
+    fun closeDropsLateConnectionPreparationAndStopsPendingService() = runBlocking {
+        val tokenStarted = CountDownLatch(1)
+        val releaseToken = CountDownLatch(1)
+        val tokenFinished = CountDownLatch(1)
+        val remote = FakeRemote(
+            freshToken = {
+                tokenStarted.countDown()
+                awaitIgnoringInterruption(releaseToken)
+                tokenFinished.countDown()
+                "late-token"
+            }
+        )
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { dispatcher ->
+            val fixture = fixture(remote = remote, ioDispatcher = dispatcher)
+            try {
+                fixture.controller.onAccountChanged(account(userId = 1, key = "account-1"))
+                fixture.controller.selectAccessPoint(accessPoint("pending"))
+                fixture.controller.connect()
+                yield()
+                assertTrue(tokenStarted.await(1, TimeUnit.SECONDS))
+
+                fixture.controller.close()
+                releaseToken.countDown()
+                assertTrue(tokenFinished.await(1, TimeUnit.SECONDS))
+                yield()
+
+                assertEquals(1, fixture.connection.startedForeground)
+                assertEquals(1, fixture.connection.stoppedStartedService)
+                assertTrue(fixture.connection.connectionConfigs.isEmpty())
+                assertTrue(fixture.effects.notices.isEmpty())
+            } finally {
+                releaseToken.countDown()
+                fixture.controller.close()
+            }
+        }
+    }
+
     private fun CoroutineScope.fixture(
         remote: FakeRemote = FakeRemote(),
         storage: FakeStorage = FakeStorage(),
@@ -293,6 +331,7 @@ class RadioSessionControllerTest {
         val appliedAudioSettings = mutableListOf<RadioAudioSettings>()
         val overlayConfigs = mutableListOf<RadioPttOverlayConfig>()
         var startedForeground = 0
+        var stoppedStartedService = 0
 
         override fun setCallbacks(listener: RadioServiceListener, observer: RadioServiceConnectionObserver) {
             this.listener = listener
@@ -305,7 +344,9 @@ class RadioSessionControllerTest {
             startedForeground++
         }
 
-        override fun stopStartedService() = Unit
+        override fun stopStartedService() {
+            stoppedStartedService++
+        }
 
         override fun connect(config: RadioConnectionConfig): Boolean {
             if (connectAvailable) connectionConfigs += config
@@ -373,6 +414,17 @@ class RadioSessionControllerTest {
     }
 
     private data class ContextChange(val groupId: Int, val selectionChanged: Boolean)
+
+    private fun awaitIgnoringInterruption(latch: CountDownLatch) {
+        while (latch.count > 0L) {
+            try {
+                latch.await(1, TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {
+                // Simulates a blocking token request that cannot be cancelled cooperatively.
+            }
+        }
+    }
+
     private data class RoutingRequest(val sessionId: String, val txGroupId: Int, val rxGroupIds: Set<Int>)
     private data class StoredRouting(val userId: Int, val txGroupId: Int, val rxGroupIds: Set<Int>)
 

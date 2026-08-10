@@ -17,6 +17,39 @@ import org.junit.Test
 
 class DashboardCacheControllerTest {
     @Test
+    fun closeDropsLateCacheLoadResult() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val cache = FakeDashboardCache(
+            loadAction = {
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                finished.countDown()
+                DashboardData(devices = 99)
+            }
+        )
+        val fixture = fixture(this, cache)
+        try {
+            fixture.controller.onUserChanged(1)
+            awaitCondition { started.count == 0L }
+            val appliedAtClose = fixture.applied.toList()
+
+            fixture.controller.close()
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertEquals(listOf(DashboardData()), appliedAtClose)
+            assertEquals(appliedAtClose, fixture.applied)
+            assertTrue(cache.saved.isEmpty())
+        } finally {
+            release.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun cacheLoadUsesIoDispatcherAndAppliesToOwnerScope() = runBlocking {
         val ownerThread = Thread.currentThread()
         var loadThread: Thread? = null

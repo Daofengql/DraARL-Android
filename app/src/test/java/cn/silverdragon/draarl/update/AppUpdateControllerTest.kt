@@ -20,6 +20,48 @@ import org.junit.Test
 
 class AppUpdateControllerTest {
     @Test
+    fun closeDropsLateDownloadProgressAndInstallSideEffects() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val gateway = FakeAppUpdateGateway(
+            checkAction = ::update,
+            downloadAction = { progress ->
+                progress(0.25f)
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                progress(0.9f)
+                finished.countDown()
+                File("late-update.apk")
+            }
+        )
+        val fixture = fixture(this, gateway)
+        try {
+            fixture.controller.check()
+            awaitCondition { fixture.controller.uiState.status == AppUpdateStatus.AVAILABLE }
+            val noticesBeforeDownload = fixture.notices.toList()
+            fixture.controller.downloadAndInstall()
+            awaitCondition { started.count == 0L && fixture.controller.progress == 0.25f }
+
+            fixture.controller.close()
+            assertEquals(AppUpdateUiState(), fixture.controller.uiState)
+            assertEquals(0f, fixture.controller.progress)
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertEquals(AppUpdateUiState(), fixture.controller.uiState)
+            assertEquals(0f, fixture.controller.progress)
+            assertEquals(noticesBeforeDownload, fixture.notices)
+            assertEquals(0, gateway.installCalls.get())
+            assertEquals(0, gateway.permissionSettingsCalls.get())
+        } finally {
+            release.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun resetDropsLateCheckResultAndNotice() = runBlocking {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
