@@ -72,23 +72,10 @@ class RadioConnectionService :
     override fun onStatus(status: RadioStatus) {
         messageDispatcher.listener?.onRadioStatus(status)
         pttOverlay.updateStatus(status)
-        when (status.phase) {
-            RadioConnectionPhase.CONNECTING,
-            RadioConnectionPhase.AUTHENTICATING,
-            RadioConnectionPhase.CONNECTED,
-            RadioConnectionPhase.RECONNECTING -> ensureForeground(status)
-
-            RadioConnectionPhase.DISCONNECTED -> {
-                if (overlayFeatureEnabled) {
-                    ensureForeground(status)
-                } else {
-                    if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
-                    foreground = false
-                    stopSelf()
-                }
-            }
-
-            else -> updateNotification(status)
+        when (RadioServiceStatePolicy.foregroundAction(status.phase, overlayFeatureEnabled)) {
+            RadioServiceForegroundAction.ENSURE -> ensureForeground(status)
+            RadioServiceForegroundAction.UPDATE -> updateNotification(status)
+            RadioServiceForegroundAction.STOP -> stopForegroundService()
         }
     }
 
@@ -142,6 +129,12 @@ class RadioConnectionService :
         if (foreground) notificationManager.notify(NOTIFICATION_ID, buildNotification(status))
     }
 
+    private fun stopForegroundService() {
+        if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
+        foreground = false
+        stopSelf()
+    }
+
     private fun buildNotification(status: RadioStatus): Notification {
         val contentIntent = PendingIntent.getActivity(
             this,
@@ -155,14 +148,7 @@ class RadioConnectionService :
             Intent(this, RadioConnectionService::class.java).setAction(ACTION_DISCONNECT),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val title = when {
-            status.transmitting -> "正在发射"
-            status.speaker.isNotBlank() -> "正在接收 ${status.speaker}"
-            status.connected -> "DraARL 电台在线"
-            status.phase == RadioConnectionPhase.RECONNECTING -> "DraARL 正在重连"
-            overlayFeatureEnabled -> "悬浮 PTT 已开启"
-            else -> "DraARL 正在连接"
-        }
+        val title = RadioServiceStatePolicy.notificationTitle(status, overlayFeatureEnabled)
         val detail = listOf(status.callsign, status.endpoint).filter(String::isNotBlank).joinToString(" · ")
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -245,9 +231,7 @@ class RadioConnectionService :
         if (enabled || status.connected) {
             ensureForeground(status)
         } else {
-            if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
-            foreground = false
-            stopSelf()
+            stopForegroundService()
         }
         return visibleResult
     }
