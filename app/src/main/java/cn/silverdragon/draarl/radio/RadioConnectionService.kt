@@ -5,11 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Intent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
@@ -18,7 +18,6 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioStatus
-import java.util.ArrayDeque
 
 interface RadioServiceListener {
     fun onRadioStatus(status: RadioStatus)
@@ -29,15 +28,20 @@ interface RadioServiceListener {
     fun onCwPreviewState(active: Boolean)
 }
 
-class RadioConnectionService : Service(), UdpRadioListener {
+class RadioConnectionService :
+    Service(),
+    UdpRadioListener {
     private val binder = LocalBinder()
     private lateinit var radioClient: UdpRadioClient
     private lateinit var pttOverlay: PttOverlayWindow
+
     @Volatile private var listener: RadioServiceListener? = null
+
     @Volatile private var foreground = false
+
     @Volatile private var overlayFeatureEnabled = false
     private val messageBufferLock = Any()
-    private val pendingMessages = ArrayDeque<RadioMessage>()
+    private val pendingMessages = RadioMessageBuffer(MAX_PENDING_MESSAGES)
 
     override fun onCreate() {
         super.onCreate()
@@ -46,7 +50,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
         pttOverlay = PttOverlayWindow(
             context = applicationContext,
             onStartPtt = ::startPtt,
-            onStopPtt = radioClient::stopPtt,
+            onStopPtt = radioClient::stopPtt
         )
     }
 
@@ -77,6 +81,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
             RadioConnectionPhase.AUTHENTICATING,
             RadioConnectionPhase.CONNECTED,
             RadioConnectionPhase.RECONNECTING -> ensureForeground(status)
+
             RadioConnectionPhase.DISCONNECTED -> {
                 if (overlayFeatureEnabled) {
                     ensureForeground(status)
@@ -86,6 +91,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
                     stopSelf()
                 }
             }
+
             else -> updateNotification(status)
         }
     }
@@ -93,8 +99,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
     override fun onMessage(message: RadioMessage) {
         val target = synchronized(messageBufferLock) {
             listener ?: run {
-                if (pendingMessages.size >= MAX_PENDING_MESSAGES) pendingMessages.removeFirst()
-                pendingMessages.addLast(message)
+                pendingMessages.offer(message)
                 null
             }
         }
@@ -122,8 +127,8 @@ class RadioConnectionService : Service(), UdpRadioListener {
             RadioStatus(
                 phase = RadioConnectionPhase.CONNECTING,
                 endpoint = config.accessPoint.address,
-                groupId = config.groupId,
-            ),
+                groupId = config.groupId
+            )
         )
         radioClient.connect(config)
     }
@@ -151,13 +156,13 @@ class RadioConnectionService : Service(), UdpRadioListener {
             this,
             0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val disconnectIntent = PendingIntent.getService(
             this,
             1,
             Intent(this, RadioConnectionService::class.java).setAction(ACTION_DISCONNECT),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val title = when {
             status.transmitting -> "正在发射"
@@ -190,7 +195,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "在线通信",
-            NotificationManager.IMPORTANCE_LOW,
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = "保持 DraARL UDP 通信连接"
             setShowBadge(false)
@@ -239,7 +244,9 @@ class RadioConnectionService : Service(), UdpRadioListener {
     private fun configurePttOverlay(enabled: Boolean, visible: Boolean, groupName: String): Boolean {
         overlayFeatureEnabled = enabled
         pttOverlay.updateGroupName(groupName)
-        val visibleResult = if (enabled && visible) pttOverlay.show(groupName) else {
+        val visibleResult = if (enabled && visible) {
+            pttOverlay.show(groupName)
+        } else {
             pttOverlay.hide()
             true
         }
@@ -264,9 +271,7 @@ class RadioConnectionService : Service(), UdpRadioListener {
                 if (value == null) {
                     emptyList()
                 } else {
-                    buildList(pendingMessages.size) {
-                        while (pendingMessages.isNotEmpty()) add(pendingMessages.removeFirst())
-                    }
+                    pendingMessages.drain()
                 }
             }
             value?.onRadioStatus(radioClient.snapshot())

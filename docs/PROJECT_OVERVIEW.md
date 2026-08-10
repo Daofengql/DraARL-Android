@@ -9,8 +9,8 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 191 | 28,463 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 72 | 6,408 | 289 个测试用例 |
+| 生产 Kotlin | 192 | 28,483 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 73 | 6,445 | 292 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 6 | 1,175 | 39 张壳层、页面、状态和组件参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -99,6 +99,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - HTTP 连接、超时、HTTPS、Header、空响应、异常 JSON、multipart 和主动取消已集中到可注入的 `HttpTransport`，并由 9 个 MockWebServer 用例覆盖。
 - Token 刷新、会话持久化、认证请求重试和旧认证/资料结果丢弃已集中到 `ApiSessionManager`，并由 8 个 JVM 用例覆盖并发 401 合并、刷新失败、过期边界、Token 刷新和 Session 替换竞态。
 - UDP 连接、认证、在线、重连、错误、主动断开与关闭已建模为显式状态和事件，连接代次、`RadioStatus` 和认证身份收敛到单一串行状态上下文；48 个新增 JVM 用例覆盖状态顺序、陈旧事件、重复重连、认证响应、总超时、Transport 收发/关闭、心跳与静默边界、调度任务所有权、PTT 音频边界、接收流乱序/淘汰/结算及并发状态发布，资源所有权与关闭顺序记录在 `docs/UDP_CONNECTION_LIFECYCLE.md`。
+- `RadioConnectionService` 的待绑定消息队列已提取为带容量上限的 `RadioMessageBuffer`；FIFO、满载淘汰、清空和非法容量由 3 个 JVM 用例保护，Service 仍在原有锁内原子执行监听器绑定与队列排空。
 - `ApiClient` 已成为兼容门面；Auth、Profile、Devices、Groups、Radio、Tools、Updates 及 Token 刷新响应先进入类型化 DTO，再由独立 Mapper 转成业务模型，映射异常携带请求方法、路径与失败阶段。17 个领域 API 用例、3 个群组所有者字段用例和 3 个工具 DTO 用例覆盖代表性路径、兼容字段、异常字段、响应阶段和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
 - 设置、账号安全和存储页已统一为细边框设置组、方形图标位和紧凑数据行，不再用默认 `Card` 叠加页面分区；危险清理使用统一弹窗与等宽动作区。
 - APRS 设置页已拆出不依赖定位权限和运行时 Controller 的内容层；链路、服务器、自动上报和测试区统一使用细边框设置组、命令按钮与状态提示，不再用默认 `Card` 叠加页面分区。
