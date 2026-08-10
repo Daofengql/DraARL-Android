@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import cn.silverdragon.draarl.data.ClientResourceArtifact
 import cn.silverdragon.draarl.ui.components.AppUpdateFeedback
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.CommunicationTrendChart
@@ -28,6 +29,7 @@ import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.DraarlSheetContent
 import cn.silverdragon.draarl.ui.components.DraarlSheetHandle
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
+import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import com.android.tools.screenshot.PreviewTest
 
@@ -75,6 +77,38 @@ fun UpdateFeedbackDarkBaseline() {
                     message = "需要允许本应用安装更新包"
                 )
             }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Forced Update Downloading Dark Large Text",
+    widthDp = 360,
+    heightDp = 640,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun ForcedUpdateDownloadingDarkLargeTextBaseline() {
+    DraarlTheme(darkTheme = true) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            AppUpdateDialog(
+                update = AppUpdateInfo(
+                    version = "2.0.0",
+                    title = "DraARL 2.0 应急通信更新",
+                    changelog = "优化弱网环境下的语音连接稳定性，并修复后台恢复后的频道状态同步。",
+                    forceUpdate = true,
+                    artifact = ClientResourceArtifact(id = 7, releaseId = 2, format = "apk"),
+                    currentVersionName = "2.0.0-alpha1",
+                    currentVersion = "2.0.0-alpha1"
+                ),
+                status = AppUpdateStatus.DOWNLOADING,
+                message = "正在下载并校验更新包（64%）",
+                progress = { 0.64f },
+                onUpdate = {},
+                onDismiss = {}
+            )
         }
     }
 }
