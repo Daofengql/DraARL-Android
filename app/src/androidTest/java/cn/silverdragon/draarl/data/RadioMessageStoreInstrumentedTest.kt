@@ -3,16 +3,122 @@ package cn.silverdragon.draarl.data
 import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RadioMessageStoreInstrumentedTest {
+    @Test
+    fun authoritativeReconcileReplacesOnlyTheRequestedWindow() {
+        withIsolatedStore("authoritative") { store ->
+            val accountKey = "authoritative-account"
+            val groupId = 94
+            val outside = confirmedMessage("outside", 1, timestamp = 900_000L)
+            val staleConfirmed = confirmedMessage("stale-confirmed", 2, timestamp = 1_100_000L)
+            val staleLocal = message("stale-local", timestamp = 1_200_000L)
+            val authoritative = confirmedMessage("authoritative", 3, timestamp = 1_300_000L)
+            listOf(outside, staleConfirmed, staleLocal).forEach { store.save(accountKey, groupId, it) }
+
+            store.reconcile(
+                accountKey = accountKey,
+                groupId = groupId,
+                remoteMessages = listOf(authoritative),
+                authoritativeWindow = 1_000_000L..2_000_000L
+            )
+
+            assertEquals(listOf("outside", "authoritative"), store.load(accountKey, groupId).map(RadioMessage::id))
+            assertEquals(setOf(1, 3), store.confirmedServerRecordIds(accountKey, groupId))
+        }
+    }
+
+    @Test
+    fun reconcileRollsBackEarlierUpsertsWhenTheBatchFails() {
+        withIsolatedStore("reconcile-rollback") { store ->
+            val accountKey = "rollback-account"
+            val groupId = 95
+            val original = confirmedMessage("original", 1, timestamp = 2_000_000L)
+            val acceptedBeforeFailure = confirmedMessage("accepted", 2, timestamp = 2_100_000L)
+            store.save(accountKey, groupId, original)
+            val failingBatch = object : AbstractList<RadioMessage>() {
+                override val size: Int = 2
+
+                override fun get(index: Int): RadioMessage = when (index) {
+                    0 -> acceptedBeforeFailure
+                    else -> throw IllegalStateException("forced reconcile failure")
+                }
+            }
+
+            assertThrows(IllegalStateException::class.java) {
+                store.reconcile(accountKey, groupId, failingBatch)
+            }
+
+            assertEquals(listOf(original), store.load(accountKey, groupId))
+            assertEquals(setOf(1), store.confirmedServerRecordIds(accountKey, groupId))
+        }
+    }
+
+    @Test
+    fun reconcilePrunesOnlyTheOldestMessageBeyondOneThousand() {
+        withIsolatedStore("prune") { store ->
+            val accountKey = "prune-account"
+            val groupId = 96
+            val messages = (0..CACHE_BOUNDARY).map { index ->
+                confirmedMessage("message-$index", index + 1, timestamp = 3_000_000L + index)
+            }
+
+            store.reconcile(accountKey, groupId, messages)
+
+            val loaded = store.load(accountKey, groupId, limit = CACHE_BOUNDARY + 1)
+            assertEquals(CACHE_BOUNDARY, loaded.size)
+            assertEquals("message-1", loaded.first().id)
+            assertEquals("message-1000", loaded.last().id)
+            assertFalse(loaded.any { it.id == "message-0" })
+        }
+    }
+
+    @Test
+    fun concurrentClearRejectsAWriterHoldingTheOldGeneration() {
+        withIsolatedStore("concurrent-clear") { store ->
+            val accountKey = "concurrent-clear-account"
+            val groupId = 97
+            val oldGeneration = store.generation()
+            val writerReady = CountDownLatch(1)
+            val releaseWriter = CountDownLatch(1)
+            val executor = Executors.newSingleThreadExecutor()
+            try {
+                val staleWrite = executor.submit {
+                    writerReady.countDown()
+                    assertTrue(releaseWriter.await(5, TimeUnit.SECONDS))
+                    store.save(
+                        accountKey,
+                        groupId,
+                        message("stale", timestamp = 4_000_000L),
+                        expectedGeneration = oldGeneration
+                    )
+                }
+                assertTrue(writerReady.await(5, TimeUnit.SECONDS))
+
+                store.clearAll()
+                releaseWriter.countDown()
+                staleWrite.get(5, TimeUnit.SECONDS)
+
+                assertTrue(store.load(accountKey, groupId).isEmpty())
+                store.save(accountKey, groupId, message("current", timestamp = 4_100_000L))
+                assertEquals(listOf("current"), store.load(accountKey, groupId).map(RadioMessage::id))
+            } finally {
+                releaseWriter.countDown()
+                executor.shutdownNow()
+            }
+        }
+    }
+
     @Test
     fun persistsAndReconcilesAConversationMessage() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -31,7 +137,8 @@ class RadioMessageStoreInstrumentedTest {
         RadioMessageStore(context).use { store -> store.save(accountKey, groupId, local) }
 
         RadioMessageStore(context).use { reopened ->
-            assertEquals(listOf(local), reopened.load(accountKey, groupId))
+            val storedLocal = local.copy(played = true)
+            assertEquals(listOf(storedLocal), reopened.load(accountKey, groupId))
 
             val remote = local.copy(
                 id = "record-123",
@@ -41,7 +148,7 @@ class RadioMessageStoreInstrumentedTest {
             )
             reopened.reconcile(accountKey, groupId, listOf(remote))
 
-            assertEquals(listOf(remote), reopened.load(accountKey, groupId))
+            assertEquals(listOf(remote.copy(played = true)), reopened.load(accountKey, groupId))
         }
     }
 
@@ -200,7 +307,14 @@ class RadioMessageStoreInstrumentedTest {
         mine = false
     )
 
+    private fun confirmedMessage(id: String, serverRecordId: Int, timestamp: Long) =
+        message(id, timestamp = timestamp).copy(
+            serverRecordId = serverRecordId,
+            syncState = RadioMessageSyncState.CONFIRMED
+        )
+
     private companion object {
+        const val CACHE_BOUNDARY = 1_000
         const val CONCURRENT_MESSAGE_COUNT = 40
         val VERSION_ONE_SCHEMA =
             """
