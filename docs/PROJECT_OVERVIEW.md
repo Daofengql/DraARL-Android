@@ -52,6 +52,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - `baselineprofile` 使用 AndroidX Baseline Profile 与 Macrobenchmark；未登录启动、进入注册和返回登录路径已在本地 API 37 模拟器生成规则，Release APK 会编译并打包 Profile，性能指标仍强制要求物理设备。
 - `AppController` 仍是跨功能状态协调中心；设备、群组、资料、工具、设置、APRS、电台消息、电台会话、应用更新和登录会话已下沉到各自 Controller，PTT 播放协调和导航仍集中于此。
 - `SessionController` 独占登录、持久会话恢复、当前用户和退出状态；`ApiSessionManager` 独占 Token 刷新、会话持久化和认证请求重试，旧登录、旧恢复和旧资料结果不会覆盖替换后的会话。
+- 持久会话恢复设置 20 秒总时限；网络调用或不可协作的阻塞任务超时后会使旧会话失效、清理通信资源并回到登录页，不会永久停留在启动恢复画面。
 - `AprsController` 独占按用户隔离的配置、手动发送状态和后台 Service 协调；设置页只接收不可变 `AprsUiState` 与事件回调。
 - `RadioMessageController` 独占消息列表、缓存写入、游标分页、服务端对账和公开资料预加载；消息列表读取不可变 `RadioMessageUiState`，旧账户和旧群组结果不会覆盖当前状态。
 - `RadioSessionController` 独占节点发现、连接准备、频道路由、连接状态和 Service Binder 生命周期；电台页面读取不可变 `RadioSessionUiState`，账户切换会取消旧连接与路由结果。

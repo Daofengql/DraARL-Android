@@ -14,7 +14,8 @@ class SessionController internal constructor(
     private val effects: SessionEffects,
     scope: CoroutineScope,
     ioDispatcher: CoroutineDispatcher,
-    private val serverUrl: String
+    private val serverUrl: String,
+    private val restoreTimeoutMillis: Long = SESSION_RESTORE_TIMEOUT_MILLIS
 ) {
     private val operations = SessionOperationRunner(scope, ioDispatcher)
     private var started = false
@@ -36,11 +37,17 @@ class SessionController internal constructor(
         effects.onStoredSessionPrepared(stored)
         operations.launch(
             operation = remote::restoreAndValidate,
+            timeoutMillis = restoreTimeoutMillis,
             onResult = { result ->
                 result.onSuccess { activate(it, SessionEntryPoint.RESTORE) }
                     .onFailure { error ->
+                        if (error is SessionOperationTimeoutException) {
+                            remote.detachSessionForLogout(stored)
+                        }
                         val message = if (error is ApiException && error.code == 403) {
                             effects.friendlyError(error)
+                        } else if (error is SessionOperationTimeoutException) {
+                            "恢复通信会话超时，请重新登录"
                         } else {
                             "登录状态已过期，请重新登录"
                         }
@@ -83,8 +90,11 @@ class SessionController internal constructor(
         val current = activeSession
         when {
             session == null -> {
-                operations.invalidate()
-                publishCleared()
+                val hasActiveState = current != null || uiState.initializing || uiState.authenticated
+                if (hasActiveState || uiState.user != null) {
+                    operations.invalidate()
+                    publishCleared()
+                }
             }
 
             current == null || current.accountKey() != session.accountKey() -> {
@@ -145,3 +155,5 @@ class SessionController internal constructor(
 }
 
 private fun Session.accountKey(): String = "${baseUrl.trimEnd('/')}#${user.id}"
+
+private const val SESSION_RESTORE_TIMEOUT_MILLIS = 20_000L

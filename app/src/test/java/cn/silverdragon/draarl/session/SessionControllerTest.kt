@@ -75,6 +75,33 @@ class SessionControllerTest {
     }
 
     @Test
+    fun blockedStoredSessionLeavesLoadingAndDetachesAfterTimeout() = runBlocking {
+        val releaseRestore = CountDownLatch(1)
+        val stored = session()
+        val remote = FakeRemote(
+            currentSession = stored,
+            restoreAction = {
+                awaitIgnoringInterruption(releaseRestore)
+                throw ApiException(503, "服务暂不可用")
+            }
+        )
+        val fixture = fixture(this, remote, restoreTimeoutMillis = 20L)
+        try {
+            fixture.controller.start()
+            awaitCondition { !fixture.controller.uiState.initializing }
+
+            assertEquals("恢复通信会话超时，请重新登录", fixture.controller.uiState.loginError)
+            assertFalse(fixture.controller.uiState.authenticated)
+            assertNull(fixture.controller.uiState.user)
+            assertNull(remote.currentSession)
+            assertEquals(1, fixture.effects.cleared)
+        } finally {
+            releaseRestore.countDown()
+            fixture.close()
+        }
+    }
+
+    @Test
     fun missingCaptchaIsRejectedBeforeLoginAndRequestsAChallenge() = runBlocking {
         val fixture = fixture(this)
         try {
@@ -252,7 +279,8 @@ class SessionControllerTest {
     private fun fixture(
         scope: CoroutineScope,
         remote: FakeRemote = FakeRemote(),
-        effects: FakeEffects = FakeEffects()
+        effects: FakeEffects = FakeEffects(),
+        restoreTimeoutMillis: Long = 20_000L
     ): Fixture {
         val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
         return Fixture(
@@ -261,7 +289,8 @@ class SessionControllerTest {
                 effects = effects,
                 scope = scope,
                 ioDispatcher = dispatcher,
-                serverUrl = "https://example.test"
+                serverUrl = "https://example.test",
+                restoreTimeoutMillis = restoreTimeoutMillis
             ),
             remote = remote,
             effects = effects,
