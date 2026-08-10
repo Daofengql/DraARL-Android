@@ -241,6 +241,51 @@ class RadioMessageControllerTest {
         }
     }
 
+    @Test
+    fun closeDropsLateServerRefreshCallback() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val refreshed = message(
+            id = "server-9",
+            groupId = 7,
+            serverRecordId = 9,
+            syncState = RadioMessageSyncState.CONFIRMED
+        )
+        val remote = FakeRemote(
+            loadMessageAction = { _, _, _ ->
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                finished.countDown()
+                refreshed
+            }
+        )
+
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { dispatcher ->
+            val controller = RadioMessageController(
+                remote = remote,
+                cache = FakeCache(),
+                scope = this,
+                ioDispatcher = dispatcher,
+                currentTimeMillis = { NOW },
+                friendlyError = { it.message.orEmpty() }
+            )
+            controller.onContextChanged(ACCOUNT, 7)
+            yield()
+            val callbacks = mutableListOf<Result<RadioMessage>>()
+            controller.refreshServerMessage(refreshed, callbacks::add)
+            yield()
+            assertTrue(started.await(1, TimeUnit.SECONDS))
+
+            controller.close()
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertTrue(callbacks.isEmpty())
+        }
+    }
+
     private fun CoroutineScope.controller(remote: FakeRemote = FakeRemote(), cache: FakeCache = FakeCache()) =
         RadioMessageController(
             remote = remote,
@@ -254,7 +299,8 @@ class RadioMessageControllerTest {
     private class FakeRemote(
         private val pages: MutableMap<String, RadioMessagePage> = mutableMapOf(),
         private val profiles: Map<String, User> = emptyMap(),
-        private val error: Throwable? = null
+        private val error: Throwable? = null,
+        private val loadMessageAction: ((Int, Int, User) -> RadioMessage)? = null
     ) : RadioMessageRemoteDataSource {
         val pageRequests = mutableListOf<String>()
         val profileRequests = mutableListOf<String>()
@@ -266,8 +312,9 @@ class RadioMessageControllerTest {
         }
 
         override fun loadMessage(groupId: Int, messageId: Int, accountUser: User): RadioMessage =
-            pages.values.asSequence().flatMap { it.messages.asSequence() }
-                .first { it.serverRecordId == messageId }
+            loadMessageAction?.invoke(groupId, messageId, accountUser)
+                ?: pages.values.asSequence().flatMap { it.messages.asSequence() }
+                    .first { it.serverRecordId == messageId }
 
         override fun loadPublicProfile(username: String): User {
             profileRequests += username.lowercase()
@@ -377,5 +424,15 @@ class RadioMessageControllerTest {
             syncState = syncState,
             groupId = groupId
         )
+    }
+}
+
+private fun awaitIgnoringInterruption(latch: CountDownLatch) {
+    while (latch.count > 0L) {
+        try {
+            latch.await(1, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            // Simulates a blocking remote request that cannot be cancelled cooperatively.
+        }
     }
 }
