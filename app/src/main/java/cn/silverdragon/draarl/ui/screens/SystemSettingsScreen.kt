@@ -51,6 +51,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -93,7 +97,11 @@ fun SystemSettingsScreen(
     onAction: (SystemSettingsAction) -> Unit
 ) {
     val context = LocalContext.current
-    val state = settings.uiState
+    val state by remember(settings) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            SystemSettingsRootState.from(settings.uiState)
+        }
+    }
     val microphonePermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -194,23 +202,7 @@ fun SystemSettingsScreen(
             }
 
             item {
-                SettingsGroup("通联") {
-                    SettingsControlHeader(
-                        icon = Icons.Default.Timer,
-                        title = "发射超时",
-                        summary = "达到设定时长后自动结束发射",
-                        value = "${state.transmitTimeoutSeconds} 秒"
-                    )
-                    Slider(
-                        value = state.transmitTimeoutSeconds.toFloat(),
-                        onValueChange = {
-                            settings.onEvent(SettingsEvent.TransmitTimeoutChanged((it / 10f).roundToInt() * 10))
-                        },
-                        valueRange = 10f..600f,
-                        steps = 58,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)
-                    )
-                }
+                ControllerTransmitTimeoutSettings(settings)
             }
 
             item {
@@ -264,23 +256,7 @@ fun SystemSettingsScreen(
                         onCheckedChange = { settings.onEvent(SettingsEvent.ReceiveTailToneChanged(it)) }
                     )
                     SettingsDivider()
-                    SettingsControlHeader(
-                        icon = Icons.Default.GraphicEq,
-                        title = "接收降噪强度",
-                        summary = "PTT 页面开启播放降噪时生效",
-                        value = "${state.playbackDenoiseStrengthPercent}%"
-                    )
-                    Slider(
-                        value = state.playbackDenoiseStrengthPercent.toFloat(),
-                        onValueChange = {
-                            settings.onEvent(
-                                SettingsEvent.PlaybackDenoiseStrengthChanged((it / 5f).roundToInt() * 5)
-                            )
-                        },
-                        valueRange = 0f..100f,
-                        steps = 19,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)
-                    )
+                    ControllerPlaybackDenoiseStrengthSetting(settings)
                 }
             }
 
@@ -381,6 +357,52 @@ fun SystemSettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ControllerTransmitTimeoutSettings(settings: SettingsController) {
+    val timeoutSeconds by remember(settings) {
+        derivedStateOf(structuralEqualityPolicy()) { settings.uiState.transmitTimeoutSeconds }
+    }
+    SettingsGroup("通联") {
+        SettingsControlHeader(
+            icon = Icons.Default.Timer,
+            title = "发射超时",
+            summary = "达到设定时长后自动结束发射",
+            value = "$timeoutSeconds 秒"
+        )
+        Slider(
+            value = timeoutSeconds.toFloat(),
+            onValueChange = {
+                settings.onEvent(SettingsEvent.TransmitTimeoutChanged((it / 10f).roundToInt() * 10))
+            },
+            valueRange = 10f..600f,
+            steps = 58,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)
+        )
+    }
+}
+
+@Composable
+private fun ControllerPlaybackDenoiseStrengthSetting(settings: SettingsController) {
+    val strengthPercent by remember(settings) {
+        derivedStateOf(structuralEqualityPolicy()) { settings.uiState.playbackDenoiseStrengthPercent }
+    }
+    SettingsControlHeader(
+        icon = Icons.Default.GraphicEq,
+        title = "接收降噪强度",
+        summary = "PTT 页面开启播放降噪时生效",
+        value = "$strengthPercent%"
+    )
+    Slider(
+        value = strengthPercent.toFloat(),
+        onValueChange = {
+            settings.onEvent(SettingsEvent.PlaybackDenoiseStrengthChanged((it / 5f).roundToInt() * 5))
+        },
+        valueRange = 0f..100f,
+        steps = 19,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 10.dp)
+    )
 }
 
 @Composable
