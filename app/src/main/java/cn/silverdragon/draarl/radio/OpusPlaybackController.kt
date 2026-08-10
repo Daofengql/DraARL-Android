@@ -4,23 +4,25 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import cn.silverdragon.draarl.protocol.DraarlProtocol
+import java.util.LinkedHashMap
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.LinkedHashMap
 
 internal class OpusPlaybackController(
     private val onLevel: (Float) -> Unit = {},
-) {
-    private val executor = Executors.newSingleThreadExecutor { runnable ->
+    private val executor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-opus-playback")
     }
+) {
     private val released = AtomicBoolean(false)
     private val recordingDecoder = OpusFrameDecoder()
     private val liveDecoders = LinkedHashMap<String, OpusFrameDecoder>(8, 0.75f, true)
     private val denoiser = RnnoisePlaybackDenoiser()
     private var audioTrack: AudioTrack? = null
     private var lastLiveStreamKey = ""
+
     @Volatile private var muted = false
 
     fun playLive(streamKey: String, mergedFrames: ByteArray, onError: (String) -> Unit) {
@@ -41,8 +43,10 @@ internal class OpusPlaybackController(
                     writeFrame(track, frame, decoder)
                 }
             }.onFailure { error ->
-                onLevel(0f)
-                if (!released.get()) onError(error.message ?: "语音播放失败")
+                if (!released.get()) {
+                    onLevel(0f)
+                    onError(error.message ?: "语音播放失败")
+                }
             }
         }
         if (!submitted && !released.get()) onError("语音播放线程不可用")
@@ -60,13 +64,13 @@ internal class OpusPlaybackController(
         bytes: ByteArray,
         isActive: () -> Boolean,
         onFinished: () -> Unit,
-        onError: (String) -> Unit,
+        onError: (String) -> Unit
     ): Boolean = executeIfActive(executor, { !released.get() && isActive() }) {
         val result = runCatching {
             val recording = RawOpusRecording.decode(bytes)
             require(
                 recording.sampleRate == OpusAudioFormat.SAMPLE_RATE &&
-                    recording.channels == OpusAudioFormat.CHANNELS,
+                    recording.channels == OpusAudioFormat.CHANNELS
             ) { "不支持的语音采样格式" }
             val frames = recording.splitFrames()
             require(frames.isNotEmpty()) { "语音记录没有可播放的数据" }
@@ -78,16 +82,17 @@ internal class OpusPlaybackController(
                 writeFrame(track, frame, recordingDecoder)
             }
         }
-        onLevel(0f)
-        if (isActive() && !released.get()) {
+        if (!released.get()) onLevel(0f)
+        if (!released.get() && isActive()) {
             result.fold(
                 onSuccess = { onFinished() },
-                onFailure = { onError(it.message ?: "语音回放失败") },
+                onFailure = { onError(it.message ?: "语音回放失败") }
             )
         }
     }
 
     fun stopRecording() {
+        if (released.get()) return
         onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
             runCatching { audioTrack?.pause() }
@@ -96,6 +101,7 @@ internal class OpusPlaybackController(
     }
 
     fun setMuted(value: Boolean) {
+        if (released.get()) return
         muted = value
         if (value) onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
@@ -116,6 +122,7 @@ internal class OpusPlaybackController(
     }
 
     fun resetDecoder() {
+        if (released.get()) return
         onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
             recordingDecoder.reset()
@@ -159,21 +166,21 @@ internal class OpusPlaybackController(
         val minBuffer = AudioTrack.getMinBufferSize(
             OpusAudioFormat.SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
+            AudioFormat.ENCODING_PCM_16BIT
         )
         return AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
+                    .build()
             )
             .setAudioFormat(
                 AudioFormat.Builder()
                     .setSampleRate(OpusAudioFormat.SAMPLE_RATE)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .build(),
+                    .build()
             )
             .setTransferMode(AudioTrack.MODE_STREAM)
             .setBufferSizeInBytes(maxOf(minBuffer, OpusAudioFormat.FRAME_SAMPLES * 8))
@@ -197,7 +204,9 @@ internal class OpusPlaybackController(
         val pcm = decoder.decode(frame)
         if (pcm.isNotEmpty()) {
             val playbackPcm = denoiser.process(pcm)
+            if (released.get()) return
             onLevel(normalizedPcmLevel(playbackPcm))
+            if (released.get()) return
             track.write(playbackPcm, 0, playbackPcm.size, AudioTrack.WRITE_BLOCKING)
         }
     }
