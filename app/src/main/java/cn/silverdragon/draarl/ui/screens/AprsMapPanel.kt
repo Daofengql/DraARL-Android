@@ -39,7 +39,9 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -62,6 +65,7 @@ import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.LastMapLocationStore
 import cn.silverdragon.draarl.maps.MapDistance
+import cn.silverdragon.draarl.radio.session.RadioSessionUiState
 import cn.silverdragon.draarl.ui.components.DraarlSegment
 import cn.silverdragon.draarl.ui.components.DraarlSegmentedControl
 import cn.silverdragon.draarl.ui.components.DraarlTooltip
@@ -77,6 +81,17 @@ import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.LatLng
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+
+@Immutable
+internal data class MapPttState(val connected: Boolean, val transmitting: Boolean, val receiving: Boolean) {
+    companion object {
+        fun from(session: RadioSessionUiState): MapPttState = MapPttState(
+            connected = session.status.connected,
+            transmitting = session.status.transmitting,
+            receiving = session.status.speaker.isNotBlank()
+        )
+    }
+}
 
 @Composable
 internal fun AprsMapPanel(
@@ -350,16 +365,35 @@ internal fun AprsMapPanel(
         }
 
         if (visible) {
-            val radioStatus = controller.radioSession.uiState.status
-            MapPttButton(
-                transmitting = radioStatus.transmitting,
-                enabled = radioStatus.connected && radioStatus.speaker.isBlank(),
+            ControllerMapPttButton(
+                controller = controller,
                 onStart = onStartPtt,
                 onStop = onStopPtt,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp)
             )
         }
     }
+}
+
+@Composable
+private fun ControllerMapPttButton(
+    controller: AppController,
+    onStart: () -> Boolean,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val state by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            MapPttState.from(controller.radioSession.uiState)
+        }
+    }
+    MapPttButton(
+        transmitting = state.transmitting,
+        enabled = state.connected && !state.receiving,
+        onStart = onStart,
+        onStop = onStop,
+        modifier = modifier
+    )
 }
 
 @Composable
