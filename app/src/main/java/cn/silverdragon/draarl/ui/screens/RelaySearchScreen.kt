@@ -61,6 +61,19 @@ internal data class RelaySearchContentState(
     val relays: List<RelayStation> = emptyList()
 )
 
+@Immutable
+internal data class RelaySearchResultsState(
+    val busy: Boolean,
+    val querySubmitted: Boolean,
+    val relays: List<RelayStation>
+)
+
+internal fun RelaySearchContentState.resultsState(): RelaySearchResultsState = RelaySearchResultsState(
+    busy = busy,
+    querySubmitted = queriedLocation.isNotBlank(),
+    relays = relays
+)
+
 @Composable
 internal fun RelaySearchContent(
     state: RelaySearchContentState,
@@ -73,7 +86,7 @@ internal fun RelaySearchContent(
         ToolHeader("中继台查询", onBack)
         if (state.error.isNotBlank()) ToolError(state.error, onClearError)
         RelaySearchControls(state, onLocationChange, onSearch)
-        RelayResults(state)
+        RelayResults(state.resultsState())
     }
 }
 
@@ -104,13 +117,13 @@ private fun RelaySearchControls(
 }
 
 @Composable
-private fun RelayResults(state: RelaySearchContentState) {
+private fun RelayResults(state: RelaySearchResultsState) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        if (state.relays.isEmpty() && (state.busy || state.queriedLocation.isNotBlank())) {
+        if (state.relays.isEmpty() && (state.busy || state.querySubmitted)) {
             item {
                 ToolListFeedback(
                     loading = state.busy,
