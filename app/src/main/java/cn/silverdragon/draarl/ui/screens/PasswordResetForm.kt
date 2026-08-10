@@ -66,8 +66,7 @@ internal fun ForgotPasswordFormStepped(
     }
 
     if (controller.publicAuth.passwordResetComplete) {
-        AuthSuccessNotice(title = "密码已重置", detail = "现在可以使用新密码登录。")
-        AuthLoginCommand(onLogin)
+        PasswordResetComplete(onLogin)
         return
     }
 
@@ -220,4 +219,10 @@ internal fun ForgotPasswordFormStepped(
         )
     }
     TextButton(onClick = onLogin, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("返回登录") }
+}
+
+@Composable
+internal fun PasswordResetComplete(onLogin: () -> Unit) {
+    AuthSuccessNotice(title = "密码已重置", detail = "现在可以使用新密码登录。")
+    AuthLoginCommand(onLogin)
 }

@@ -16,6 +16,7 @@ import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.screens.AuthErrorNotice
 import cn.silverdragon.draarl.ui.screens.ChangePasswordContent
+import cn.silverdragon.draarl.ui.screens.PasswordResetComplete
 import cn.silverdragon.draarl.ui.screens.RegistrationSuccess
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
 import com.android.tools.screenshot.PreviewTest
@@ -73,6 +74,25 @@ fun RegistrationSuccessLightBaseline() {
                     ),
                     onLogin = {}
                 )
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Password Reset Success Dark 2x Text",
+    widthDp = 320,
+    heightDp = 420,
+    fontScale = 2f,
+    showBackground = true
+)
+@Composable
+fun PasswordResetSuccessDarkLargeTextBaseline() {
+    DraarlTheme(darkTheme = true) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.padding(24.dp)) {
+                PasswordResetComplete(onLogin = {})
             }
         }
     }
