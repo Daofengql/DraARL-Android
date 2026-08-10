@@ -9,8 +9,8 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 194 | 28,585 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 81 | 7,602 | 323 个测试用例 |
+| 生产 Kotlin | 195 | 28,647 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 87 | 7,831 | 337 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 257 | 9 个用例覆盖底部导航和 SQLite；消息缓存已增加迁移、代次、分页、播放标记和并发写入边界 |
 | Compose 截图测试 Kotlin | 6 | 1,263 | 42 张壳层、页面、状态和组件参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -41,7 +41,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 | --- | ---: |
 | `ui/screens/DevicesScreen.kt` | 1,104 |
 | `radio/UdpRadioClient.kt` | 1,042 |
-| `AppController.kt` | 963 |
+| `AppController.kt` | 989 |
 | `ui/screens/GroupsScreen.kt` | 933 |
 | `ui/screens/LocationMapScreen.kt` | 720 |
 
@@ -55,6 +55,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - `RadioSessionController` 独占节点发现、连接准备、频道路由、连接状态和 Service Binder 生命周期；电台页面读取不可变 `RadioSessionUiState`，账户切换会取消旧连接与路由结果。
 - 设备、群组、资料、公共认证和工具 Controller 的普通阻塞任务由共享 `ControllerTaskRunner` 承载；每个 Controller 持有挂接到 `viewModelScope` 的子 `SupervisorJob`，阻塞调用显式切到 IO dispatcher，重置或关闭后取消任务并丢弃迟到结果；公共认证和工具按可并行领域保留独立任务槽，工具草稿缓存写入同一生命周期内的串行 IO 队列。
 - `AppDataRefresher` 使用结构化 `async(ioDispatcher)` 并行聚合设备、群组、默认群组、通信统计、趋势和用户六路请求；`AppController` 持有刷新 Job，并继续通过 `RefreshCoordinator` 合并刷新风暴，退出或销毁会同时取消 Job 与代次。
+- `AppControllerLifecycleCoordinator` 按“移除主线程回调、取消本级请求、关闭资源”三阶段执行销毁；资源清理失败不会阻断后续项目，延迟 Controller 未初始化时不会因清理而创建，重复调用保持幂等。
 - `DashboardCacheController` 按账户持有缓存读写任务；SharedPreferences 读取、JSON 解析和写入均切到 IO dispatcher，退出账户会丢弃迟到缓存，网络新快照会使仍在读取的旧缓存失效。
 - 群组在线计数和当前频道在线设备查询由 `AppController` 的子任务 scope 持有；频道切换和账户退出直接取消旧任务，在线设备刷新继续通过 `RefreshCoordinator` 合并运行期间的重复请求。
 - `AppUpdateController` 独占更新检查、下载进度、安装权限恢复和 UI 状态；检查与下载使用独立 Controller 子任务，账户退出后取消旧请求并过滤迟到进度，`AppController` 只保留兼容 getter 和命令转发。
@@ -101,7 +102,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - Token 刷新、会话持久化、认证请求重试和旧认证/资料结果丢弃已集中到 `ApiSessionManager`，并由 8 个 JVM 用例覆盖并发 401 合并、刷新失败、过期边界、Token 刷新和 Session 替换竞态。
 - UDP 连接、认证、在线、重连、错误、主动断开与关闭已建模为显式状态和事件，连接代次、`RadioStatus` 和认证身份收敛到单一串行状态上下文；49 个新增 JVM 用例覆盖状态顺序、陈旧事件、重复重连、认证响应、总超时、Transport 收发/关闭、在线接收异常后的旧 Transport 释放与重连登记、心跳与静默边界、调度任务所有权、PTT 音频边界、接收流乱序/淘汰/结算及并发状态发布，资源所有权与关闭顺序记录在 `docs/UDP_CONNECTION_LIFECYCLE.md`。
 - `RadioConnectionService` 的待绑定消息队列和监听器槽位已提取为 `RadioMessageBuffer` / `RadioMessageDispatcher`，前台动作与通知标题已提取为 `RadioServiceStatePolicy`；10 个 JVM 用例覆盖 FIFO、满载淘汰、清空、非法容量、绑定排空、解绑后重新缓存、各连接阶段的前台动作和收发标题优先级，Service 仍在原子边界外回调监听器。
-- `ApiClient` 已成为兼容门面；Auth、Profile、Devices、Groups、Radio、Tools、Updates 及 Token 刷新响应先进入类型化 DTO，再由独立 Mapper 转成业务模型，映射异常携带请求方法、路径与失败阶段。17 个领域 API 用例、3 个群组所有者字段用例、1 个设备历史字段用例和 3 个工具 DTO 用例覆盖代表性路径、兼容字段、异常字段、响应阶段和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
+- `ApiClient` 已成为兼容门面；Auth、Profile、Devices、Groups、Radio、Tools、Updates 及 Token 刷新响应先进入类型化 DTO，再由独立 Mapper 转成业务模型，映射异常携带请求方法、路径与失败阶段。17 个领域 API 用例和 19 个直接 DTO/Mapper 用例覆盖七组 API 的必填字段、兼容默认、异常数组、URL 安全、响应阶段和 Session 替换竞态，原类的 38 条 Detekt 历史豁免已删除。
 - 设置、账号安全和存储页已统一为细边框设置组、方形图标位和紧凑数据行，不再用默认 `Card` 叠加页面分区；危险清理使用统一弹窗与等宽动作区。
 - APRS 设置页已拆出不依赖定位权限和运行时 Controller 的内容层；链路、服务器、自动上报和测试区统一使用细边框设置组、命令按钮与状态提示，不再用默认 `Card` 叠加页面分区。
 - BLE 配网页的设备类型、连接状态、认证、Wi-Fi 与服务配置已统一为设置组、状态指示和命令按钮；设备类型弹窗使用可访问的单选行，不再在弹窗或页面分区中嵌套默认 `Card`。APRS 与 BLE 重写同时清理了 30 条已失效的 Detekt 行长豁免。
