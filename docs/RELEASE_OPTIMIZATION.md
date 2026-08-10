@@ -26,8 +26,8 @@ Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同�
 
 优化后 APK 为 30.54 MiB，SHA-256 为 `0284A507FEC9FC26B5994413341B17FCA6BA23352D3107FDBEBCB4B33131D3D2`。Native 库占主要剩余体积，其中高德地图约 19.07 MiB，RNNoise 约 5.72 MiB。
 
-生产源码基线 `2b7da57` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,062,557 B（30.58 MiB），SHA-256 为
-`14B679D775FC70027A5D8F9C648C3A1CDD3F32D1F0D967BC1820A1C52D1C87C5`。与历史优化基线的体积差异来自后续业务与边界测试代码变化，未改变 R8/资源收缩配置。
+当前提交基线 `db00d2e` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,062,557 B（30.58 MiB），SHA-256 为
+`9EA24B7BE895BDA2D196EC68AA427110240F00140305D1D2D1BD0FDCDACA5692`。与历史优化基线的体积差异来自后续业务与边界测试代码变化，未改变 R8/资源收缩配置；APK 内的版本控制元数据也已核对为该提交。
 
 ## 静态验收
 
@@ -46,4 +46,4 @@ APK 位于 `app/build/outputs/apk/release/app-release.apk`，R8 报告位于 `ap
 
 ## 尚未覆盖
 
-当前没有连接 Android 设备，因此尚未执行 RNNoise、地图、应用内更新、前台服务、冷启动、首帧和运行内存的 Release 真机回归。项目也尚未生成覆盖 DraARL 关键流程的自定义 Baseline Profile；这两部分继续由 `TODO.md` 跟踪。
+本轮仅在本地模拟器执行消息缓存 SQLite 仪器套件，尚未执行 RNNoise、地图、应用内更新、前台服务、冷启动、首帧和运行内存的 Release 真机回归。项目也尚未生成覆盖 DraARL 关键流程的自定义 Baseline Profile；这两部分继续由 `TODO.md` 跟踪。
