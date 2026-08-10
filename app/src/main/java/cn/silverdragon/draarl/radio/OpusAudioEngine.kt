@@ -2,11 +2,13 @@ package cn.silverdragon.draarl.radio
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -21,6 +23,8 @@ class OpusAudioEngine(
 ) {
     private val released = AtomicBoolean(false)
     private val recordingPlaybackGeneration = AtomicInteger(0)
+    private val recordingPlaybackLock = Any()
+    private val recordingDownloadJob = AtomicReference<Job?>(null)
     private val capture = OpusCaptureController()
     private val playback = OpusPlaybackController(onPlaybackLevel)
     private val downloadScope = CoroutineScope(SupervisorJob() + ioDispatcher)
@@ -54,41 +58,38 @@ class OpusAudioEngine(
         onFinished: () -> Unit,
         onError: (String) -> Unit
     ): Boolean {
-        if (
-            released.get() || capture.isCapturing ||
-            (audioCacheKey.isBlank() && audioUrl.isBlank())
-        ) {
-            return false
-        }
-        val generation = recordingPlaybackGeneration.incrementAndGet()
-        val download = downloadScope.launch(start = CoroutineStart.LAZY) {
-            if (!isRecordingPlaybackActive(generation)) return@launch
-            val result = runCatching {
-                runInterruptible { historicalAudioLoader.load(audioCacheKey, audioUrl) }
+        synchronized(recordingPlaybackLock) {
+            if (
+                released.get() || capture.isCapturing ||
+                (audioCacheKey.isBlank() && audioUrl.isBlank())
+            ) {
+                return false
             }
-            if (result.exceptionOrNull() is CancellationException) return@launch
-            if (result.isFailure) {
-                failRecordingPlayback(generation, result.exceptionOrNull()?.message ?: "语音回放失败", onError)
-                return@launch
-            }
-            val playbackSubmitted = playback.playRecording(
-                bytes = result.getOrThrow(),
-                isActive = { isRecordingPlaybackActive(generation) },
-                onFinished = { finishRecordingPlayback(generation, onFinished) },
-                onError = { message -> failRecordingPlayback(generation, message, onError) }
+            val generation = recordingPlaybackGeneration.incrementAndGet()
+            val download = createRecordingDownload(
+                generation = generation,
+                audioCacheKey = audioCacheKey,
+                audioUrl = audioUrl,
+                onFinished = onFinished,
+                onError = onError
             )
-            if (!playbackSubmitted) {
-                failRecordingPlayback(generation, "语音播放线程不可用", onError)
+            recordingDownloadJob.getAndSet(download)?.cancel()
+            val submitted = isRecordingPlaybackActive(generation) && download.start()
+            if (!submitted) {
+                recordingDownloadJob.compareAndSet(download, null)
+                download.cancel()
+                if (!released.get()) onError("无法启动语音回放")
             }
+            return submitted
         }
-        val submitted = isRecordingPlaybackActive(generation) && download.start()
-        if (!submitted && !released.get()) onError("无法启动语音回放")
-        return submitted
     }
 
     fun stopRecordingPlayback() {
-        recordingPlaybackGeneration.incrementAndGet()
-        playback.stopRecording()
+        synchronized(recordingPlaybackLock) {
+            recordingPlaybackGeneration.incrementAndGet()
+            recordingDownloadJob.getAndSet(null)?.cancel()
+            playback.stopRecording()
+        }
     }
 
     fun setMuted(value: Boolean) {
@@ -109,7 +110,10 @@ class OpusAudioEngine(
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
-        recordingPlaybackGeneration.incrementAndGet()
+        synchronized(recordingPlaybackLock) {
+            recordingPlaybackGeneration.incrementAndGet()
+            recordingDownloadJob.getAndSet(null)?.cancel()
+        }
         downloadScope.cancel()
         capture.release()
         playback.release()
@@ -130,6 +134,54 @@ class OpusAudioEngine(
             recordingPlaybackGeneration.compareAndSet(generation, generation + 1)
         ) {
             onError(message)
+        }
+    }
+
+    private fun createRecordingDownload(
+        generation: Int,
+        audioCacheKey: String,
+        audioUrl: String,
+        onFinished: () -> Unit,
+        onError: (String) -> Unit
+    ): Job = downloadScope.launch(start = CoroutineStart.LAZY) {
+        try {
+            loadAndPlayRecording(generation, audioCacheKey, audioUrl, onFinished, onError)
+        } finally {
+            recordingDownloadJob.compareAndSet(coroutineContext[Job], null)
+        }
+    }
+
+    private suspend fun loadAndPlayRecording(
+        generation: Int,
+        audioCacheKey: String,
+        audioUrl: String,
+        onFinished: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (!isRecordingPlaybackActive(generation)) return
+        val result = runCatching {
+            runInterruptible { historicalAudioLoader.load(audioCacheKey, audioUrl) }
+        }
+        when {
+            result.exceptionOrNull() is CancellationException -> Unit
+
+            result.isFailure -> failRecordingPlayback(
+                generation,
+                result.exceptionOrNull()?.message ?: "语音回放失败",
+                onError
+            )
+
+            else -> {
+                val playbackSubmitted = playback.playRecording(
+                    bytes = result.getOrThrow(),
+                    isActive = { isRecordingPlaybackActive(generation) },
+                    onFinished = { finishRecordingPlayback(generation, onFinished) },
+                    onError = { message -> failRecordingPlayback(generation, message, onError) }
+                )
+                if (!playbackSubmitted) {
+                    failRecordingPlayback(generation, "语音播放线程不可用", onError)
+                }
+            }
         }
     }
 

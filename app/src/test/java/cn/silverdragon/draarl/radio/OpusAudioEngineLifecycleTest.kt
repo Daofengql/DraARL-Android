@@ -53,8 +53,8 @@ class OpusAudioEngineLifecycleTest {
                 audioCacheKey = "race",
                 audioUrl = "https://example.test/voice.raw",
                 onFinished = { callbackInvoked.set(true) },
-                onError = { callbackInvoked.set(true) },
-            ),
+                onError = { callbackInvoked.set(true) }
+            )
         )
         assertTrue(downloadStarted.await(2, TimeUnit.SECONDS))
 
@@ -63,6 +63,47 @@ class OpusAudioEngineLifecycleTest {
         Thread.sleep(100)
 
         assertFalse(callbackInvoked.get())
+    }
+
+    @Test
+    fun `stopping recording playback interrupts download without callback or cache`() {
+        val downloadStarted = CountDownLatch(1)
+        val downloadInterrupted = CountDownLatch(1)
+        val allowCompletion = CountDownLatch(1)
+        val callbackInvoked = CountDownLatch(1)
+        val recording = RawOpusRecording.encode(16_000, 1, 960, listOf(byteArrayOf(1, 2, 3)))
+        val cache = RadioAudioCache(directory)
+        val loader = HistoricalAudioLoader(cache) {
+            downloadStarted.countDown()
+            try {
+                check(allowCompletion.await(2, TimeUnit.SECONDS))
+                recording
+            } catch (error: InterruptedException) {
+                downloadInterrupted.countDown()
+                throw error
+            }
+        }
+        val engine = OpusAudioEngine(cache, loader)
+        try {
+            assertTrue(
+                engine.playRecording(
+                    audioCacheKey = "interrupt",
+                    audioUrl = "https://example.test/voice.raw",
+                    onFinished = callbackInvoked::countDown,
+                    onError = { callbackInvoked.countDown() }
+                )
+            )
+            assertTrue(downloadStarted.await(2, TimeUnit.SECONDS))
+
+            engine.stopRecordingPlayback()
+
+            assertTrue(downloadInterrupted.await(2, TimeUnit.SECONDS))
+            assertFalse(callbackInvoked.await(100, TimeUnit.MILLISECONDS))
+            assertFalse(cache.contains("interrupt"))
+        } finally {
+            allowCompletion.countDown()
+            engine.release()
+        }
     }
 
     @Test
@@ -84,8 +125,8 @@ class OpusAudioEngineLifecycleTest {
                 onError = {
                     errors.incrementAndGet()
                     callback.countDown()
-                },
-            ),
+                }
+            )
         )
         assertTrue(callback.await(2, TimeUnit.SECONDS))
 
