@@ -38,6 +38,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -46,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -61,6 +63,7 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
+import cn.silverdragon.draarl.session.SessionUiState
 import cn.silverdragon.draarl.ui.components.AppUpdateFeedback
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
@@ -110,13 +113,24 @@ fun DraarlApp(controller: AppController) {
 
 @Composable
 private fun DraarlAppContent(controller: AppController) {
-    val sessionState = controller.session.uiState
+    val session = controller.session
+    val sessionGate by remember(session) {
+        derivedStateOf(structuralEqualityPolicy()) { session.uiState.sessionGateState() }
+    }
     when {
-        sessionState.initializing -> LoadingScreen()
-        !sessionState.authenticated -> LoginScreen(controller)
+        sessionGate.initializing -> LoadingScreen()
+        !sessionGate.authenticated -> LoginScreen(controller)
         else -> AuthenticatedApp(controller)
     }
 }
+
+@Immutable
+internal data class SessionGateState(val initializing: Boolean, val authenticated: Boolean)
+
+internal fun SessionUiState.sessionGateState(): SessionGateState = SessionGateState(
+    initializing = initializing,
+    authenticated = authenticated
+)
 
 @Composable
 internal fun LoadingScreen() {
