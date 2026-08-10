@@ -35,13 +35,10 @@ class RadioConnectionService :
     private lateinit var radioClient: UdpRadioClient
     private lateinit var pttOverlay: PttOverlayWindow
 
-    @Volatile private var listener: RadioServiceListener? = null
-
     @Volatile private var foreground = false
 
     @Volatile private var overlayFeatureEnabled = false
-    private val messageBufferLock = Any()
-    private val pendingMessages = RadioMessageBuffer(MAX_PENDING_MESSAGES)
+    private val messageDispatcher = RadioMessageDispatcher(MAX_PENDING_MESSAGES)
 
     override fun onCreate() {
         super.onCreate()
@@ -66,15 +63,14 @@ class RadioConnectionService :
     }
 
     override fun onDestroy() {
-        listener = null
-        synchronized(messageBufferLock) { pendingMessages.clear() }
+        messageDispatcher.clear()
         pttOverlay.hide()
         radioClient.release()
         super.onDestroy()
     }
 
     override fun onStatus(status: RadioStatus) {
-        listener?.onRadioStatus(status)
+        messageDispatcher.listener?.onRadioStatus(status)
         pttOverlay.updateStatus(status)
         when (status.phase) {
             RadioConnectionPhase.CONNECTING,
@@ -97,29 +93,24 @@ class RadioConnectionService :
     }
 
     override fun onMessage(message: RadioMessage) {
-        val target = synchronized(messageBufferLock) {
-            listener ?: run {
-                pendingMessages.offer(message)
-                null
-            }
-        }
+        val target = messageDispatcher.dispatch(message)
         target?.onRadioMessage(message)
     }
 
     override fun onPlaybackState(messageId: String?) {
-        listener?.onPlaybackState(messageId)
+        messageDispatcher.listener?.onPlaybackState(messageId)
     }
 
     override fun onPlaybackLevel(level: Float) {
-        listener?.onPlaybackLevel(level)
+        messageDispatcher.listener?.onPlaybackLevel(level)
     }
 
     override fun onTransmitLevel(level: Float) {
-        listener?.onTransmitLevel(level)
+        messageDispatcher.listener?.onTransmitLevel(level)
     }
 
     override fun onCwPreviewState(active: Boolean) {
-        listener?.onCwPreviewState(active)
+        messageDispatcher.listener?.onCwPreviewState(active)
     }
 
     private fun connect(config: RadioConnectionConfig) {
@@ -266,14 +257,7 @@ class RadioConnectionService :
 
     inner class LocalBinder : Binder() {
         fun setListener(value: RadioServiceListener?) {
-            val pending = synchronized(messageBufferLock) {
-                listener = value
-                if (value == null) {
-                    emptyList()
-                } else {
-                    pendingMessages.drain()
-                }
-            }
+            val pending = messageDispatcher.setListener(value)
             value?.onRadioStatus(radioClient.snapshot())
             pending.forEach { value?.onRadioMessage(it) }
         }
