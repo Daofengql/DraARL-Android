@@ -178,7 +178,7 @@ private fun RadioPresetList(presets: List<RadioPreset>, busy: Boolean, actions: 
 }
 
 @Composable
-private fun RadioPresetListFeedback(busy: Boolean) {
+internal fun RadioPresetListFeedback(busy: Boolean) {
     ToolListFeedback(
         loading = busy,
         title = if (busy) "正在加载电台预设" else "暂无电台预设",

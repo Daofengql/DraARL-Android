@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import cn.silverdragon.draarl.tools.RelayStation
 import cn.silverdragon.draarl.ui.screens.LogbookListFeedback
+import cn.silverdragon.draarl.ui.screens.RadioPresetListFeedback
 import cn.silverdragon.draarl.ui.screens.RelaySearchContent
 import cn.silverdragon.draarl.ui.screens.RelaySearchContentState
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
@@ -84,6 +85,23 @@ fun LogbookFilterEmptyDarkLargeTextBaseline() {
     DraarlTheme(darkTheme = true) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             LogbookListFeedback(busy = false, filter = "BG5DRA")
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Radio Presets Empty Light Large Text",
+    widthDp = 360,
+    heightDp = 360,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun RadioPresetsEmptyLightLargeTextBaseline() {
+    DraarlTheme(darkTheme = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            RadioPresetListFeedback(busy = false)
         }
     }
 }
