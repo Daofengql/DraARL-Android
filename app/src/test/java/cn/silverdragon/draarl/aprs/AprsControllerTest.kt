@@ -199,6 +199,52 @@ class AprsControllerTest {
         }
     }
 
+    @Test
+    fun closeDropsLateSaveResultAndBackgroundEffect() = runBlocking {
+        val saveStarted = CountDownLatch(1)
+        val releaseSave = CountDownLatch(1)
+        val saveFinished = CountDownLatch(1)
+        val storage = object : AprsConfigStorage {
+            override fun load(userId: Int): AprsConfig = AprsConfig()
+
+            override fun save(userId: Int, config: AprsConfig) {
+                saveStarted.countDown()
+                awaitIgnoringInterruption(releaseSave)
+                saveFinished.countDown()
+            }
+        }
+        val effects = FakeEffects()
+
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { dispatcher ->
+            val controller = AprsController(
+                storage = storage,
+                sender = FakeSender(),
+                effects = effects,
+                scope = this,
+                ioDispatcher = dispatcher
+            )
+            controller.onUserChanged(7)
+            yield()
+            controller.onEvent(
+                AprsEvent.SaveConfig(
+                    AprsConfig(enabled = true, autoReport = true, callsign = "BG5DRA")
+                )
+            )
+            yield()
+            assertTrue(saveStarted.await(1, TimeUnit.SECONDS))
+
+            controller.close()
+            releaseSave.countDown()
+            assertTrue(saveFinished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertEquals(AprsUiState(), controller.uiState)
+            assertTrue(effects.startedUserIds.isEmpty())
+            assertTrue(effects.notices.isEmpty())
+            assertEquals(1, effects.stopCount)
+        }
+    }
+
     private fun CoroutineScope.controller(
         storage: FakeStorage = FakeStorage(),
         sender: FakeSender = FakeSender(),
@@ -259,5 +305,15 @@ class AprsControllerTest {
 
     private companion object {
         val POSITION = AprsPosition(latitude = 30.25, longitude = 120.16)
+    }
+}
+
+private fun awaitIgnoringInterruption(latch: CountDownLatch) {
+    while (latch.count > 0L) {
+        try {
+            latch.await(1, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            // Simulates a blocking storage call that cannot be cancelled cooperatively.
+        }
     }
 }
