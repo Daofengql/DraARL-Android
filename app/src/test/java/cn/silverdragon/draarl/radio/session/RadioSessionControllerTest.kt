@@ -205,6 +205,68 @@ class RadioSessionControllerTest {
     }
 
     @Test
+    fun staleAccessPointProbeCannotReplaceNewAccountSelection() = runBlocking {
+        val firstProbeStarted = CountDownLatch(1)
+        val releaseFirstProbe = CountDownLatch(1)
+        val probeRequest = AtomicInteger(0)
+        val oldPoint = accessPoint("old")
+        val newPoint = accessPoint("new")
+        val remote = FakeRemote(accessPoints = listOf(oldPoint, newPoint))
+        val storage = FakeStorage()
+        val selectAccessPoint: suspend (List<AccessPoint>) -> AccessPointSelection = { points ->
+            if (probeRequest.incrementAndGet() == 1) {
+                firstProbeStarted.countDown()
+                awaitIgnoringInterruption(releaseFirstProbe)
+                AccessPointSelection(
+                    selected = oldPoint,
+                    probes = points.map { AccessPointProbe(it, if (it == oldPoint) 10 else null) },
+                    measured = true
+                )
+            } else {
+                AccessPointSelection(
+                    selected = newPoint,
+                    probes = points.map { AccessPointProbe(it, if (it == newPoint) 15 else null) },
+                    measured = true
+                )
+            }
+        }
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { dispatcher ->
+            val fixture = fixture(
+                remote = remote,
+                storage = storage,
+                ioDispatcher = dispatcher,
+                selectAccessPoint = selectAccessPoint
+            )
+            try {
+                fixture.controller.onAccountChanged(account(userId = 1, key = "account-1"))
+                fixture.controller.discoverAccessPoints()
+                withTimeout(1_000) {
+                    while (firstProbeStarted.count > 0L) yield()
+                }
+
+                fixture.controller.onAccountChanged(account(userId = 2, key = "account-2"))
+                fixture.controller.discoverAccessPoints()
+                releaseFirstProbe.countDown()
+                withTimeout(1_000) {
+                    while (fixture.controller.uiState.selectedAccessPoint != newPoint) yield()
+                }
+
+                assertEquals(newPoint, fixture.controller.uiState.selectedAccessPoint)
+                assertEquals(
+                    listOf(AccessPointProbe(newPoint, 15)),
+                    fixture.controller.uiState.accessPointProbes.filter {
+                        it.reachable
+                    }
+                )
+                assertEquals(listOf("new"), storage.selectedAccessPointIds)
+            } finally {
+                releaseFirstProbe.countDown()
+                fixture.controller.close()
+            }
+        }
+    }
+
+    @Test
     fun closeDropsLateConnectionPreparationAndStopsPendingService() = runBlocking {
         val tokenStarted = CountDownLatch(1)
         val releaseToken = CountDownLatch(1)
@@ -249,7 +311,8 @@ class RadioSessionControllerTest {
         controls: FakeControls = FakeControls(),
         effects: FakeEffects = FakeEffects(),
         ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Unconfined,
-        selectedPoint: AccessPoint? = null
+        selectedPoint: AccessPoint? = null,
+        selectAccessPoint: (suspend (List<AccessPoint>) -> AccessPointSelection)? = null
     ): Fixture {
         val gateway = RadioServiceGateway(connection, controls)
         val controller = RadioSessionController(
@@ -257,7 +320,7 @@ class RadioSessionControllerTest {
             execution = RadioSessionExecution(
                 scope = this,
                 ioDispatcher = ioDispatcher,
-                selectAccessPoint = { points ->
+                selectAccessPoint = selectAccessPoint ?: { points ->
                     val selected = selectedPoint ?: points.first()
                     AccessPointSelection(
                         selected = selected,
