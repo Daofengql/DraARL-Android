@@ -119,11 +119,28 @@ class UdpRadioClientPttTest {
         assertEquals(1, fixture.audio.releaseCount)
     }
 
-    private fun fixture(captureStarts: Boolean = true): Fixture {
+    @Test
+    fun `receive failure schedules reconnect and releases transport`() {
+        val fixture = fixture(receiveFailure = IllegalStateException("socket lost"))
+        try {
+            fixture.connect()
+
+            assertTrue(fixture.listener.reconnecting.await(2, TimeUnit.SECONDS))
+            assertEquals(RadioConnectionPhase.RECONNECTING, fixture.listener.latestStatus.phase)
+            assertEquals("socket lost", fixture.listener.latestStatus.error)
+            assertTrue(fixture.transport.isClosed)
+            assertTrue(fixture.scheduler.scheduled.await(1, TimeUnit.SECONDS))
+            assertEquals(1, fixture.scheduler.oneShotTasks)
+        } finally {
+            fixture.client.release()
+        }
+    }
+
+    private fun fixture(captureStarts: Boolean = true, receiveFailure: RuntimeException? = null): Fixture {
         val listener = RecordingListener()
         val store = FakeAudioStore()
         val audio = FakeAudioEngine(captureStarts)
-        val transport = FakeUdpTransport(authResponse())
+        val transport = FakeUdpTransport(authResponse(), receiveFailure)
         val scheduler = FakeRadioScheduler()
         val client = UdpRadioClient(
             listener = listener,
@@ -187,11 +204,16 @@ class UdpRadioClientPttTest {
 
     private class RecordingListener : UdpRadioListener {
         val connected = CountDownLatch(1)
+        val reconnecting = CountDownLatch(1)
         val messageReceived = CountDownLatch(1)
         val messages = CopyOnWriteArrayList<RadioMessage>()
 
+        @Volatile var latestStatus = RadioStatus()
+
         override fun onStatus(status: RadioStatus) {
+            latestStatus = status
             if (status.connected) connected.countDown()
+            if (status.phase == RadioConnectionPhase.RECONNECTING) reconnecting.countDown()
         }
 
         override fun onMessage(message: RadioMessage) {
@@ -270,8 +292,12 @@ class UdpRadioClientPttTest {
         fun emitError(message: String) = requireNotNull(errorCallback)(message)
     }
 
-    private class FakeUdpTransport(private val authentication: ByteArray) : UdpTransport {
+    private class FakeUdpTransport(
+        private val authentication: ByteArray,
+        private val receiveFailure: RuntimeException? = null
+    ) : UdpTransport {
         private val authenticationPending = AtomicBoolean(true)
+        private val receiveFailurePending = AtomicBoolean(receiveFailure != null)
         private val incoming = LinkedBlockingQueue<ByteArray>()
         val sent = CopyOnWriteArrayList<ByteArray>()
 
@@ -290,6 +316,7 @@ class UdpRadioClientPttTest {
                 authentication.copyInto(buffer)
                 return authentication.size
             }
+            if (receiveFailurePending.compareAndSet(true, false)) throw requireNotNull(receiveFailure)
             while (!closed) {
                 val payload = incoming.poll(100, TimeUnit.MILLISECONDS) ?: continue
                 payload.copyInto(buffer)
@@ -310,11 +337,13 @@ class UdpRadioClientPttTest {
     private class FakeRadioScheduler : RadioScheduler {
         var oneShotTasks = 0
         var closed = false
+        val scheduled = CountDownLatch(1)
 
         override fun execute(task: () -> Unit) = task()
 
         override fun schedule(delayMillis: Long, task: () -> Unit): RadioScheduledTask {
             oneShotTasks++
+            scheduled.countDown()
             return RadioScheduledTask {}
         }
 

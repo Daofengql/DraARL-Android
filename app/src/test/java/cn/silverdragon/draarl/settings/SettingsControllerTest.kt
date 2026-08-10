@@ -5,8 +5,13 @@ import cn.silverdragon.draarl.data.AppThemeMode
 import cn.silverdragon.draarl.data.StorageCategory
 import cn.silverdragon.draarl.data.StorageUsage
 import cn.silverdragon.draarl.radio.TransmitTailTone
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
@@ -131,17 +136,64 @@ class SettingsControllerTest {
         assertEquals("清理缓存失败：disk unavailable", effects.notices.single())
     }
 
+    @Test
+    fun closeDropsLateStorageRefreshResult() = runBlocking {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val storage = object : SettingsStorage {
+            override fun calculateUsage(): StorageUsage {
+                started.countDown()
+                awaitIgnoringInterruption(release)
+                finished.countDown()
+                return StorageUsage(audioBytes = 99)
+            }
+
+            override fun clear(category: StorageCategory) = Unit
+        }
+        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            val controller = controller(storage = storage, ioDispatcher = dispatcher)
+            controller.refreshStorageUsage()
+            yield()
+            assertTrue(started.await(1, TimeUnit.SECONDS))
+
+            controller.close()
+            val closedState = controller.uiState
+            release.countDown()
+            assertTrue(finished.await(1, TimeUnit.SECONDS))
+            yield()
+
+            assertEquals(StorageUsage(), closedState.storageUsage)
+            assertEquals(closedState, controller.uiState)
+        } finally {
+            release.countDown()
+            dispatcher.close()
+        }
+    }
+
     private fun CoroutineScope.controller(
         store: FakeStore = FakeStore(),
-        storage: FakeStorage = FakeStorage(),
-        effects: FakeEffects = FakeEffects()
+        storage: SettingsStorage = FakeStorage(),
+        effects: FakeEffects = FakeEffects(),
+        ioDispatcher: CoroutineDispatcher = Dispatchers.Unconfined
     ) = SettingsController(
         store = store,
         storage = storage,
         effects = effects,
         scope = this,
-        ioDispatcher = Dispatchers.Unconfined
+        ioDispatcher = ioDispatcher
     )
+
+    private fun awaitIgnoringInterruption(latch: CountDownLatch) {
+        while (latch.count > 0L) {
+            try {
+                latch.await(1, TimeUnit.SECONDS)
+            } catch (_: InterruptedException) {
+                // Simulates a storage calculation that ignores cancellation.
+            }
+        }
+    }
 
     private class FakeStore(private val initial: SettingsUiState = SettingsUiState()) : SettingsStore {
         val changes = mutableListOf<SettingsChange>()
