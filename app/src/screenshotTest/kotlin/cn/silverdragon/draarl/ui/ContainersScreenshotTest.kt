@@ -93,7 +93,7 @@ fun UpdateFeedbackDarkBaseline() {
 fun ForcedUpdateDownloadingDarkLargeTextBaseline() {
     DraarlTheme(darkTheme = true) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            AppUpdateDialog(
+            AppUpdateDialogPreview(
                 update = AppUpdateInfo(
                     version = "2.0.0",
                     title = "DraARL 2.0 应急通信更新",
@@ -105,9 +105,7 @@ fun ForcedUpdateDownloadingDarkLargeTextBaseline() {
                 ),
                 status = AppUpdateStatus.DOWNLOADING,
                 message = "正在下载并校验更新包（64%）",
-                progress = { 0.64f },
-                onUpdate = {},
-                onDismiss = {}
+                progress = { 0.64f }
             )
         }
     }

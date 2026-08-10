@@ -396,7 +396,7 @@ private fun AppUpdateHost(controller: AppController) {
 }
 
 @Composable
-internal fun AppUpdateDialog(
+private fun AppUpdateDialog(
     update: AppUpdateInfo,
     status: AppUpdateStatus,
     message: String,
@@ -455,6 +455,23 @@ internal fun AppUpdateDialog(
             }
         }
     }
+}
+
+@Composable
+internal fun AppUpdateDialogPreview(
+    update: AppUpdateInfo,
+    status: AppUpdateStatus,
+    message: String,
+    progress: () -> Float
+) {
+    AppUpdateDialog(
+        update = update,
+        status = status,
+        message = message,
+        progress = progress,
+        onUpdate = {},
+        onDismiss = {}
+    )
 }
 
 @Composable
