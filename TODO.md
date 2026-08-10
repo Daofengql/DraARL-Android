@@ -18,7 +18,7 @@
 以已提交的 `main` 为基线：
 
 - 单 `app` 模块，版本 `2.0.0-alpha1`（versionCode 8）。
-- 生产 Kotlin 193 个文件，约 2.85 万有效代码行；JVM 测试 75 个文件、300 个用例。
+- 生产 Kotlin 194 个文件，约 2.85 万有效代码行；JVM 测试 78 个文件、307 个用例。
 - Compose 截图测试 6 个文件、41 张参考图，覆盖启动与应用壳层、五个一级页面、页面顶部栏、趋势空态、更新反馈、认证与账号安全反馈、设置行、APRS、BLE 配网、存储页、工具子页、中继查询无结果与结果列表、弹窗、Bottom Sheet 以及设备和群组筛选空态。
 - 复杂度主要集中在 `UdpRadioClient`、`AppController` 和大型 Compose 页面。
 - README、项目概览、构建环境和服务端契约目前与代码匹配；后续结构变更需要同步刷新。
@@ -69,8 +69,6 @@
 
 - `AppController` 拆出的 reducer、协调器和退出清理。
 - 其余领域 DTO/Mapper 的异常字段、缺失字段和兼容字段。
-- `UdpRadioClient` 状态转换、超时、重连、乱序包与资源释放。
-- `RadioConnectionService` 缓冲、绑定/解绑和前台状态。
 - `RadioMessageStore` 迁移、事务、分页与并发访问。
 - 所有 Controller 的取消、旧响应丢弃和关闭后不回调。
 

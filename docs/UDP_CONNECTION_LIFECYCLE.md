@@ -6,6 +6,7 @@
 
 - `RadioSessionController` 负责节点发现、连接参数准备、频道路由和 Service Binder 生命周期，并向 UI 发布 `RadioConnectionPhase`。
 - `RadioConnectionService` 持有唯一 `UdpRadioClient`，Service 销毁时调用 `release` 完成最终清理。
+- `RadioServiceStatePolicy` 只计算各连接阶段的前台动作与通知标题，Android `Service` 保留实际的通知、前台类型和停止调用。
 - `UdpSessionStateContext` 串行持有 UDP 会话代次、目标配置、内部阶段、`RadioStatus` 和认证身份；`UdpConnectionStateMachine` 只计算状态转换。阶段包括断开、连接、认证、在线、等待重连、重连、错误和关闭。
 - 状态通知在上下文锁外由唯一发布者按序发送；阻塞或重入 listener 不会持有状态锁，也不会倒序覆盖新状态。
 - 每次新连接、重连调度、主动断开或关闭都会推进代次。Transport、调度任务和音频回调只有在代次仍匹配时才能更新连接状态。
@@ -28,6 +29,7 @@
 | 录音缓存 | `RadioAudioStore` | Android 实现使用文件缓存，JVM 测试可使用内存存储 |
 | 接收语音流与播放队列 | `IncomingVoiceAssembler` | 串行持有流状态、容量淘汰与超时结算，只向客户端返回有序播放/完成动作 |
 | CW 发送缓存 | `UdpRadioClient` | 在 `cwVoiceLock` 下更新，发射结束后一次性交接 |
+| 前台动作与通知标题 | `RadioServiceStatePolicy` | 连接、认证、在线和重连保持前台；断开时仅悬浮 PTT 可以继续保活 |
 
 ## 关闭顺序
 
@@ -54,7 +56,8 @@
 - `UdpSessionTaskCoordinatorTest` 使用 fake scheduler 验证 PTT 超时替换、重连保留条件、取消与最终关闭。
 - `UdpPttCoordinatorTest` 使用 fake Audio、Clock、Scheduler 和回调验证捕获拒绝、成功包缓存、超时替换、尾音结算与取消后旧任务丢弃。
 - `IncomingVoiceAssemblerTest` 验证单活动流、待播积压、动作顺序、容量淘汰、时间戳回退、身份归一化和缓存上限。
-- `UdpRadioClientPttTest` 组合 fake Transport、Scheduler、Clock、Audio 和 Store，验证完整认证后的 PTT 发包、本地消息结算、捕获拒绝、陈旧错误丢弃、接收语音播放/结算和幂等释放。
+- `UdpRadioClientPttTest` 组合 fake Transport、Scheduler、Clock、Audio 和 Store，验证完整认证后的 PTT 发包、本地消息结算、捕获拒绝、陈旧错误丢弃、接收语音播放/结算、在线接收异常后的重连登记和幂等释放。
+- `RadioMessageBufferTest`、`RadioMessageDispatcherTest` 与 `RadioServiceStatePolicyTest` 验证 Service 待绑定消息容量、绑定/解绑投递、各连接阶段前台动作及通知标题优先级。
 - `RadioReconnectPolicyTest` 验证服务端旧会话过期前的安全重试间隔。
 
 真实 Socket 中断、弱网乱序、前后台切换和音频资源释放仍需仪器测试或真机回归。
