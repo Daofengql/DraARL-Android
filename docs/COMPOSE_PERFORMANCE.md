@@ -100,8 +100,18 @@ Compose compiler 总量从 889 个 Composable、881 个可重启和 600 个可�
 `stable`，总计 900 个 Composable、892 个可重启、611 个可跳过，已知稳定参数为 13,323 个。稳定性标记只
 约束重组跳过条件，不替代真机 Layout Inspector 对运行时重组次数和帧时间的验证。
 
+## 群组名称索引边界
+
+群组在线人数和总人数会周期刷新，但 PTT 页面根作用域与连接面板只需要群组 ID、名称和是否存在可选群组。原实现以
+完整 `Group` 列表作为 `remember` key，计数变化会重新创建名称索引并使相关作用域失效。
+
+现在两个作用域都通过带 `structuralEqualityPolicy()` 的 `derivedStateOf` 读取 `id -> name` 映射。在线人数和总人数
+变化时映射结构保持相等，不再向下游发布新值；名称或群组集合变化时仍会正常更新。群组选择和接收路由弹窗只在显示时
+读取完整列表，因此不牺牲弹窗中的实时计数。JVM 用例覆盖“仅计数变化时索引相等、名称变化时索引变化”，强制全量编译
+报告仍为 900 个 Composable、892 个可重启、611 个可跳过，`RadioScreen` 与 `ConnectionPanel` 均保持可跳过。
+
 ## 验证边界
 
-本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。当前没有连接 Android 设备，因此尚未使用 Layout
-Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；其余页面的细粒度订阅和真机运行时证据仍由
+本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。本轮本地模拟器只执行消息缓存仪器测试，尚未使用真机
+Layout Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；其余页面的细粒度订阅和真机运行时证据仍由
 `TODO.md` 跟踪。
