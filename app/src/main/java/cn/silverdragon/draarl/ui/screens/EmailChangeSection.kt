@@ -142,12 +142,12 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
             )
         }
 
-        if (controller.publicAuth.error.isNotBlank()) {
-            AuthErrorNotice(controller.publicAuth.error)
-        }
-        CommandButton(
-            label = "确认修改",
-            onClick = {
+        EmailChangeSubmission(
+            error = controller.publicAuth.error,
+            busy = controller.profile.busy,
+            enabled = newSessionId.isNotBlank() && newCode.isNotBlank() &&
+                (!verifyCurrentEmail || oldCode.isNotBlank()),
+            onSubmit = {
                 controller.profile.changeEmail(
                     oldSessionId = oldSessionId,
                     oldCode = oldCode,
@@ -155,10 +155,20 @@ internal fun ChangeEmailSection(controller: AppController, onDone: () -> Unit) {
                     newCode = newCode,
                     onSuccess = onDone
                 )
-            },
-            enabled = !controller.profile.busy && newSessionId.isNotBlank() && newCode.isNotBlank() &&
-                (!verifyCurrentEmail || oldCode.isNotBlank()),
-            loading = controller.profile.busy,
+            }
+        )
+    }
+}
+
+@Composable
+internal fun EmailChangeSubmission(error: String, busy: Boolean, enabled: Boolean, onSubmit: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (error.isNotBlank()) AuthErrorNotice(error)
+        CommandButton(
+            label = "确认修改",
+            onClick = onSubmit,
+            enabled = enabled && !busy,
+            loading = busy,
             style = CommandStyle.PRIMARY,
             modifier = Modifier.fillMaxWidth()
         )

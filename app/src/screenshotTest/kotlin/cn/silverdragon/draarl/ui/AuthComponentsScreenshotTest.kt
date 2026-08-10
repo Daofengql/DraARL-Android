@@ -16,6 +16,7 @@ import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.screens.AuthErrorNotice
 import cn.silverdragon.draarl.ui.screens.ChangePasswordContent
+import cn.silverdragon.draarl.ui.screens.EmailChangeSubmission
 import cn.silverdragon.draarl.ui.screens.PasswordResetComplete
 import cn.silverdragon.draarl.ui.screens.RegistrationSuccess
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
@@ -93,6 +94,30 @@ fun PasswordResetSuccessDarkLargeTextBaseline() {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.padding(24.dp)) {
                 PasswordResetComplete(onLogin = {})
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "Email Change Failure Light 2x Text",
+    widthDp = 320,
+    heightDp = 360,
+    fontScale = 2f,
+    showBackground = true
+)
+@Composable
+fun EmailChangeFailureLightLargeTextBaseline() {
+    DraarlTheme(darkTheme = false) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.padding(24.dp)) {
+                EmailChangeSubmission(
+                    error = "当前邮箱验证码已失效，请重新获取后再确认修改。",
+                    busy = false,
+                    enabled = true,
+                    onSubmit = {}
+                )
             }
         }
     }
