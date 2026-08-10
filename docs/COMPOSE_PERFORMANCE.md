@@ -110,8 +110,21 @@ Compose compiler 总量从 889 个 Composable、881 个可重启和 600 个可�
 读取完整列表，因此不牺牲弹窗中的实时计数。JVM 用例覆盖“仅计数变化时索引相等、名称变化时索引变化”，强制全量编译
 报告仍为 900 个 Composable、892 个可重启、611 个可跳过，`RadioScreen` 与 `ConnectionPanel` 均保持可跳过。
 
+## 应用路由会话状态边界
+
+改造前，`DraarlAppContent` 直接读取完整 `SessionUiState`。登录忙碌、错误、当前用户或资料更新都会使应用入口
+路由作用域失效，尽管路由只由初始化和认证状态决定。
+
+改造后，入口通过带 `structuralEqualityPolicy()` 的 `derivedStateOf` 只发布不可变 `SessionGateState`，其中仅保留
+`initializing` 和 `authenticated`。其他会话字段变化时派生值保持结构相等，不会使加载页、登录页或已认证应用之间的
+路由判断失效；初始化和认证状态变化仍会正常切换页面。3 个 JVM 用例覆盖投影值、两个路由字段以及 Compose Snapshot
+观察者不会被非路由字段更新失效的边界。
+
+本批同时为 BLE 设备选择空态增加了一个生产预览入口。强制全量编译后的最终报告为 902 个 Composable、894 个可重启、
+613 个可跳过，已知稳定参数为 13,332 个；`SessionGateState` 被识别为稳定类型。
+
 ## 验证边界
 
-本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。本轮本地模拟器只执行消息缓存仪器测试，尚未使用真机
-Layout Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间；其余页面的细粒度订阅和真机运行时证据仍由
-`TODO.md` 跟踪。
+本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。本地 Android 17（API 37.1）模拟器已执行消息缓存和
+大字体弹窗仪器测试；尚未使用真机 Layout Inspector 验证 PTT 收发期间的实际重组次数，也未记录帧时间。其余页面的
+细粒度订阅和真机运行时证据仍由 `TODO.md` 跟踪。

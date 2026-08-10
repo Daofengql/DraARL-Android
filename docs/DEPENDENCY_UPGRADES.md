@@ -50,11 +50,13 @@ Compose UI Test 在该版本中弃用 `androidx.compose.ui.test.junit4.createCom
 | 依赖 | 升级前 | 当前 | Maven 最新稳定版 |
 | --- | --- | --- | --- |
 | `androidx.test.ext:junit` | 1.1.5 | 1.3.0 | 1.3.0 |
-| `androidx.test.espresso:espresso-core` | 3.5.1（直接声明） | 删除直接声明 | 3.7.0 |
+| `androidx.test.espresso:espresso-core` | 3.5.1（直接声明） | 3.7.0（测试运行时兼容固定） | 3.7.0 |
 
-仪器测试直接使用 AndroidX JUnit runner 和 Compose UI Test，没有任何 `androidx.test.espresso` API 引用。
-删除显式 Espresso 后，依赖分析确认 `ui-test-junit4` 会传递解析其所需的 Espresso Core；AndroidTest APK 和完整
-门禁继续通过，因此不再由应用版本目录人为覆盖该内部实现依赖。
+生产和仪器测试源码虽然没有直接调用 Espresso API，但 Compose UI Test 1.11.4 会传递请求 Espresso 3.5.0。
+该版本在本地 Android 17（API 37.1）模拟器启动 Compose 测试时，于执行断言前因
+`InputManager.getInstance()` 不再存在而抛出 `NoSuchMethodException`。因此测试运行时显式固定
+`espresso-core` 3.7.0；Gradle 冲突解析同时将 `espresso-core` 和 `espresso-idling-resource` 从 3.5.0 提升到
+3.7.0。升级后 `DraarlDialogLargeFontTest` 的 2 个用例均在同一模拟器通过。
 
 ## Baseline Profile 与基准测试
 
