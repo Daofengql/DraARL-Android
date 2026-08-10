@@ -90,6 +90,16 @@ Compose compiler 总量从 889 个 Composable、881 个可重启和 600 个可�
 未播放数量。消息列表继续使用消息 ID 作为稳定 key；与当前视图无关的消息控制器字段不会替换页面根作用域使用的派生值。
 本次没有增加 Composable 层级，编译器报告仍为 900 个 Composable、892 个可重启和 611 个可跳过。
 
+## 内容快照稳定性
+
+`DevicesContentState`、`GroupsContentState` 和 `RelaySearchContentState` 都只包含只读页面快照，现已显式标记
+为 `@Immutable`。设备、群组和中继内容层的状态参数因此被 Compose 编译器识别为稳定，列表仍使用 ID 作为
+稳定 key；过滤结果和分组映射继续由 `remember` 按输入快照复用。
+
+本地强制编译报告（`compileDebugKotlin -PenableComposeCompilerReports=true --rerun-tasks`）确认三个状态类为
+`stable`，总计 900 个 Composable、892 个可重启、611 个可跳过，已知稳定参数为 13,323 个。稳定性标记只
+约束重组跳过条件，不替代真机 Layout Inspector 对运行时重组次数和帧时间的验证。
+
 ## 验证边界
 
 本批已通过 Debug Kotlin 编译和 Compose compiler 报告对比。当前没有连接 Android 设备，因此尚未使用 Layout

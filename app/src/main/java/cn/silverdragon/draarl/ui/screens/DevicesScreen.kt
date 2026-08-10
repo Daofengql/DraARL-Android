@@ -53,6 +53,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -97,6 +98,7 @@ import cn.silverdragon.draarl.ui.theme.dataTypography
 import java.math.BigDecimal
 import java.math.RoundingMode
 
+@Immutable
 internal data class DevicesContentState(
     val devices: List<Device>,
     val groups: List<Group>,

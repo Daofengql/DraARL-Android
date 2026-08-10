@@ -9,8 +9,8 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 193 | 28,491 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 74 | 6,502 | 295 个测试用例 |
+| 生产 Kotlin | 193 | 28,497 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 75 | 6,675 | 298 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 139 | 主要覆盖底部导航和 SQLite；消息缓存已增加代次、分页和播放标记边界 |
 | Compose 截图测试 Kotlin | 6 | 1,193 | 40 张壳层、页面、状态和组件参考图 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
@@ -90,7 +90,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 电台消息缓存、最新页同步、历史游标、实时去重、已播放状态和资料预加载已集中到 `RadioMessageController`，并由 7 个 JVM 用例覆盖失败与上下文切换竞态。
 - 电台节点、连接、路由和 Service Binder 已集中到 `RadioSessionController`，并由 8 个 JVM 用例覆盖路由恢复、审核限制、连接参数、服务重连和账户切换竞态。
 - 登录、持久会话恢复、用户更新、会话失效和退出清理已集中到 `SessionController`，并由 9 个 JVM 用例覆盖失败、远端失效和退出竞态。
-- 设备、群组、资料、公共认证和工具 Controller 已移除各自的 `Executor`、`Handler`、原子关闭标记和代次模板，统一通过 `ControllerTaskRunner` 管理 loading、IO 调度、取消和主 scope 回投；工具缓存读写也已移出主线程，群组加入与退出不再依赖 `AppController` 的通用线程池。12 个 JVM 用例覆盖 dispatcher、迟到结果、关闭、替换操作、验证码替换、流程取消、独立任务槽、串行缓存写入和群组成员关系操作。
+- 设备、群组、资料、公共认证和工具 Controller 已移除各自的 `Executor`、`Handler`、原子关闭标记和代次模板，统一通过 `ControllerTaskRunner` 管理 loading、IO 调度、取消和主 scope 回投；工具缓存读写也已移出主线程，群组加入与退出不再依赖 `AppController` 的通用线程池。新增设备 Controller 的重置/关闭迟到结果用例，以及并行 IO 调度器下的串行队列用例，继续覆盖 dispatcher、迟到结果、关闭、替换操作、验证码替换、流程取消、独立任务槽、串行缓存写入和群组成员关系操作。
 - 全量应用数据刷新已移除 `CompletableFuture` 与共享 Executor，六路请求在注入的 IO dispatcher 上并行执行并保留逐项 fallback；2 个 JVM 用例覆盖单项失败和并行启动，`RefreshCoordinator` 的 2 个用例继续覆盖合并刷新与旧结果丢弃。
 - 仪表盘缓存读写已从 `AppController` 主线程迁到按账户隔离的生命周期任务；3 个 JVM 用例覆盖 IO dispatcher、网络新快照优先级和账户切换时的迟到缓存。
 - 群组计数和当前频道在线设备同步已移除原子 busy/pending/generation 模板，改由 `ControllerTaskRunner` 与 `RefreshCoordinator` 组合管理取消和 trailing refresh；账户或频道上下文变化后不再接受旧响应。

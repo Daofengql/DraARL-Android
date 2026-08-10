@@ -14,6 +14,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ internal fun RelaySearchScreen(tools: ToolsController, onBack: () -> Unit) {
     )
 }
 
+@Immutable
 internal data class RelaySearchContentState(
     val location: String,
     val error: String = "",

@@ -1,5 +1,6 @@
 package cn.silverdragon.draarl.concurrency
 
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -147,8 +148,40 @@ class ControllerTaskRunnerTest {
         }
     }
 
+    @Test
+    fun enqueueSerializesBlockingOperationsEvenOnParallelIoDispatcher() = runBlocking {
+        val firstStarted = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val order = CopyOnWriteArrayList<String>()
+        val fixture = fixture(this) { }
+        try {
+            fixture.runner.enqueue(operation = {
+                firstStarted.countDown()
+                order += "first"
+                awaitIgnoringInterruption(releaseFirst)
+                order += "first-finished"
+            })
+            fixture.runner.enqueue(operation = {
+                secondStarted.countDown()
+                order += "second"
+            })
+            awaitCondition { firstStarted.count == 0L }
+            assertFalse(secondStarted.await(100, TimeUnit.MILLISECONDS))
+
+            releaseFirst.countDown()
+            awaitCondition { secondStarted.count == 0L }
+            awaitCondition { order.size == 3 }
+
+            assertEquals(listOf("first", "first-finished", "second"), order)
+        } finally {
+            releaseFirst.countDown()
+            fixture.close()
+        }
+    }
+
     private fun fixture(scope: kotlinx.coroutines.CoroutineScope, onRunningChanged: (Boolean) -> Unit): Fixture {
-        val dispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val dispatcher = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
         return Fixture(ControllerTaskRunner(scope, dispatcher, onRunningChanged), dispatcher)
     }
 
