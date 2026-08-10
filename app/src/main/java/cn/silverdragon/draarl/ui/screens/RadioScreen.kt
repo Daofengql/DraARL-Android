@@ -177,13 +177,25 @@ fun RadioScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val locationProvider = remember(context) { CurrentLocationProvider(context) }
-    val messageState = controller.messageController.uiState
+    val messages by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { controller.messageController.uiState.messages }
+    }
+    val historyLoading by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { controller.messageController.uiState.historyLoading }
+    }
+    val syncError by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { controller.messageController.uiState.syncError }
+    }
+    val publicProfiles by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { controller.messageController.uiState.publicProfiles }
+    }
+    val unplayedVoiceCount by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) { controller.messageController.uiState.unplayedVoiceCount }
+    }
     val selectedGroupId by remember(controller) {
         derivedStateOf(structuralEqualityPolicy()) { controller.radioSession.uiState.selectedGroupId }
     }
-    val messages = messageState.messages
     val groupNames = remember(controller.groups) { groupNamesById(controller.groups) }
-    val unplayedVoiceCount = messageState.unplayedVoiceCount
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0)
     )
@@ -268,8 +280,8 @@ fun RadioScreen(
         }
     }
     AutoPlayMessageScrollEffect(controller, selectedGroupId, messages, listState)
-    LaunchedEffect(messages.firstOrNull()?.id, messages.size, messageState.historyLoading) {
-        if (messageState.historyLoading || historyAnchorId.isBlank()) return@LaunchedEffect
+    LaunchedEffect(messages.firstOrNull()?.id, messages.size, historyLoading) {
+        if (historyLoading || historyAnchorId.isBlank()) return@LaunchedEffect
         val anchorIndex = messages.indexOfFirst { it.id == historyAnchorId }
         if (anchorIndex >= 0) {
             listState.scrollToItem(anchorIndex, historyAnchorOffset)
@@ -350,7 +362,7 @@ fun RadioScreen(
                     Column(Modifier.fillMaxSize()) {
                         if (messages.isEmpty()) {
                             RadioMessageEmptyFeedback(
-                                hasSyncError = messageState.syncError.isNotBlank(),
+                                hasSyncError = syncError.isNotBlank(),
                                 modifier = Modifier.weight(1f)
                             )
                         } else {
@@ -366,11 +378,11 @@ fun RadioScreen(
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    if (messageState.historyLoading || messageState.syncError.isNotBlank()) {
+                                    if (historyLoading || syncError.isNotBlank()) {
                                         item(key = "radio-history-status") {
                                             RadioHistoryFeedback(
-                                                loading = messageState.historyLoading,
-                                                hasSyncError = messageState.syncError.isNotBlank(),
+                                                loading = historyLoading,
+                                                hasSyncError = syncError.isNotBlank(),
                                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                                             )
                                         }
@@ -384,7 +396,7 @@ fun RadioScreen(
                                                 profile = if (message.mine) {
                                                     controller.session.uiState.user
                                                 } else {
-                                                    messageState.publicProfiles[message.senderUsername.lowercase()]
+                                                    publicProfiles[message.senderUsername.lowercase()]
                                                 },
                                                 sourceGroupName = groupNames[message.groupId].orEmpty(),
                                                 showTimeDivider = previousTimestamp == null ||

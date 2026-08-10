@@ -9,7 +9,7 @@
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 191 | 28,453 | 不含空行、生成目录和第三方源码 |
+| 生产 Kotlin | 191 | 28,463 | 不含空行、生成目录和第三方源码 |
 | JVM 单元测试 Kotlin | 72 | 6,408 | 289 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 94 | 主要覆盖底部导航和 SQLite |
 | Compose 截图测试 Kotlin | 6 | 1,175 | 39 张壳层、页面、状态和组件参考图 |
@@ -82,7 +82,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - AndroidX Test JUnit 已从 1.1.5 升至最新稳定版 1.3.0；源码没有直接使用 Espresso API，因此删除了显式 Espresso 依赖，由 Compose UI Test 自行管理其测试运行时依赖。各依赖组、SDK 限制和验证记录集中在 `docs/DEPENDENCY_UPGRADES.md`。
 - 音频收发电平已从连接面板状态中移出，由独立可跳过的 Composable 读取；电平动画值在 Canvas 绘制阶段读取，不再让动画帧触发连接面板重组。编译器指标、复现命令和真机验证缺口记录在 `docs/COMPOSE_PERFORMANCE.md`。
 - 应用更新下载进度已从 `AppUpdateUiState` 拆为独立浮点状态；系统设置页和全局更新弹窗都通过稳定 provider 延后读取进度，进度回调不再替换状态、消息和更新信息共同使用的状态对象。
-- 消息播放 ID 已从 `RadioScreen` 根作用域和 `MessageItemState` 中移出；自动连播滚动使用独立 effect，每个可见消息项通过带结构相等策略的派生状态订阅播放 ID，未匹配项不会因其他消息开始或停止播放而重组。
+- 消息播放 ID 已从 `RadioScreen` 根作用域和 `MessageItemState` 中移出；自动连播滚动使用独立 effect，每个可见消息项通过带结构相等策略的派生状态订阅播放 ID，未匹配项不会因其他消息开始或停止播放而重组。消息列表、历史加载、同步错误、公开资料和未播放计数也分别订阅 `RadioMessageUiState` 字段，资料或同步状态变化不会替换消息列表使用的派生值。
 - `RadioScreen` 根作用域不再读取完整电台会话状态；连接副作用、PTT/RX/TX 可用性、在线设备和连接面板分别使用带结构相等策略的独立作用域，三个选择弹窗只在显示时订阅实时会话状态。
 - 群组 DTO 优先解析规范的 `owner_id` / `owner_callsign`，同时兼容服务端历史 `ower_*` 字段；3 个 JVM 用例覆盖规范字段、历史字段和优先级。
 - 设置状态、持久化、音频偏好同步和缓存清理已集中到 `SettingsController`；设置入口、系统设置与存储页面不再接收完整 `AppController`。
