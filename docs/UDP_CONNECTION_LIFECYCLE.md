@@ -25,7 +25,7 @@
 | 心跳、服务器静默监测和周期语音清理 tick | `UdpSessionMonitor` | 独占收发时间戳与两个周期任务，通过 `RadioClock` 做确定性时间判断 |
 | PTT 录音、超时、尾音与发送缓存 | `UdpPttCoordinator` | 仅成功发出的 Opus 包进入本地录音，停止和取消均为幂等操作 |
 | 重连与一次性任务句柄 | `UdpSessionTaskCoordinator` | 通过可注入的 `RadioScheduler` 创建，按任务类型统一替换和取消 |
-| 录音、实时播放和录音回放 | `RadioAudioCapture` / `RadioAudioPlayback` | Android 实现委托 `OpusAudioEngine`；连接替换、重连、断开和释放均先停止活动音频 |
+| 录音、实时播放和录音回放 | `RadioAudioCapture` / `RadioAudioPlayback` | Android 实现委托 `OpusAudioEngine`；连接替换、重连、断开和释放均先停止活动音频；历史录音下载 Job 在新回放、停止回放和引擎释放时取消 |
 | 录音缓存 | `RadioAudioStore` | Android 实现使用文件缓存，JVM 测试可使用内存存储 |
 | 接收语音流与播放队列 | `IncomingVoiceAssembler` | 串行持有流状态、容量淘汰与超时结算，只向客户端返回有序播放/完成动作 |
 | CW 发送缓存 | `UdpRadioClient` | 在 `cwVoiceLock` 下更新，发射结束后一次性交接 |
@@ -57,6 +57,7 @@
 - `UdpPttCoordinatorTest` 使用 fake Audio、Clock、Scheduler 和回调验证捕获拒绝、成功包缓存、超时替换、尾音结算与取消后旧任务丢弃。
 - `IncomingVoiceAssemblerTest` 验证单活动流、待播积压、动作顺序、容量淘汰、时间戳回退、身份归一化和缓存上限。
 - `UdpRadioClientPttTest` 组合 fake Transport、Scheduler、Clock、Audio 和 Store，验证完整认证后的 PTT 发包、本地消息结算、捕获拒绝、陈旧错误丢弃、接收语音播放/结算、在线接收异常后的重连登记和幂等释放。
+- `OpusAudioEngineLifecycleTest` 验证引擎重复释放、释放后的迟到下载，以及停止回放会实际中断历史录音下载且不触发回调或缓存写入。
 - `RadioMessageBufferTest`、`RadioMessageDispatcherTest` 与 `RadioServiceStatePolicyTest` 验证 Service 待绑定消息容量、绑定/解绑投递、各连接阶段前台动作及通知标题优先级。
 - `RadioReconnectPolicyTest` 验证服务端旧会话过期前的安全重试间隔。
 

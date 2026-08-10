@@ -26,16 +26,22 @@ Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同�
 
 优化后 APK 为 30.54 MiB，SHA-256 为 `0284A507FEC9FC26B5994413341B17FCA6BA23352D3107FDBEBCB4B33131D3D2`。Native 库占主要剩余体积，其中高德地图约 19.07 MiB，RNNoise 约 5.72 MiB。
 
-当前提交基线 `2c9c964` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,078,999 B（30.59 MiB），SHA-256 为
-`F0934FED25630B2E237DBE95FC67A0FBACC4CB312A6A599B25AE186010618EBA`。与历史优化基线的体积差异来自后续业务代码和编译后的 Baseline Profile，未改变 R8/资源收缩配置；APK 内的版本控制元数据也已核对为该提交。
+当前代码基线 `e5bd081` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,078,999 B（30.59 MiB），SHA-256 为
+`52893C3AD19B84E86D734D6072F393ED74BC02D8FEA26706C75E94739B9FC3C3`。与历史优化基线的体积差异来自后续业务代码和编译后的 Baseline Profile，未改变 R8/资源收缩配置。
 
 ## 静态验收
 
-- `assembleRelease` 与 Release `lintVital` 通过，生成 `mapping.txt`、`seeds.txt`、`usage.txt` 和 `resources.txt`。
-- 最终 APK 只包含一个 `classes.dex`，并保留 `libAMapSDK_MAP_v10_0_600.so`、`libdraarl_rnnoise.so` 与 AndroidX path native 库。
+- `assembleRelease` 与 Release `lintVital` 通过，生成 `mapping.txt`、`seeds.txt`、`usage.txt`、`resources.txt` 和 `configuration.txt`。
+- 最终 APK 包含 `classes.dex` 和 `classes2.dex`，并保留 `libAMapSDK_MAP_v10_0_600.so`、`libdraarl_rnnoise.so` 与 AndroidX path native 库。
 - R8 映射确认 `RnnoiseNative`、`MapView` 和 `com.autonavi` 内部类未重命名；seeds 确认四个 RNNoise native 方法均被保留。
 - 最终 Manifest 保留 `DraarlApplication`、`MainActivity`、`RadioConnectionService`、`AprsService` 和 `FileProvider` 入口。
 - `baseline-prof.txt` 与 `startup-prof.txt` 各包含 7,353 条本地采集规则；最终 APK 包含编译后的 `assets/dexopt/baseline.prof` 和 `baseline.profm`。
+
+`:app:verifyReleaseArtifact` 依赖 `assembleRelease`，将上述易回归的静态边界收敛为本地构建门禁：APK 不得超过
+36 MiB，必须包含 Manifest、至少一个 DEX、编译后的 Baseline Profile、高德地图与 RNNoise arm64 native 库，且不得
+混入其他 ABI；五份 R8 报告必须存在且非空，mapping 必须保留 RNNoise owner 类和高德 `MapView`，seeds 必须包含四个
+RNNoise JNI 方法；两份源 Profile 还必须各有至少 1,000 条非空规则。该任务检查 Manifest 文件存在，但其中的组件入口
+仍由上面的静态检查和 Release 真机回归确认。
 
 ## Baseline Profile
 
@@ -51,6 +57,7 @@ AndroidX 会以 `EMULATOR` 错误拒绝模拟器指标，本轮保留该保护�
 
 ```powershell
 .\gradlew.bat assembleRelease
+.\gradlew.bat :app:verifyReleaseArtifact
 .\gradlew.bat :app:generateReleaseBaselineProfile
 .\gradlew.bat :baselineprofile:connectedBenchmarkReleaseAndroidTest
 ```

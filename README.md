@@ -51,6 +51,7 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 .\gradlew.bat spotlessCheck detektDebug
 .\gradlew.bat testDebugUnitTest validateDebugScreenshotTest lintDebug assembleDebug assembleDebugAndroidTest
 .\gradlew.bat assembleRelease
+.\gradlew.bat :app:verifyReleaseArtifact
 .\gradlew.bat :app:generateReleaseBaselineProfile
 .\gradlew.bat :baselineprofile:connectedBenchmarkReleaseAndroidTest
 ```
