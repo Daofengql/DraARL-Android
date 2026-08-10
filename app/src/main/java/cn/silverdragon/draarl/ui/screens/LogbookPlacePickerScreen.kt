@@ -215,7 +215,7 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
                 } else if (results.isNotEmpty()) {
                     Surface(shape = MaterialTheme.shapes.small, tonalElevation = 5.dp) {
                         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp)) {
-                            items(results, key = { "${it.latitude},${it.longitude}" }) { place ->
+                            items(results, key = AmapPlace::stableKey) { place ->
                                 Column(
                                     modifier = Modifier.fillMaxWidth().clickable {
                                         reverseGeneration++

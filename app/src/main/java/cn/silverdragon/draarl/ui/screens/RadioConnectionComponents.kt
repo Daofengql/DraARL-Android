@@ -99,8 +99,13 @@ internal fun ConnectionPanel(controller: AppController, onToggleDevices: () -> U
 
 @Composable
 private fun ControllerAccessPointDialog(controller: AppController, onDismiss: () -> Unit) {
+    val state by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            AccessPointDialogState.from(controller.radioSession.uiState)
+        }
+    }
     AccessPointDialog(
-        state = controller.radioSession.uiState,
+        state = state,
         onSelect = controller.radioSession::selectAccessPoint,
         onDismiss = onDismiss
     )
@@ -118,9 +123,14 @@ private fun ControllerGroupDialog(controller: AppController, onDismiss: () -> Un
 
 @Composable
 private fun ControllerRoutingDialog(controller: AppController, onDismiss: () -> Unit) {
+    val state by remember(controller) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            RoutingDialogState.from(controller.radioSession.uiState)
+        }
+    }
     RoutingDialog(
         groups = controller.groups,
-        state = controller.radioSession.uiState,
+        state = state,
         onApply = controller.radioSession::updateRouting,
         onDismiss = onDismiss
     )

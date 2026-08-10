@@ -11,11 +11,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 data class AmapPlace(
+    val id: String = "",
     val name: String,
     val address: String,
     val latitude: Double,
-    val longitude: Double,
-)
+    val longitude: Double
+) {
+    val stableKey: String
+        get() = if (id.isNotBlank()) {
+            "poi:$id"
+        } else {
+            "fallback:${name.length}:$name:${address.length}:$address:${latitude.toBits()}:${longitude.toBits()}"
+        }
+}
 
 class AmapPlaceService(context: Context) {
     private val appContext = context.applicationContext
@@ -25,15 +33,16 @@ class AmapPlaceService(context: Context) {
             RegeocodeQuery(
                 LatLonPoint(latitude, longitude),
                 REVERSE_GEOCODE_RADIUS_METERS,
-                GeocodeSearch.AMAP,
-            ).apply { extensions = GeocodeSearch.EXTENSIONS_ALL },
+                GeocodeSearch.AMAP
+            ).apply { extensions = GeocodeSearch.EXTENSIONS_ALL }
         )
         val nearest = result.pois.orEmpty().minByOrNull { it.distance }
         AmapPlace(
+            id = nearest?.poiId.orEmpty(),
             name = nearest?.displayName().orEmpty().ifBlank { result.formatAddress.orEmpty() },
             address = result.formatAddress.orEmpty(),
             latitude = latitude,
-            longitude = longitude,
+            longitude = longitude
         )
     }
 
@@ -52,12 +61,13 @@ class AmapPlaceService(context: Context) {
             PoiSearchV2(appContext, query).searchPOI().pois.orEmpty().mapNotNull { poi ->
                 val point = poi.latLonPoint ?: return@mapNotNull null
                 AmapPlace(
+                    id = poi.poiId.orEmpty(),
                     name = poi.displayName(),
                     address = poi.snippet.orEmpty(),
                     latitude = point.latitude,
-                    longitude = point.longitude,
+                    longitude = point.longitude
                 )
-            }
+            }.distinctBy(AmapPlace::stableKey)
         }
 
     private fun PoiItem.displayName(): String {

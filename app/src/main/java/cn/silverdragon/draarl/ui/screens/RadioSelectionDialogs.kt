@@ -32,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.data.AccessPoint
 import cn.silverdragon.draarl.data.Group
-import cn.silverdragon.draarl.radio.session.RadioSessionUiState
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
 import cn.silverdragon.draarl.ui.components.DraarlDialog
@@ -40,9 +39,9 @@ import cn.silverdragon.draarl.ui.state.availableRadioGroups
 import cn.silverdragon.draarl.ui.theme.appColors
 
 @Composable
-internal fun AccessPointDialog(state: RadioSessionUiState, onSelect: (AccessPoint) -> Unit, onDismiss: () -> Unit) {
-    val probesByAccessPointId = remember(state.accessPointProbes) {
-        state.accessPointProbes.associateBy { it.accessPoint.id }
+internal fun AccessPointDialog(state: AccessPointDialogState, onSelect: (AccessPoint) -> Unit, onDismiss: () -> Unit) {
+    val probesByAccessPointId = remember(state.probes) {
+        state.probes.associateBy { it.accessPoint.id }
     }
     DraarlDialog(
         title = "选择边缘节点",
@@ -51,7 +50,7 @@ internal fun AccessPointDialog(state: RadioSessionUiState, onSelect: (AccessPoin
     ) {
         LazyColumn(Modifier.heightIn(max = 420.dp)) {
             items(state.accessPoints, key = AccessPoint::id) { point ->
-                val selected = point.id == state.selectedAccessPoint?.id
+                val selected = point.id == state.selectedAccessPointId
                 val probe = probesByAccessPointId[point.id]
                 Row(
                     modifier = Modifier
@@ -136,13 +135,13 @@ internal fun GroupDialog(groups: List<Group>, selectedGroupId: Int, onSelect: (G
 @Composable
 internal fun RoutingDialog(
     groups: List<Group>,
-    state: RadioSessionUiState,
+    state: RoutingDialogState,
     onApply: (Int, Collection<Int>) -> Unit,
     onDismiss: () -> Unit
 ) {
     val availableGroups = remember(groups) { availableRadioGroups(groups) }
-    val primaryGroupId = state.selectedGroupId
-    var rxGroupIds by remember(state.status.sessionId, primaryGroupId) {
+    val primaryGroupId = state.primaryGroupId
+    var rxGroupIds by remember(state.sessionId, primaryGroupId) {
         mutableStateOf(state.receiveGroupIds + primaryGroupId)
     }
     DraarlDialog(
@@ -155,7 +154,7 @@ internal fun RoutingDialog(
                 onApply(primaryGroupId, rxGroupIds)
                 onDismiss()
             },
-            enabled = state.status.connected && !state.routingUpdating && primaryGroupId > 0,
+            enabled = state.connected && !state.updating && primaryGroupId > 0,
             style = CommandStyle.PRIMARY
         )
     ) {

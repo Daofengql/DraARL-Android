@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.HorizontalDivider
@@ -79,13 +80,13 @@ private fun RegionChoiceDialog(
         dismissAction = DraarlAction("取消", onDismiss)
     ) {
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 440.dp).padding(horizontal = 18.dp)) {
-            items(options.size) { index ->
+            items(options, key = RegionOption::code) { option ->
                 Text(
-                    options[index].name,
-                    modifier = Modifier.fillMaxWidth().clickable { onSelect(options[index]) }.padding(vertical = 14.dp),
+                    option.name,
+                    modifier = Modifier.fillMaxWidth().clickable { onSelect(option) }.padding(vertical = 14.dp),
                     style = MaterialTheme.typography.bodyLarge
                 )
-                if (index != options.lastIndex) HorizontalDivider()
+                if (option != options.last()) HorizontalDivider()
             }
         }
     }
