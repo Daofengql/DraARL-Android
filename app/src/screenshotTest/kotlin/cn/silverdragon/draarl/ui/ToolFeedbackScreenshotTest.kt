@@ -50,6 +50,25 @@ fun ToolListErrorEmptyDarkBaseline() {
     )
 }
 
+@PreviewTest
+@Preview(
+    name = "Tool List No Results Dark Large Text",
+    widthDp = 360,
+    heightDp = 700,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun ToolListNoResultsDarkLargeTextBaseline() {
+    ToolFeedbackBaseline(
+        darkTheme = true,
+        state = RelaySearchContentState(
+            location = "浙江省 杭州市",
+            queriedLocation = "浙江省 杭州市"
+        )
+    )
+}
+
 @Composable
 private fun ToolFeedbackBaseline(darkTheme: Boolean, state: RelaySearchContentState) {
     DraarlTheme(darkTheme = darkTheme) {
