@@ -26,8 +26,8 @@ Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同�
 
 优化后 APK 为 30.54 MiB，SHA-256 为 `0284A507FEC9FC26B5994413341B17FCA6BA23352D3107FDBEBCB4B33131D3D2`。Native 库占主要剩余体积，其中高德地图约 19.07 MiB，RNNoise 约 5.72 MiB。
 
-当前提交基线 `db00d2e` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,062,557 B（30.58 MiB），SHA-256 为
-`9EA24B7BE895BDA2D196EC68AA427110240F00140305D1D2D1BD0FDCDACA5692`。与历史优化基线的体积差异来自后续业务与边界测试代码变化，未改变 R8/资源收缩配置；APK 内的版本控制元数据也已核对为该提交。
+当前提交基线 `2c9c964` 的静态回归构建同样通过 `assembleRelease`：APK 为 32,078,999 B（30.59 MiB），SHA-256 为
+`F0934FED25630B2E237DBE95FC67A0FBACC4CB312A6A599B25AE186010618EBA`。与历史优化基线的体积差异来自后续业务代码和编译后的 Baseline Profile，未改变 R8/资源收缩配置；APK 内的版本控制元数据也已核对为该提交。
 
 ## 静态验收
 
@@ -35,15 +35,28 @@ Release 使用 Android Gradle Plugin 9.3 的 `optimization.enable`，由 R8 同�
 - 最终 APK 只包含一个 `classes.dex`，并保留 `libAMapSDK_MAP_v10_0_600.so`、`libdraarl_rnnoise.so` 与 AndroidX path native 库。
 - R8 映射确认 `RnnoiseNative`、`MapView` 和 `com.autonavi` 内部类未重命名；seeds 确认四个 RNNoise native 方法均被保留。
 - 最终 Manifest 保留 `DraarlApplication`、`MainActivity`、`RadioConnectionService`、`AprsService` 和 `FileProvider` 入口。
+- `baseline-prof.txt` 与 `startup-prof.txt` 各包含 7,353 条本地采集规则；最终 APK 包含编译后的 `assets/dexopt/baseline.prof` 和 `baseline.profm`。
+
+## Baseline Profile
+
+测试专用 `baselineprofile` 模块通过 UIAutomator 覆盖冷启动、进入注册和返回登录页，不需要账号或服务端状态。
+`generateReleaseBaselineProfile` 已在 Pixel 10 Pro XL、Android 17（API 37.1、x86_64、16K 页）本地模拟器实际通过，
+并将规则写入 `app/src/release/generated/baselineProfiles`。API 37 首次安装可能显示 16K 兼容提示，生成器只在该系统
+弹窗存在时关闭它，不影响其他系统版本。
+
+`StartupBenchmark` 提供无编译与强制 Baseline Profile 两组各 5 次冷启动，对照记录启动时间、帧耗时和启动后内存。
+AndroidX 会以 `EMULATOR` 错误拒绝模拟器指标，本轮保留该保护；可复现性能数字必须在同一台物理设备上执行。
 
 复现命令：
 
 ```powershell
 .\gradlew.bat assembleRelease
+.\gradlew.bat :app:generateReleaseBaselineProfile
+.\gradlew.bat :baselineprofile:connectedBenchmarkReleaseAndroidTest
 ```
 
 APK 位于 `app/build/outputs/apk/release/app-release.apk`，R8 报告位于 `app/build/outputs/mapping/release`。
 
 ## 尚未覆盖
 
-本轮仅在本地模拟器执行消息缓存 SQLite 仪器套件，尚未执行 RNNoise、地图、应用内更新、前台服务、冷启动、首帧和运行内存的 Release 真机回归。项目也尚未生成覆盖 DraARL 关键流程的自定义 Baseline Profile；这两部分继续由 `TODO.md` 跟踪。
+本轮已在本地模拟器执行消息缓存 SQLite 仪器套件并生成未登录启动 Profile；尚未执行 RNNoise、地图、应用内更新、前台服务、冷启动、首帧和运行内存的 Release 真机回归。登录态恢复、PTT 和设备列表 Profile 路径也需要测试账号与物理设备，这些项目继续由 `TODO.md` 跟踪。

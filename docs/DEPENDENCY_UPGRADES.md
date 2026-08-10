@@ -56,8 +56,20 @@ Compose UI Test 在该版本中弃用 `androidx.compose.ui.test.junit4.createCom
 删除显式 Espresso 后，依赖分析确认 `ui-test-junit4` 会传递解析其所需的 Espresso Core；AndroidTest APK 和完整
 门禁继续通过，因此不再由应用版本目录人为覆盖该内部实现依赖。
 
+## Baseline Profile 与基准测试
+
+| 依赖 | 当前 | 用途 |
+| --- | --- | --- |
+| `androidx.baselineprofile` Gradle Plugin | 1.5.0-beta01 | 生成、合并并打包 Baseline / Startup Profile |
+| `androidx.benchmark:benchmark-macro-junit4` | 1.5.0-beta01 | 冷启动、帧耗时和内存对照 |
+| `androidx.test.uiautomator:uiautomator` | 2.4.0 | 驱动未登录启动与注册返回路径 |
+
+三项依赖只存在于测试专用 `baselineprofile` 模块；生产模块仅应用 Profile consumer 插件并读取生成规则。模块构建、
+API 37 模拟器 Profile 采集、Release 打包和 Spotless 已在本地通过。Macrobenchmark 保留 AndroidX 的物理设备保护，
+模拟器会以 `EMULATOR` 错误拒绝输出不可代表真实设备的性能数字。
+
 其余直接依赖均有明确所有权：生产源码直接使用 AndroidX、Compose、Coil、OkHttp、Concentus 和高德 API；
 `coil-network-okhttp` 提供头像网络加载运行时能力；测试依赖分别承载 JVM JSON、MockWebServer、Layoutlib 截图和
 Compose/SQLite 仪器测试。未发现可继续删除的直接依赖。
 
-四个版本组均使用独立提交和完整本地门禁验证；当前依赖来源、SDK 兼容限制和升级影响已可追踪。
+各版本组均使用独立提交和对应本地门禁验证；当前依赖来源、SDK 兼容限制和升级影响已可追踪。

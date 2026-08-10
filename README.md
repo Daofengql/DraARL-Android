@@ -21,7 +21,7 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 
 ## 工程结构
 
-项目是单 `app` 模块的 Kotlin + Jetpack Compose Android 应用：
+生产应用保持单 `app` 模块，另有测试专用的 `baselineprofile` 模块：
 
 - `app/src/main/java/cn/silverdragon/draarl/ui`：Compose 导航、页面和公共组件
 - `app/src/main/java/cn/silverdragon/draarl/data`：领域模型、本地状态、加密会话与缓存
@@ -32,6 +32,7 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 - `app/src/main/java/cn/silverdragon/draarl/aprs`：APRS 状态、加密配置、APRS-IS 客户端和后台上报服务
 - `app/src/main/java/cn/silverdragon/draarl/tools`、`maps`：原生工具、地图和定位能力
 - `app/src/main/cpp`：RNNoise 的 JNI/CMake 接入及第三方源码
+- `baselineprofile`：启动路径 Profile 采集，以及冷启动、帧耗时和内存的真机 Macrobenchmark
 
 当前规模、代码分布和维护重点见 [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)，自动截图范围与
 控件收敛规则见 [`docs/UI_VISUAL_BASELINE.md`](docs/UI_VISUAL_BASELINE.md)，实时电台的状态、资源所有权和
@@ -50,7 +51,13 @@ DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能�
 .\gradlew.bat spotlessCheck detektDebug
 .\gradlew.bat testDebugUnitTest validateDebugScreenshotTest lintDebug assembleDebug assembleDebugAndroidTest
 .\gradlew.bat assembleRelease
+.\gradlew.bat :app:generateReleaseBaselineProfile
+.\gradlew.bat :baselineprofile:connectedBenchmarkReleaseAndroidTest
 ```
+
+Profile 生成需要连接 API 28 或更高版本的设备/模拟器；Macrobenchmark 会拒绝模拟器指标，冷启动、帧耗时和内存
+对照必须连接物理设备执行。生成的规则位于 `app/src/release/generated/baselineProfiles`，Release APK 会将其编译到
+`assets/dexopt`。
 
 Spotless 只检查相对 `origin/main` 新增或修改的 Kotlin/Gradle 文件；Detekt 使用存量基线，并阻止新增的复杂方法、超长类、吞异常和无明确生命周期的通用线程池。GitHub Actions 对 `main` 和 Pull Request 执行同一组静态检查、截图验证、构建门禁和 Markdown 链接检查。
 

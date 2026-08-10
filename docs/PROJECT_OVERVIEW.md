@@ -5,14 +5,15 @@
 
 ## 规模结论
 
-这是一个中等规模、功能面较宽的单模块 Android 客户端。自研生产 Kotlin 约 2.86 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具；复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
+这是一个中等规模、功能面较宽的 Android 客户端。生产代码保持在单 `app` 模块，另有测试专用的 `baselineprofile` 模块；自研生产 Kotlin 约 2.87 万有效代码行，已经覆盖账号、设备、群组、实时通信、地图、APRS 和多种业余无线电工具。复杂度主要来自通信状态、音频生命周期、后台服务和硬件/系统权限，而不是 Gradle 模块数量。
 
 | 范围 | 文件数 | 代码行数 | 说明 |
 | --- | ---: | ---: | --- |
-| 生产 Kotlin | 195 | 28,651 | 不含空行、生成目录和第三方源码 |
-| JVM 单元测试 Kotlin | 87 | 7,846 | 338 个测试用例 |
+| 生产 Kotlin | 195 | 28,662 | 不含空行、生成目录和第三方源码 |
+| JVM 单元测试 Kotlin | 88 | 7,897 | 340 个测试用例 |
 | Android 仪器测试 Kotlin | 3 | 357 | 13 个用例覆盖底部导航和 SQLite；消息缓存已覆盖迁移、事务、代次、分页、裁剪、播放标记和并发写入边界 |
-| Compose 截图测试 Kotlin | 6 | 1,263 | 42 张壳层、页面、状态和组件参考图 |
+| Compose 截图测试 Kotlin | 6 | 1,296 | 43 张壳层、页面、状态和组件参考图 |
+| Baseline Profile / Macrobenchmark Kotlin | 2 | 98 | 1 个 Profile 生成器、2 个真机启动对照用例 |
 | 主资源 XML | 18 | 292 | Manifest、网络安全、主题等 |
 | 自研 C++ 接入 | 1 | 121 | RNNoise JNI/CMake 桥接 |
 | 第三方 RNNoise C/H | 32 | 281,091 | 约 30.2 MB，绝大部分为模型权重数据 |
@@ -39,15 +40,16 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 | 文件 | 行数 |
 | --- | ---: |
-| `ui/screens/DevicesScreen.kt` | 1,104 |
+| `ui/screens/DevicesScreen.kt` | 1,106 |
 | `radio/UdpRadioClient.kt` | 1,042 |
 | `AppController.kt` | 989 |
-| `ui/screens/GroupsScreen.kt` | 933 |
+| `ui/screens/GroupsScreen.kt` | 935 |
 | `ui/screens/LocationMapScreen.kt` | 720 |
 
 ## 架构边界
 
 - UI 使用 Jetpack Compose，一级导航固定为设备、群组、PTT、工具、我的。
+- `baselineprofile` 使用 AndroidX Baseline Profile 与 Macrobenchmark；未登录启动、进入注册和返回登录路径已在本地 API 37 模拟器生成规则，Release APK 会编译并打包 Profile，性能指标仍强制要求物理设备。
 - `AppController` 仍是跨功能状态协调中心；设备、群组、资料、工具、设置、APRS、电台消息、电台会话、应用更新和登录会话已下沉到各自 Controller，PTT 播放协调和导航仍集中于此。
 - `SessionController` 独占登录、持久会话恢复、当前用户和退出状态；`ApiSessionManager` 独占 Token 刷新、会话持久化和认证请求重试，旧登录、旧恢复和旧资料结果不会覆盖替换后的会话。
 - `AprsController` 独占按用户隔离的配置、手动发送状态和后台 Service 协调；设置页只接收不可变 `AprsUiState` 与事件回调。
@@ -70,7 +72,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 
 1. `DevicesScreen` 为 1,106 行，`UdpRadioClient` 为 1,042 行，`AppController` 为 989 行。UDP 状态、认证、Socket 传输、心跳监测、PTT 编排、接收语音组装、任务调度和音频设备边界已经独立，普通 Controller、全量刷新、缓存、节点探测和历史音频 IO 已建立结构化任务所有权；后续代码重点转向大型页面和 Compose 状态订阅。
 2. 自动化测试以 JVM 测试为主，仪器测试只有 3 个文件。消息缓存的 10 个 SQLite 用例已在本地 Android 17（API 37.1、16K 页）模拟器通过，覆盖迁移、事务回滚、权威窗口、代次、分页、裁剪、播放标记和并发写入；BLE、定位、前台服务、弱网重连、后台麦克风和系统权限仍需要真机覆盖。
-3. CI 已固定 Android SDK 36.1、NDK 28.2 和 CMake 3.22，并执行静态检查、截图验证与 Debug 构建门禁；Release 已启用 R8 与资源收缩并在本地完成未签名构建，地图运行验收仍依赖注入高德 Key，发布签名仍需发布环境显式配置。
+3. CI 已固定 Android SDK 36.1、NDK 28.2 和 CMake 3.22，并执行静态检查、截图验证与 Debug 构建门禁；Release 已启用 R8、资源收缩和 Baseline Profile 并在本地完成未签名构建，地图运行验收仍依赖注入高德 Key，发布签名仍需发布环境显式配置。
 4. Android 客户端依赖同仓库之外的 DraARL Server API 与 UDP 协议文档。服务端契约变更时，应同时检查 README 的“服务端契约”、`DraarlProtocol`、`ApiClient` 和更新清单校验。
 
 ## 文档适配状态
@@ -86,6 +88,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 消息播放 ID 已从 `RadioScreen` 根作用域和 `MessageItemState` 中移出；自动连播滚动使用独立 effect，每个可见消息项通过带结构相等策略的派生状态订阅播放 ID，未匹配项不会因其他消息开始或停止播放而重组。消息列表、历史加载、同步错误、公开资料和未播放计数也分别订阅 `RadioMessageUiState` 字段，资料或同步状态变化不会替换消息列表使用的派生值。
 - `RadioScreen` 根作用域不再读取完整电台会话状态；连接副作用、PTT/RX/TX 可用性、在线设备和连接面板分别使用带结构相等策略的独立作用域，三个选择弹窗只在显示时订阅实时会话状态。
 - PTT 页面和连接面板以带结构相等策略的派生状态读取群组名称索引；周期在线人数与总人数刷新不再使这两个区域失效，群组名称变化仍会触发更新，完整群组列表只在选择弹窗显示时读取。
+- 中继查询的结果列表读取独立不可变快照；地区输入、错误和缓存时间变化不再使已有结果列表失效，列表仍以中继 ID 作为稳定 key，2 个 JVM 用例覆盖快照边界。
 - 群组 DTO 优先解析规范的 `owner_id` / `owner_callsign`，同时兼容服务端历史 `ower_*` 字段；3 个 JVM 用例覆盖规范字段、历史字段和优先级。
 - 设置状态、持久化、音频偏好同步和缓存清理已集中到 `SettingsController`；设置入口、系统设置与存储页面不再接收完整 `AppController`，6 个 JVM 用例覆盖持久化、副作用、清理失败和关闭后的迟到存储统计。
 - APRS 配置、手动发送、重复发送抑制和后台上报协调已集中到 `AprsController`，并由 9 个 JVM 用例覆盖归一化、失败、取消、用户切换竞态和关闭后的迟到保存。
@@ -120,7 +123,7 @@ RNNoise 会显著放大仓库行数和体积，评估自研规模时应将 `app/
 - 账号安全页的密码与邮箱表单改为互斥展开，避免共享 `ProfileController.busy` 同时影响两个可见表单；发送验证码、重新获取和确认修改均复用命令按钮，邮箱错误复用认证错误提示。密码表单拆出独立生产内容层并建立 1.5 倍字体基线。
 - 设置、账号安全、资料编辑、存储、应用设置和 APRS 页面统一使用 `DraarlScreenHeader`；组件负责全面屏顶部与横向安全区、返回命令、可收缩双行标题、可选操作位和底部分隔线，地图专用工具栏保持独立。360 dp 窄屏的 1.5 倍字体长标题与保存操作已有回归基线。
 - 启动态已移除装饰性循环缩放和光晕，只保留静态品牌与通信会话恢复状态；趋势空态、BLE 扫描空态、地图配置/定位错误、地点搜索、头像加载失败及更新错误/权限提示已统一到 `PageFeedback`、`InlineNotice`、`StatusIndicator` 与 `AppUpdateFeedback`。UI 源码不再保留裸空态/加载/错误文本或无业务意义的无限动画。
-- 应用启动与壳层、五个一级页面、页面顶部栏、趋势空态、更新反馈、认证与账号安全反馈、设置行、APRS、BLE 配网、存储页、工具子页、弹窗、Bottom Sheet 和首批页面反馈已有 42 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文、设备与群组筛选空态、中继查询无结果与结果列表、存储清理禁用态以及 1.3/1.5/2.0 倍字体。
-- Release 使用 AGP 9.3 `optimization.enable` 执行 R8 与资源收缩，高德 JAR 和 RNNoise JNI 边界由项目 keep rules 显式保护；arm64 APK 从 43,948,633 B 降至 32,028,495 B（-27.12%），映射、seeds、Manifest 和 native 库静态验收记录在 `docs/RELEASE_OPTIMIZATION.md`。
+- 应用启动与壳层、五个一级页面、页面顶部栏、趋势空态、更新反馈、认证与账号安全反馈、设置行、APRS、BLE 配网、存储页、工具子页、弹窗、Bottom Sheet 和首批页面反馈已有 43 张可重复生成的浅色/深色参考图，覆盖窄屏、常规手机、横屏、长中文、强制更新下载进度、设备与群组筛选空态、中继查询无结果与结果列表、存储清理禁用态以及 1.3/1.5/2.0 倍字体。
+- Release 使用 AGP 9.3 `optimization.enable` 执行 R8 与资源收缩，高德 JAR 和 RNNoise JNI 边界由项目 keep rules 显式保护；arm64 APK 从 43,948,633 B 降至 32,028,495 B（-27.12%），当前构建还打包了本地生成的 Baseline Profile，映射、seeds、Manifest、native 库和 Profile 验收记录在 `docs/RELEASE_OPTIMIZATION.md`。
 - GitHub Actions、Spotless/ktlint、Detekt 存量基线和 Markdown 链接检查已接入，RNNoise 第三方目录被显式排除。
 - Android 仪器测试 APK 与优化后的未签名 Release APK 已在本次基线编译通过，消息缓存仪器套件已在本地模拟器执行；签名 Release 与硬件、系统服务相关流程仍需在发布候选真机上重新验证。
