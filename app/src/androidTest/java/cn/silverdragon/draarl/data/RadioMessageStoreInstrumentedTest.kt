@@ -1,7 +1,10 @@
 package cn.silverdragon.draarl.data
 
+import android.database.sqlite.SQLiteDatabase
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -84,6 +87,109 @@ class RadioMessageStoreInstrumentedTest {
         }
     }
 
+    @Test
+    fun migratesVersionOneRowsWithoutLosingMessageState() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val databaseName = "radio-message-migration-${System.nanoTime()}.db"
+        context.deleteDatabase(databaseName)
+        try {
+            SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(databaseName), null).use { database ->
+                database.execSQL(VERSION_ONE_SCHEMA)
+                database.execSQL(
+                    "INSERT INTO radio_messages " +
+                        "(local_id, account_key, group_id, server_record_id, message_type, sender_callsign, " +
+                        "sender_ssid, content, timestamp, mine, duration_ms, sync_state) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    arrayOf<Any>(
+                        "legacy-message",
+                        "legacy-account",
+                        91,
+                        123,
+                        RadioMessageType.VOICE.name,
+                        "BG7OLD",
+                        7,
+                        "legacy audio",
+                        4_000_000L,
+                        0,
+                        2_500L,
+                        RadioMessageSyncState.CONFIRMED.name
+                    )
+                )
+                database.version = 1
+            }
+
+            RadioMessageStore(context, databaseName).use { store ->
+                val migrated = store.load("legacy-account", 91).single()
+
+                assertEquals("legacy-message", migrated.id)
+                assertEquals("BG7OLD", migrated.senderCallsign)
+                assertEquals("", migrated.senderUsername)
+                assertEquals("", migrated.senderNickname)
+                assertEquals("", migrated.audioUrl)
+                assertEquals("", migrated.audioCacheKey)
+                assertEquals(0, migrated.groupId)
+                assertTrue(migrated.played)
+                assertEquals(5, store.readableDatabase.version)
+            }
+        } finally {
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
+    fun latestWindowIsStableAndIsolatedByConversation() {
+        withIsolatedStore("window") { store ->
+            val accountKey = "window-account"
+            val groupId = 92
+            listOf("a", "c", "b").forEach { id ->
+                store.save(accountKey, groupId, message(id, timestamp = 5_000_000L))
+            }
+            store.save("other-account", groupId, message("other-account", timestamp = 6_000_000L))
+            store.save(accountKey, groupId + 1, message("other-group", timestamp = 6_000_000L))
+
+            assertEquals(listOf("b", "c"), store.load(accountKey, groupId, limit = 2).map(RadioMessage::id))
+            assertEquals(listOf("other-account"), store.load("other-account", groupId).map(RadioMessage::id))
+            assertEquals(listOf("other-group"), store.load(accountKey, groupId + 1).map(RadioMessage::id))
+        }
+    }
+
+    @Test
+    fun concurrentWritersKeepEveryDistinctMessage() {
+        withIsolatedStore("concurrent") { store ->
+            val executor = Executors.newFixedThreadPool(4)
+            try {
+                val writes = (0 until CONCURRENT_MESSAGE_COUNT).map { index ->
+                    executor.submit {
+                        store.save(
+                            "concurrent-account",
+                            93,
+                            message("message-$index", timestamp = 6_000_000L + index)
+                        )
+                    }
+                }
+                writes.forEach { it.get(5, TimeUnit.SECONDS) }
+
+                assertEquals(
+                    CONCURRENT_MESSAGE_COUNT,
+                    store.load("concurrent-account", 93, limit = CONCURRENT_MESSAGE_COUNT).size
+                )
+            } finally {
+                executor.shutdownNow()
+            }
+        }
+    }
+
+    private fun withIsolatedStore(prefix: String, block: (RadioMessageStore) -> Unit) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val databaseName = "radio-message-$prefix-${System.nanoTime()}.db"
+        context.deleteDatabase(databaseName)
+        try {
+            RadioMessageStore(context, databaseName).use(block)
+        } finally {
+            context.deleteDatabase(databaseName)
+        }
+    }
+
     private fun message(id: String, type: RadioMessageType = RadioMessageType.TEXT, timestamp: Long) = RadioMessage(
         id = id,
         type = type,
@@ -93,4 +199,25 @@ class RadioMessageStoreInstrumentedTest {
         timestamp = timestamp,
         mine = false
     )
+
+    private companion object {
+        const val CONCURRENT_MESSAGE_COUNT = 40
+        val VERSION_ONE_SCHEMA =
+            """
+            CREATE TABLE radio_messages (
+                local_id TEXT PRIMARY KEY,
+                account_key TEXT NOT NULL,
+                group_id INTEGER NOT NULL,
+                server_record_id INTEGER,
+                message_type TEXT NOT NULL,
+                sender_callsign TEXT NOT NULL,
+                sender_ssid INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                mine INTEGER NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                sync_state TEXT NOT NULL
+            )
+            """.trimIndent()
+    }
 }
