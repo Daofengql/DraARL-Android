@@ -7,15 +7,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
-class BleProvisionController(context: Context) {
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val closed = AtomicBoolean(false)
-    private val client = BleProvisioningClient(
-        context = context,
-        onStatus = { value -> post { status = value } },
-        onDevices = { value -> post { devices = value } },
+class BleProvisionController internal constructor(
+    clientFactory: BleProvisionClientFactory,
+    private val mainDispatcher: BleProvisionMainDispatcher
+) {
+    constructor(context: Context) : this(
+        clientFactory = BleProvisionClientFactory { onStatus, onDevices ->
+            AndroidBleProvisionClient(context, onStatus, onDevices)
+        },
+        mainDispatcher = AndroidBleProvisionMainDispatcher()
     )
+
+    private val closed = AtomicBoolean(false)
+    private val operationGeneration = AtomicInteger(0)
 
     var status by mutableStateOf(BleProvisionStatus())
         private set
@@ -33,6 +39,10 @@ class BleProvisionController(context: Context) {
         private set
     var error by mutableStateOf("")
         private set
+    private val client = clientFactory.create(
+        onStatus = { value -> post { status = value } },
+        onDevices = { value -> post { devices = value } }
+    )
 
     fun startScan() = runAction {
         client.startScan()
@@ -44,20 +54,26 @@ class BleProvisionController(context: Context) {
         busy = false
     }
 
-    fun connect(device: BleDeviceInfo) = runAction {
-        client.connect(device.address, device.name)
-        busy = false
+    fun connect(device: BleDeviceInfo) {
+        if (closed.get()) return
+        invalidatePendingOperation()
+        runAction {
+            client.connect(device.address, device.name)
+            busy = false
+        }
     }
 
     fun disconnect() {
+        if (closed.get()) return
+        invalidatePendingOperation()
         client.disconnect()
-        busy = false
         message = ""
     }
 
     fun authenticate(code: String) = runAction(keepBusy = true) {
+        val generation = operationGeneration.get()
         client.authenticate(code) { result ->
-            postResult(result, "认证成功") {
+            postResult(generation, result, "认证成功") {
                 status = client.currentStatus()
                 loadConfig()
             }
@@ -65,8 +81,9 @@ class BleProvisionController(context: Context) {
     }
 
     fun loadConfig() = runAction(keepBusy = true) {
+        val generation = operationGeneration.get()
         client.loadConfig { result ->
-            post {
+            postOperation(generation) {
                 busy = false
                 result.onSuccess {
                     config = it
@@ -100,7 +117,8 @@ class BleProvisionController(context: Context) {
             return
         }
         runAction(keepBusy = true) {
-            client.saveWifi(wifi) { result -> postResult(result, "Wi-Fi 配置已写入") }
+            val generation = operationGeneration.get()
+            client.saveWifi(wifi) { result -> postResult(generation, result, "Wi-Fi 配置已写入") }
         }
     }
 
@@ -115,7 +133,8 @@ class BleProvisionController(context: Context) {
             return
         }
         runAction(keepBusy = true) {
-            client.saveServer(server) { result -> postResult(result, "DraARL 配置已写入") }
+            val generation = operationGeneration.get()
+            client.saveServer(server) { result -> postResult(generation, result, "DraARL 配置已写入") }
         }
     }
 
@@ -126,8 +145,10 @@ class BleProvisionController(context: Context) {
 
     fun close() {
         if (!closed.compareAndSet(false, true)) return
+        operationGeneration.incrementAndGet()
+        busy = false
         client.close()
-        mainHandler.removeCallbacksAndMessages(null)
+        mainDispatcher.clear()
     }
 
     private fun runAction(keepBusy: Boolean = false, block: () -> Unit) {
@@ -142,8 +163,8 @@ class BleProvisionController(context: Context) {
         if (!keepBusy) busy = false
     }
 
-    private fun postResult(result: Result<Unit>, successMessage: String, onSuccess: () -> Unit = {}) {
-        post {
+    private fun postResult(generation: Int, result: Result<Unit>, successMessage: String, onSuccess: () -> Unit = {}) {
+        postOperation(generation) {
             busy = false
             result.onSuccess {
                 error = ""
@@ -157,7 +178,74 @@ class BleProvisionController(context: Context) {
         error = throwable.message ?: "蓝牙操作失败"
     }
 
-    private fun post(block: () -> Unit) {
-        mainHandler.post { if (!closed.get()) block() }
+    private fun invalidatePendingOperation() {
+        operationGeneration.incrementAndGet()
+        busy = false
     }
+
+    private fun postOperation(generation: Int, block: () -> Unit) {
+        if (closed.get() || generation != operationGeneration.get()) return
+        mainDispatcher.post {
+            if (!closed.get() && generation == operationGeneration.get()) block()
+        }
+    }
+
+    private fun post(block: () -> Unit) {
+        if (closed.get()) return
+        mainDispatcher.post { if (!closed.get()) block() }
+    }
+}
+
+internal fun interface BleProvisionClientFactory {
+    fun create(onStatus: (BleProvisionStatus) -> Unit, onDevices: (List<BleDeviceInfo>) -> Unit): BleProvisionClient
+}
+
+internal interface BleProvisionClient {
+    fun currentStatus(): BleProvisionStatus
+    fun startScan()
+    fun stopScan()
+    fun connect(address: String, name: String)
+    fun disconnect()
+    fun authenticate(code: String, callback: (Result<Unit>) -> Unit)
+    fun loadConfig(callback: (Result<BleProvisionConfig>) -> Unit)
+    fun saveWifi(config: BleWifiConfig, callback: (Result<Unit>) -> Unit)
+    fun saveServer(config: BleServerConfig, callback: (Result<Unit>) -> Unit)
+    fun close()
+}
+
+internal interface BleProvisionMainDispatcher {
+    fun post(block: () -> Unit)
+    fun clear()
+}
+
+private class AndroidBleProvisionMainDispatcher : BleProvisionMainDispatcher {
+    private val handler = Handler(Looper.getMainLooper())
+
+    override fun post(block: () -> Unit) {
+        handler.post(block)
+    }
+
+    override fun clear() {
+        handler.removeCallbacksAndMessages(null)
+    }
+}
+
+private class AndroidBleProvisionClient(
+    context: Context,
+    onStatus: (BleProvisionStatus) -> Unit,
+    onDevices: (List<BleDeviceInfo>) -> Unit
+) : BleProvisionClient {
+    private val delegate = BleProvisioningClient(context, onStatus, onDevices)
+
+    override fun currentStatus(): BleProvisionStatus = delegate.currentStatus()
+    override fun startScan() = delegate.startScan()
+    override fun stopScan() = delegate.stopScan()
+    override fun connect(address: String, name: String) = delegate.connect(address, name)
+    override fun disconnect() = delegate.disconnect()
+    override fun authenticate(code: String, callback: (Result<Unit>) -> Unit) = delegate.authenticate(code, callback)
+    override fun loadConfig(callback: (Result<BleProvisionConfig>) -> Unit) = delegate.loadConfig(callback)
+    override fun saveWifi(config: BleWifiConfig, callback: (Result<Unit>) -> Unit) = delegate.saveWifi(config, callback)
+    override fun saveServer(config: BleServerConfig, callback: (Result<Unit>) -> Unit) =
+        delegate.saveServer(config, callback)
+    override fun close() = delegate.close()
 }
