@@ -375,6 +375,16 @@ private fun DevicePickerDialog(
 }
 
 @Composable
+internal fun BleDevicePickerDialogPreview(scanning: Boolean) {
+    DevicePickerDialog(
+        devices = emptyList(),
+        scanning = scanning,
+        onDismiss = {},
+        onSelect = {}
+    )
+}
+
+@Composable
 private fun BleDevicePickerFeedback(scanning: Boolean) {
     PageFeedback(
         kind = if (scanning) PageFeedbackKind.LOADING else PageFeedbackKind.EMPTY,

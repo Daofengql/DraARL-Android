@@ -33,6 +33,7 @@ import cn.silverdragon.draarl.ui.components.InlineNotice
 import cn.silverdragon.draarl.ui.components.StatusTone
 import cn.silverdragon.draarl.ui.screens.AprsSettingsContent
 import cn.silverdragon.draarl.ui.screens.AprsSettingsContentState
+import cn.silverdragon.draarl.ui.screens.BleDevicePickerDialogPreview
 import cn.silverdragon.draarl.ui.screens.BleWifiForm
 import cn.silverdragon.draarl.ui.screens.StorageSettingsContent
 import cn.silverdragon.draarl.ui.theme.DraarlTheme
@@ -160,6 +161,23 @@ fun BleWifiFormDarkLargeTextBaseline() {
                     onSave = {}
                 )
             }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "BLE Device Empty Dark Large Text",
+    widthDp = 360,
+    heightDp = 640,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun BleDeviceEmptyDarkLargeTextBaseline() {
+    DraarlTheme(darkTheme = true) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            BleDevicePickerDialogPreview(scanning = false)
         }
     }
 }
