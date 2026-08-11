@@ -1,54 +1,28 @@
 package cn.silverdragon.draarl.ui.screens
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import cn.silverdragon.draarl.ui.components.DraarlIconButton
+import cn.silverdragon.draarl.ui.components.DraarlScreenHeader
 import cn.silverdragon.draarl.ui.components.InlineNotice
 import cn.silverdragon.draarl.ui.components.PageFeedback
 import cn.silverdragon.draarl.ui.components.PageFeedbackKind
 import cn.silverdragon.draarl.ui.components.StatusTone
 
 @Composable
-internal fun ToolHeader(title: String, onBack: () -> Unit, action: (@Composable () -> Unit)? = null) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-                )
-            )
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        DraarlIconButton(
-            icon = Icons.AutoMirrored.Filled.ArrowBack,
-            label = "返回",
-            onClick = onBack
-        )
-        Text(
-            title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f)
-        )
-        action?.invoke()
-    }
+internal fun ToolHeader(
+    title: String,
+    onBack: () -> Unit,
+    applyWindowInsets: Boolean = false,
+    action: (@Composable () -> Unit)? = null
+) {
+    DraarlScreenHeader(
+        title = title,
+        onBack = onBack,
+        applyWindowInsets = applyWindowInsets,
+        action = action
+    )
 }
 
 @Composable

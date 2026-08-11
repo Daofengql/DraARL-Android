@@ -161,13 +161,28 @@ class RadioMessageStoreInstrumentedTest {
 
         RadioMessageStore(context).use { store ->
             val oldGeneration = store.generation()
+            store.markHistoryInitialized(accountKey, groupId)
+            assertTrue(store.isHistoryInitialized(accountKey, groupId))
             store.clearAll()
             store.save(accountKey, groupId, message.copy(id = "stale"), expectedGeneration = oldGeneration)
 
             assertTrue(store.load(accountKey, groupId).isEmpty())
+            assertFalse(store.isHistoryInitialized(accountKey, groupId))
 
             store.save(accountKey, groupId, message.copy(id = "current"))
             assertEquals(listOf("current"), store.load(accountKey, groupId).map(RadioMessage::id))
+        }
+    }
+
+    @Test
+    fun reconcilePreservesReadStateFromInitialHistorySync() {
+        withIsolatedStore("initial-history") { store ->
+            val message = confirmedMessage("history", 55, timestamp = 2_500_000L)
+                .copy(type = RadioMessageType.VOICE, played = true)
+
+            store.reconcile("history-account", 98, listOf(message))
+
+            assertTrue(store.load("history-account", 98).single().played)
         }
     }
 
@@ -236,7 +251,8 @@ class RadioMessageStoreInstrumentedTest {
                 assertEquals("", migrated.audioCacheKey)
                 assertEquals(0, migrated.groupId)
                 assertTrue(migrated.played)
-                assertEquals(5, store.readableDatabase.version)
+                assertEquals(6, store.readableDatabase.version)
+                assertTrue(store.isHistoryInitialized("legacy-account", 91))
             }
         } finally {
             context.deleteDatabase(databaseName)

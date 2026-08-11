@@ -29,6 +29,7 @@ fun DraarlScreenHeader(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    applyWindowInsets: Boolean = true,
     action: (@Composable () -> Unit)? = null
 ) {
     Surface(
@@ -37,11 +38,15 @@ fun DraarlScreenHeader(
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
         Column(
-            modifier = Modifier.windowInsetsPadding(
-                WindowInsets.safeDrawing.only(
-                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+            modifier = if (applyWindowInsets) {
+                Modifier.windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                    )
                 )
-            )
+            } else {
+                Modifier
+            }
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp, vertical = 4.dp),

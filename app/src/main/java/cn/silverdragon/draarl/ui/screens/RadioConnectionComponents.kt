@@ -32,7 +32,6 @@ internal data class RadioConnectionPanelState(
 
 internal enum class RadioConnectionPanelAction {
     SELECT_NODE,
-    SHOW_ONLINE_DEVICES,
     TOGGLE_DENOISE,
     TOGGLE_MUTED,
     SELECT_SEND_CHANNEL,
@@ -40,7 +39,7 @@ internal enum class RadioConnectionPanelAction {
 }
 
 @Composable
-internal fun ConnectionPanel(controller: AppController, onToggleDevices: () -> Unit) {
+internal fun ConnectionPanel(controller: AppController) {
     var accessMenu by remember { mutableStateOf(false) }
     var groupMenu by remember { mutableStateOf(false) }
     var routingMenu by remember { mutableStateOf(false) }
@@ -80,8 +79,6 @@ internal fun ConnectionPanel(controller: AppController, onToggleDevices: () -> U
         onAction = { action ->
             when (action) {
                 RadioConnectionPanelAction.SELECT_NODE -> accessMenu = true
-
-                RadioConnectionPanelAction.SHOW_ONLINE_DEVICES -> onToggleDevices()
 
                 RadioConnectionPanelAction.TOGGLE_DENOISE -> {
                     controller.settings.onEvent(SettingsEvent.TogglePlaybackDenoise)
@@ -200,10 +197,9 @@ internal fun RadioConnectionPanel(
 ) {
     RadioStatusStrip(
         state = state.strip,
-        avatar = { UserAvatar(state.avatarUrl, Modifier.size(40.dp)) },
+        avatar = { UserAvatar(state.avatarUrl, Modifier.size(60.dp)) },
         audioLevel = audioLevel,
         onSelectNode = { onAction(RadioConnectionPanelAction.SELECT_NODE) },
-        onShowOnlineDevices = { onAction(RadioConnectionPanelAction.SHOW_ONLINE_DEVICES) },
         onToggleDenoise = { onAction(RadioConnectionPanelAction.TOGGLE_DENOISE) },
         onToggleMuted = { onAction(RadioConnectionPanelAction.TOGGLE_MUTED) },
         onSelectSendChannel = { onAction(RadioConnectionPanelAction.SELECT_SEND_CHANNEL) },

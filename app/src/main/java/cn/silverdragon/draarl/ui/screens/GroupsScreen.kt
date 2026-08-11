@@ -341,10 +341,16 @@ private fun GroupActionsToolbar(onStartSearch: () -> Unit, onSearchToJoin: () ->
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)
     ) {
+        Text(
+            text = "群组",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
         CommandIconButton(onClick = onStartSearch, contentDescription = "搜索群组", icon = Icons.Default.Search)
         CommandIconButton(
             onClick = onSearchToJoin,
-            contentDescription = "搜索并加入群组",
+            contentDescription = "加入群组",
             icon = Icons.Default.GroupAdd
         )
         CommandIconButton(onClick = onCreateGroup, contentDescription = "新建群组", icon = Icons.Default.Add)

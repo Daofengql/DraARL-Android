@@ -52,6 +52,7 @@ class RadioMessageStore internal constructor(context: Context, databaseName: Str
             "CREATE INDEX messages_conversation_time ON $TABLE_MESSAGES " +
                 "(account_key, group_id, timestamp DESC)"
         )
+        createSyncStateTable(database)
     }
 
     override fun onUpgrade(database: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -70,6 +71,17 @@ class RadioMessageStore internal constructor(context: Context, databaseName: Str
         }
         if (oldVersion < 5) {
             database.execSQL("ALTER TABLE $TABLE_MESSAGES ADD COLUMN played INTEGER NOT NULL DEFAULT 1")
+        }
+        if (oldVersion < HISTORY_STATE_DATABASE_VERSION) {
+            createSyncStateTable(database)
+            database.execSQL(
+                "UPDATE $TABLE_MESSAGES SET played = 1 WHERE message_type = ?",
+                arrayOf<Any>(RadioMessageType.VOICE.name)
+            )
+            database.execSQL(
+                "INSERT OR IGNORE INTO $TABLE_SYNC_STATE (account_key, group_id) " +
+                    "SELECT DISTINCT account_key, group_id FROM $TABLE_MESSAGES"
+            )
         }
     }
 
@@ -125,14 +137,14 @@ class RadioMessageStore internal constructor(context: Context, databaseName: Str
                 )
                 var mergedRemote = remote.copy(
                     audioCacheKey = remote.audioCacheKey.ifBlank { storedState?.audioCacheKey.orEmpty() },
-                    played = remote.mine || (storedState?.played ?: false)
+                    played = remote.mine || remote.played || (storedState?.played ?: false)
                 )
                 if (mergedRemote.audioCacheKey.isBlank()) {
                     findMatchingMessage(this, accountKey, groupId, remote, confirmed = false)?.let { localId ->
                         val localState = loadLocalPlaybackState(this, localId)
                         mergedRemote = remote.copy(
                             audioCacheKey = localState?.audioCacheKey.orEmpty(),
-                            played = remote.mine || (localState?.played == true)
+                            played = remote.mine || remote.played || (localState?.played == true)
                         )
                         delete(TABLE_MESSAGES, "local_id = ?", arrayOf(localId))
                     }
@@ -406,9 +418,43 @@ class RadioMessageStore internal constructor(context: Context, databaseName: Str
     fun generation(): Int = cacheGeneration
 
     @Synchronized
+    fun isHistoryInitialized(accountKey: String, groupId: Int): Boolean =
+        readableDatabase.query(
+            TABLE_SYNC_STATE,
+            arrayOf("account_key"),
+            "account_key = ? AND group_id = ?",
+            arrayOf(accountKey, groupId.toString()),
+            null,
+            null,
+            null,
+            "1"
+        ).use { it.moveToFirst() }
+
+    @Synchronized
+    fun markHistoryInitialized(
+        accountKey: String,
+        groupId: Int,
+        expectedGeneration: Int = cacheGeneration
+    ) {
+        if (expectedGeneration != cacheGeneration) return
+        writableDatabase.insertWithOnConflict(
+            TABLE_SYNC_STATE,
+            null,
+            ContentValues().apply {
+                put("account_key", accountKey)
+                put("group_id", groupId)
+            },
+            SQLiteDatabase.CONFLICT_IGNORE
+        )
+    }
+
+    @Synchronized
     fun clearAll() {
         cacheGeneration++
-        writableDatabase.delete(TABLE_MESSAGES, null, null)
+        writableDatabase.transaction {
+            delete(TABLE_MESSAGES, null, null)
+            delete(TABLE_SYNC_STATE, null, null)
+        }
         // DELETE can leave the SQLite file and WAL at their previous size.
         // Checkpoint first, then reclaim free pages while no transaction is open.
         runCatching { writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)") }
@@ -462,10 +508,24 @@ class RadioMessageStore internal constructor(context: Context, databaseName: Str
 
     private data class StoredPlaybackState(val audioCacheKey: String, val played: Boolean)
 
+    private fun createSyncStateTable(database: SQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_SYNC_STATE (
+                account_key TEXT NOT NULL,
+                group_id INTEGER NOT NULL,
+                PRIMARY KEY (account_key, group_id)
+            )
+            """.trimIndent()
+        )
+    }
+
     companion object {
         private const val DATABASE_NAME = "radio_messages.db"
-        private const val DATABASE_VERSION = 5
+        private const val HISTORY_STATE_DATABASE_VERSION = 6
+        private const val DATABASE_VERSION = HISTORY_STATE_DATABASE_VERSION
         private const val TABLE_MESSAGES = "radio_messages"
+        private const val TABLE_SYNC_STATE = "radio_message_sync_state"
         private const val DISPLAY_LIMIT = 200
         private const val CACHE_LIMIT = 1_000
         private val MESSAGE_COLUMNS = arrayOf(

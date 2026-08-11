@@ -64,8 +64,6 @@ import cn.silverdragon.draarl.maps.CurrentLocationProvider
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.LastMapLocationStore
 import cn.silverdragon.draarl.maps.MapDistance
-import cn.silverdragon.draarl.ui.components.DraarlSegment
-import cn.silverdragon.draarl.ui.components.DraarlSegmentedControl
 import cn.silverdragon.draarl.ui.components.DraarlTooltip
 import cn.silverdragon.draarl.ui.theme.appColors
 import cn.silverdragon.draarl.ui.theme.isDarkTheme
@@ -87,13 +85,14 @@ internal fun AprsMapPanel(
     onStartPtt: () -> Boolean,
     onStopPtt: () -> Unit,
     modifier: Modifier = Modifier,
-    visible: Boolean = true
+    visible: Boolean = true,
+    active: Boolean = visible
 ) {
     val context = LocalContext.current
-    val amapReady = remember(context, visible) {
-        visible && initializeAmapServices(context)
-    }
-    val amapEnabled = visible && amapReady
+    // Keep the native MapView mounted while the radio screen shows messages. Recreating
+    // the Surface-backed view on every mode switch is the source of the final hitch.
+    val amapReady = remember(context) { initializeAmapServices(context) }
+    val amapEnabled = amapReady
     val scope = rememberCoroutineScope()
     val provider = remember(context) { CurrentLocationProvider(context) }
     val locationStore = remember(context) { LastMapLocationStore(context) }
@@ -176,7 +175,8 @@ internal fun AprsMapPanel(
         if (result.values.any { it }) locate() else controller.showNotice("需要定位权限才能显示当前位置")
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(visible) {
+        if (!visible) return@LaunchedEffect
         val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
@@ -220,7 +220,7 @@ internal fun AprsMapPanel(
                 coordinate = coordinate,
                 allowSelection = false,
                 gesturesEnabled = visible,
-                active = visible,
+                active = active,
                 showCompass = true,
                 zoom = 15f,
                 recenterRequest = recenterRequest,
@@ -427,32 +427,6 @@ private fun MapControlButton(
         }
     }
 }
-
-@Composable
-internal fun RadioModeSwitcher(
-    mapSelected: Boolean,
-    onMap: () -> Unit,
-    onMessages: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
-        DraarlSegmentedControl(
-            segments = RADIO_CONTENT_SEGMENTS,
-            selectedKey = if (mapSelected) RADIO_MAP_SEGMENT else RADIO_MESSAGES_SEGMENT,
-            onSelect = { selected ->
-                if (selected == RADIO_MAP_SEGMENT) onMap() else onMessages()
-            },
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
-    }
-}
-
-private const val RADIO_MAP_SEGMENT = "map"
-private const val RADIO_MESSAGES_SEGMENT = "messages"
-private val RADIO_CONTENT_SEGMENTS = listOf(
-    DraarlSegment(RADIO_MAP_SEGMENT, "地图"),
-    DraarlSegment(RADIO_MESSAGES_SEGMENT, "通联日志")
-)
 
 private fun createAvatarMarkerBitmap(avatar: Bitmap?): Bitmap {
     val output = Bitmap.createBitmap(MARKER_WIDTH, MARKER_HEIGHT, Bitmap.Config.ARGB_8888)

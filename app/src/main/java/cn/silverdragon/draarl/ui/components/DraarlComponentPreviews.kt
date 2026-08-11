@@ -190,7 +190,6 @@ private fun RadioStatusPreviewContent(state: RadioStatusStripState) {
             )
         },
         onSelectNode = {},
-        onShowOnlineDevices = {},
         onToggleDenoise = {},
         onToggleMuted = {},
         onSelectSendChannel = {},

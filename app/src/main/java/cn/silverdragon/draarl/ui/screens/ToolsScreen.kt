@@ -1,6 +1,15 @@
 package cn.silverdragon.draarl.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,29 +40,68 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.tools.ToolDestination
+import cn.silverdragon.draarl.ui.theme.appMotion
 
 @Composable
 fun ToolsScreen(controller: AppController) {
     val tools = controller.tools
     BackHandler(enabled = tools.canGoBack, onBack = tools::back)
-    when (tools.destination) {
-        ToolDestination.HOME -> ToolsHome(
-            approved = controller.session.uiState.user?.isApproved == true,
-            error = tools.error,
-            onClearError = tools::clearError,
-            onOpen = { tools.open(it, controller.session.uiState.user) }
-        )
+    val motion = MaterialTheme.appMotion
+    AnimatedContent(
+        targetState = tools.destination,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            val direction = if (toolDestinationDepth(targetState) >= toolDestinationDepth(initialState)) {
+                AnimatedContentTransitionScope.SlideDirection.Left
+            } else {
+                AnimatedContentTransitionScope.SlideDirection.Right
+            }
+            (
+                (
+                    slideIntoContainer(
+                        towards = direction,
+                        animationSpec = tween(motion.medium, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(motion.short))
+                ) togetherWith (
+                    slideOutOfContainer(
+                        towards = direction,
+                        animationSpec = tween(motion.medium, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(motion.short))
+                )
+            ).using(
+                SizeTransform(
+                    clip = true,
+                    sizeAnimationSpec = { _, _ -> snap() }
+                )
+            )
+        },
+        contentKey = { it }
+    ) { destination ->
+        when (destination) {
+            ToolDestination.HOME -> ToolsHome(
+                approved = controller.session.uiState.user?.isApproved == true,
+                error = tools.error,
+                onClearError = tools::clearError,
+                onOpen = { tools.open(it, controller.session.uiState.user) }
+            )
 
-        ToolDestination.BLE -> BleProvisionScreen(tools = tools, onBack = tools::back)
+            ToolDestination.BLE -> BleProvisionScreen(tools = tools, onBack = tools::back)
 
-        ToolDestination.RELAYS -> RelaySearchScreen(tools = tools, onBack = tools::back)
+            ToolDestination.RELAYS -> RelaySearchScreen(tools = tools, onBack = tools::back)
 
-        ToolDestination.LOGBOOK -> LogbookScreen(controller = controller, tools = tools, onBack = tools::back)
+            ToolDestination.LOGBOOK -> LogbookScreen(controller = controller, tools = tools, onBack = tools::back)
 
-        ToolDestination.LOGBOOK_EDITOR -> LogbookEditorScreen(tools = tools, onBack = tools::back)
+            ToolDestination.LOGBOOK_EDITOR -> LogbookEditorScreen(tools = tools, onBack = tools::back)
 
-        ToolDestination.MAIDENHEAD -> MaidenheadToolScreen(onBack = tools::back)
+            ToolDestination.MAIDENHEAD -> MaidenheadToolScreen(onBack = tools::back)
+        }
     }
+}
+
+private fun toolDestinationDepth(destination: ToolDestination): Int = when (destination) {
+    ToolDestination.HOME -> 0
+    ToolDestination.LOGBOOK_EDITOR -> 2
+    else -> 1
 }
 
 @Composable

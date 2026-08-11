@@ -39,6 +39,25 @@ class VoicePlaybackQueueTest {
         assertTrue(VoicePlaybackQueue.isUnplayed(message))
     }
 
+    @Test
+    fun `continues only with unheard voices after the selected message`() {
+        val messages = listOf(
+            voice("earlier-unheard"),
+            voice("selected", played = true),
+            voice("next-unheard"),
+            voice("second-unheard"),
+            voice("read-boundary", played = true),
+            voice("later-unheard"),
+        )
+
+        assertEquals("next-unheard", VoicePlaybackQueue.nextUnplayedAfter(messages, "selected")?.id)
+        assertEquals(
+            "second-unheard",
+            VoicePlaybackQueue.nextUnplayedAfter(messages, "selected", setOf("next-unheard"))?.id
+        )
+        assertNull(VoicePlaybackQueue.nextUnplayedAfter(messages, "second-unheard"))
+    }
+
     private fun voice(
         id: String,
         mine: Boolean = false,

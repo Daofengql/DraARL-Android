@@ -52,74 +52,93 @@ internal fun ProfileHeader(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(80.dp).clickable(onClick = onAvatarClick),
-                    contentAlignment = Alignment.BottomEnd
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    UserAvatar(url = user.avatarUrl, modifier = Modifier.size(80.dp))
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        shadowElevation = 2.dp
-                    ) {
-                        Icon(
-                            Icons.Default.CameraAlt,
-                            contentDescription = "更换头像",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(5.dp).size(16.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier.size(80.dp).clickable(onClick = onAvatarClick),
+                            contentAlignment = Alignment.BottomEnd
+                        ) {
+                            UserAvatar(url = user.avatarUrl, modifier = Modifier.size(80.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                shadowElevation = 2.dp
+                            ) {
+                                Icon(
+                                    Icons.Default.CameraAlt,
+                                    contentDescription = "更换头像",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.padding(5.dp).size(16.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                user.displayName,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                listOfNotNull(
+                                    "@${user.username}",
+                                    user.callsign.takeIf(String::isNotBlank)
+                                ).joinToString("  "),
+                                style = MaterialTheme.dataTypography.value,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            StatusIndicator(
+                                text = when (user.approvalStatus) {
+                                    1 -> "已审核"
+                                    2 -> "未通过"
+                                    else -> "待审核"
+                                },
+                                tone = when (user.approvalStatus) {
+                                    1 -> StatusTone.CONNECTED
+                                    2 -> StatusTone.ERROR
+                                    else -> StatusTone.CONNECTING
+                                }
+                            )
+                        }
+                    }
+                    if (radioIdentifiers.isNotBlank()) {
+                        ProfileMetaRow(
+                            icon = Icons.Default.Badge,
+                            text = radioIdentifiers,
+                            technical = true
+                        )
+                    }
+                    if (user.address.isNotBlank()) {
+                        ProfileMetaRow(
+                            icon = Icons.Default.LocationOn,
+                            text = user.address
                         )
                     }
                 }
-                Spacer(Modifier.width(16.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(user.displayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(
-                        listOfNotNull(
-                            "@${user.username}",
-                            user.callsign.takeIf(String::isNotBlank)
-                        ).joinToString("  "),
-                        style = MaterialTheme.dataTypography.value,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                Row(
+                    modifier = Modifier.padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    CommandIconButton(onClick = onEditClick, contentDescription = "编辑资料", icon = Icons.Default.Edit)
+                    CommandIconButton(
+                        onClick = onPresetsClick,
+                        contentDescription = "电台预设",
+                        icon = Icons.Default.FavoriteBorder
                     )
-                    StatusIndicator(
-                        text = when (user.approvalStatus) {
-                            1 -> "已审核"
-                            2 -> "未通过"
-                            else -> "待审核"
-                        },
-                        tone = when (user.approvalStatus) {
-                            1 -> StatusTone.CONNECTED
-                            2 -> StatusTone.ERROR
-                            else -> StatusTone.CONNECTING
-                        }
-                    )
+                    CommandIconButton(onClick = onSettingsClick, contentDescription = "设置", icon = Icons.Default.Settings)
                 }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
-            ) {
-                CommandIconButton(onClick = onEditClick, contentDescription = "编辑资料", icon = Icons.Default.Edit)
-                CommandIconButton(
-                    onClick = onPresetsClick,
-                    contentDescription = "电台预设",
-                    icon = Icons.Default.FavoriteBorder
-                )
-                CommandIconButton(onClick = onSettingsClick, contentDescription = "设置", icon = Icons.Default.Settings)
-            }
-            if (radioIdentifiers.isNotBlank()) {
-                ProfileMetaRow(
-                    icon = Icons.Default.Badge,
-                    text = radioIdentifiers,
-                    technical = true
-                )
-            }
-            if (user.address.isNotBlank()) {
-                ProfileMetaRow(
-                    icon = Icons.Default.LocationOn,
-                    text = user.address
-                )
             }
             if (user.introduction.isNotBlank()) {
                 Text(

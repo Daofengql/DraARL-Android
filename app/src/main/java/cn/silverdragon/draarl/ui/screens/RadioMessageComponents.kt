@@ -13,19 +13,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.VerticalAlignBottom
-import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +37,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.AppController
-import cn.silverdragon.draarl.data.OnlineDevice
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.User
@@ -49,38 +44,14 @@ import cn.silverdragon.draarl.data.VoicePlaybackQueue
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.decodeLocationMessage
 import cn.silverdragon.draarl.data.formatRadioIdentity
-import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandIconButton
-import cn.silverdragon.draarl.ui.components.CommandStyle
+import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.DraarlIconButton
 import cn.silverdragon.draarl.ui.components.DraarlIconButtonOptions
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-@Composable
-internal fun OnlineDeviceStrip(devices: List<OnlineDevice>) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(devices, key = OnlineDevice::id) { device ->
-            Card(shape = RoundedCornerShape(6.dp)) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    Text(
-                        device.callsign.ifBlank {
-                            device.nickname.ifBlank { device.username }
-                        },
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text("SSID ${device.ssid}", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-}
 
 @Composable
 internal fun MessageItem(
@@ -213,59 +184,43 @@ private fun MessageTimeDivider(timestamp: Long) {
 
 @Composable
 internal fun MessageListFloatingActions(
-    unplayedCount: Int,
-    autoPlaying: Boolean,
     canScrollToBottom: Boolean,
-    onToggleAutoPlay: () -> Unit,
-    onClearUnplayed: () -> Unit,
     onScrollToBottom: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (unplayedCount > 0 || autoPlaying) {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                tonalElevation = 3.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (unplayedCount > 0) {
-                        CommandButton(
-                            label = "全部已读",
-                            onClick = onClearUnplayed,
-                            leadingIcon = Icons.Default.DoneAll,
-                            modifier = Modifier.widthIn(min = 104.dp, max = 132.dp)
-                        )
-                    }
-                    CommandButton(
-                        label = if (autoPlaying) "停止连播" else "连播 $unplayedCount 条",
-                        onClick = onToggleAutoPlay,
-                        leadingIcon = if (autoPlaying) {
-                            Icons.Default.StopCircle
-                        } else {
-                            Icons.AutoMirrored.Filled.PlaylistPlay
-                        },
-                        style = if (autoPlaying) CommandStyle.PRIMARY else CommandStyle.SECONDARY,
-                        modifier = Modifier.widthIn(min = 128.dp, max = 168.dp)
-                    )
-                }
-            }
-        }
-        if (canScrollToBottom) {
+    if (canScrollToBottom) {
+        Box(modifier = modifier) {
             CommandIconButton(
                 onClick = onScrollToBottom,
                 contentDescription = "滚动到最新记录",
                 icon = Icons.Default.VerticalAlignBottom
             )
         }
+    }
+}
+
+@Composable
+internal fun UnreadVoiceJumpAction(
+    unplayedCount: Int,
+    showJump: Boolean,
+    onClick: () -> Unit,
+    onMarkAllPlayed: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (showJump) {
+            CommandButton(
+                label = "跳转未听 · $unplayedCount",
+                onClick = onClick,
+                leadingIcon = Icons.Default.ExpandLess,
+                modifier = Modifier.widthIn(min = 132.dp, max = 168.dp)
+            )
+        }
+        CommandIconButton(
+            onClick = onMarkAllPlayed,
+            contentDescription = "全部标为已读",
+            icon = Icons.Default.DoneAll
+        )
     }
 }
 

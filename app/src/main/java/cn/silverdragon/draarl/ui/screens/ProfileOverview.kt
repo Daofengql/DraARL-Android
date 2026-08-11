@@ -19,6 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -70,12 +71,15 @@ private fun StatRow(left: StatValue, right: StatValue) {
 @Composable
 private fun StatCard(stat: StatValue, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.heightIn(min = 124.dp),
+        modifier = modifier.heightIn(min = 108.dp),
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.appColors.divider)
     ) {
-        Column(Modifier.fillMaxHeight().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.fillMaxHeight().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
+        ) {
             Icon(stat.icon, contentDescription = null, tint = stat.color)
             Text(
                 stat.value,

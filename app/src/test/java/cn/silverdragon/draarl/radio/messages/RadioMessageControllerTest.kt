@@ -56,7 +56,7 @@ class RadioMessageControllerTest {
             while (controller.uiState.publicProfiles["bob"] == null) yield()
         }
 
-        assertEquals(listOf(confirmed), controller.uiState.messages)
+        assertEquals(listOf(confirmed.copy(played = true)), controller.uiState.messages)
         assertEquals("Bob", controller.uiState.publicProfiles["bob"]?.nickname)
         assertEquals(listOf("bob"), remote.profileRequests)
         assertEquals(9_999_000L..6_820_000L, cache.reconciliations.single().authoritativeWindow)
@@ -78,6 +78,40 @@ class RadioMessageControllerTest {
 
         assertEquals(listOf(cached), controller.uiState.messages)
         assertEquals("network unavailable", controller.uiState.syncError)
+    }
+
+    @Test
+    fun onlyFirstServerSnapshotIsTreatedAsReadHistory() = runBlocking {
+        val history = message(
+            id = "server-1",
+            groupId = 7,
+            serverRecordId = 1,
+            syncState = RadioMessageSyncState.CONFIRMED
+        )
+        val incoming = message(
+            id = "server-2",
+            groupId = 7,
+            timestamp = NOW + 1,
+            serverRecordId = 2,
+            syncState = RadioMessageSyncState.CONFIRMED
+        )
+        val pages = mutableMapOf("" to RadioMessagePage(listOf(history), "", false))
+        val remote = FakeRemote(pages = pages)
+        val controller = controller(remote = remote)
+        controller.onContextChanged(ACCOUNT, 7)
+
+        controller.onEvent(RadioMessageEvent.Refresh)
+        yield()
+        assertTrue(controller.uiState.messages.single().played)
+        assertEquals(0, controller.uiState.unplayedVoiceCount)
+
+        pages[""] = RadioMessagePage(listOf(history, incoming), "", false)
+        controller.onEvent(RadioMessageEvent.Refresh)
+        yield()
+
+        assertTrue(controller.uiState.messages.first { it.id == history.id }.played)
+        assertFalse(controller.uiState.messages.first { it.id == incoming.id }.played)
+        assertEquals(1, controller.uiState.unplayedVoiceCount)
     }
 
     @Test
@@ -324,6 +358,7 @@ class RadioMessageControllerTest {
 
     private class FakeCache(private val beforeLoad: (Int) -> Unit = {}) : RadioMessageCache {
         private val messages = mutableMapOf<Pair<String, Int>, MutableList<RadioMessage>>()
+        private val initializedHistory = mutableSetOf<Pair<String, Int>>()
         private var cacheGeneration = 0
         val saved = mutableListOf<RadioMessage>()
         val reconciliations = mutableListOf<Reconciliation>()
@@ -332,9 +367,17 @@ class RadioMessageControllerTest {
 
         fun seed(accountKey: String, groupId: Int, values: List<RadioMessage>) {
             messages[accountKey to groupId] = values.toMutableList()
+            initializedHistory += accountKey to groupId
         }
 
         override fun generation(): Int = cacheGeneration
+
+        override fun isHistoryInitialized(accountKey: String, groupId: Int): Boolean =
+            accountKey to groupId in initializedHistory
+
+        override fun markHistoryInitialized(accountKey: String, groupId: Int, expectedGeneration: Int) {
+            if (expectedGeneration == cacheGeneration) initializedHistory += accountKey to groupId
+        }
 
         override fun load(accountKey: String, groupId: Int, limit: Int): List<RadioMessage> {
             beforeLoad(groupId)

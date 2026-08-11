@@ -2,6 +2,7 @@ package cn.silverdragon.draarl.radio.messages
 
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioMessageReconciler
+import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.User
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -18,12 +19,14 @@ internal class RadioMessageSyncEngine(
 ) {
     suspend fun synchronizeLatest(context: MessageContext, visibleLimit: Int): RadioSyncSnapshot {
         currentCoroutineContext().ensureActive()
+        val expectedGeneration = cache.generation()
+        val initializingHistory = !cache.isHistoryInitialized(context.account.key, context.groupId)
         val page = remote.loadPage(context.groupId, cursor = "", context.account.user)
         val remoteMessages = page.messages
             .distinctBy { it.serverRecordId ?: it.id }
             .sortedBy(RadioMessage::timestamp)
+            .map { message -> if (initializingHistory) message.asReadHistory() else message }
         currentCoroutineContext().ensureActive()
-        val expectedGeneration = cache.generation()
         val settleCutoff = currentTimeMillis() - RadioMessageReconciler.REMOTE_SETTLE_DELAY_MS
         val authoritativeWindow = when {
             remoteMessages.isNotEmpty() -> remoteMessages.first().timestamp..settleCutoff
@@ -37,6 +40,9 @@ internal class RadioMessageSyncEngine(
             authoritativeWindow = authoritativeWindow,
             expectedGeneration = expectedGeneration
         )
+        if (initializingHistory) {
+            cache.markHistoryInitialized(context.account.key, context.groupId, expectedGeneration)
+        }
         currentCoroutineContext().ensureActive()
         val cachedMessages = cache.load(context.account.key, context.groupId, visibleLimit + 1)
         return RadioSyncSnapshot(
@@ -69,7 +75,7 @@ internal class RadioMessageSyncEngine(
             cache.reconcile(
                 accountKey = context.account.key,
                 groupId = context.groupId,
-                remoteMessages = page.messages,
+                remoteMessages = page.messages.map { it.asReadHistory() },
                 expectedGeneration = cache.generation()
             )
             val nextCursor = page.nextCursor
@@ -88,6 +94,9 @@ internal class RadioMessageSyncEngine(
             historyState = historyState
         )
     }
+
+    private fun RadioMessage.asReadHistory(): RadioMessage =
+        if (type == RadioMessageType.VOICE && !played) copy(played = true) else this
 
     private companion object {
         const val MAX_HISTORY_PAGES_PER_LOAD = 5

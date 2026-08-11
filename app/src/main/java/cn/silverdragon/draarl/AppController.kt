@@ -101,6 +101,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val voiceAutoPlaySkippedIds = mutableSetOf<String>()
     private val playbackLevelThrottler = AudioLevelThrottler()
     private val transmitLevelThrottler = AudioLevelThrottler()
+    private var voiceAutoPlayCursorMessageId: String? = null
     private var voiceAutoPlayPendingMessageId: String? = null
     private val voiceAutoPlayAdvance = Runnable { advanceVoiceAutoPlay() }
     private val periodicRadioSync = object : Runnable {
@@ -679,8 +680,17 @@ class AppController internal constructor(application: Application, ioDispatcher:
     }
 
     fun toggleVoicePlayback(message: RadioMessage) {
-        if (voiceAutoPlayEnabled) stopVoiceAutoPlay(stopCurrent = false)
-        requestVoicePlayback(message, fromAutoPlay = false)
+        if (playingMessageId == message.id) {
+            stopVoiceAutoPlay(stopCurrent = true)
+            return
+        }
+        stopVoiceAutoPlay(stopCurrent = true)
+        stopCwPreview()
+        voiceAutoPlaySkippedIds.clear()
+        voiceAutoPlayCursorMessageId = message.id
+        voiceAutoPlayPendingMessageId = message.id
+        voiceAutoPlayEnabled = true
+        requestVoicePlayback(message, fromAutoPlay = true)
     }
 
     fun toggleVoiceAutoPlay() {
@@ -689,13 +699,16 @@ class AppController internal constructor(application: Application, ioDispatcher:
             return
         }
         voiceAutoPlaySkippedIds.clear()
-        if (VoicePlaybackQueue.nextUnplayed(messageController.uiState.messages) == null) {
+        val firstUnplayed = VoicePlaybackQueue.nextUnplayed(messageController.uiState.messages)
+        if (firstUnplayed == null) {
             notice = "当前没有可连续播放的未听语音"
             return
         }
         stopCwPreview()
+        voiceAutoPlayCursorMessageId = firstUnplayed.id
+        voiceAutoPlayPendingMessageId = firstUnplayed.id
         voiceAutoPlayEnabled = true
-        scheduleVoiceAutoPlayAdvance(delayMs = 0L)
+        requestVoicePlayback(firstUnplayed, fromAutoPlay = true)
     }
 
     fun stopVoiceAutoPlay() {
@@ -710,6 +723,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
 
     private fun stopVoiceAutoPlay(stopCurrent: Boolean) {
         voiceAutoPlayEnabled = false
+        voiceAutoPlayCursorMessageId = null
         voiceAutoPlayPendingMessageId = null
         voiceAutoPlaySkippedIds.clear()
         mainHandler.removeCallbacks(voiceAutoPlayAdvance)
@@ -726,13 +740,18 @@ class AppController internal constructor(application: Application, ioDispatcher:
         if (playingMessageId != null || voiceAutoPlayPendingMessageId != null) return
         val status = radioSession.uiState.status
         if (status.transmitting || status.speaker.isNotBlank()) return
-        val next = VoicePlaybackQueue.nextUnplayed(messageController.uiState.messages, voiceAutoPlaySkippedIds)
+        val messages = messageController.uiState.messages
+        val next = voiceAutoPlayCursorMessageId?.let { cursorId ->
+            VoicePlaybackQueue.nextUnplayedAfter(messages, cursorId, voiceAutoPlaySkippedIds)
+        } ?: VoicePlaybackQueue.nextUnplayed(messages, voiceAutoPlaySkippedIds)
         if (next == null) {
             voiceAutoPlayEnabled = false
+            voiceAutoPlayCursorMessageId = null
             voiceAutoPlaySkippedIds.clear()
             notice = "未听语音已连续播放完毕"
             return
         }
+        voiceAutoPlayCursorMessageId = next.id
         voiceAutoPlayPendingMessageId = next.id
         requestVoicePlayback(next, fromAutoPlay = true)
     }

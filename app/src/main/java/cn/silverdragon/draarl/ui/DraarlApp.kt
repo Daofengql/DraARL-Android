@@ -1,6 +1,10 @@
 package cn.silverdragon.draarl.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -63,6 +67,7 @@ import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.appDensityFor
 import cn.silverdragon.draarl.data.encodeLocationMessage
+import cn.silverdragon.draarl.pagePosition
 import cn.silverdragon.draarl.session.SessionUiState
 import cn.silverdragon.draarl.ui.components.AppUpdateFeedback
 import cn.silverdragon.draarl.ui.components.CommandStyle
@@ -263,8 +268,29 @@ private fun AuthenticatedApp(controller: AppController) {
             androidx.compose.animation.AnimatedContent(
                 targetState = controller.page,
                 transitionSpec = {
-                    fadeIn(animationSpec = tween(motion.medium)) togetherWith
-                        fadeOut(animationSpec = tween(motion.short))
+                    val direction = if (pagePosition(targetState) >= pagePosition(initialState)) {
+                        AnimatedContentTransitionScope.SlideDirection.Left
+                    } else {
+                        AnimatedContentTransitionScope.SlideDirection.Right
+                    }
+                    (
+                        (
+                            slideIntoContainer(
+                                towards = direction,
+                                animationSpec = tween(motion.medium, easing = FastOutSlowInEasing)
+                            ) + fadeIn(animationSpec = tween(motion.short))
+                        ) togetherWith (
+                            slideOutOfContainer(
+                                towards = direction,
+                                animationSpec = tween(motion.medium, easing = FastOutSlowInEasing)
+                            ) + fadeOut(animationSpec = tween(motion.short))
+                        )
+                    ).using(
+                        SizeTransform(
+                            clip = true,
+                            sizeAnimationSpec = { _, _ -> snap() }
+                        )
+                    )
                 },
                 contentKey = { it }
             ) { page ->

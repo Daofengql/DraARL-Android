@@ -43,6 +43,10 @@ internal class ApiRadioMessageRemoteDataSource(private val api: RadioApi) : Radi
 internal interface RadioMessageCache {
     fun generation(): Int
 
+    fun isHistoryInitialized(accountKey: String, groupId: Int): Boolean
+
+    fun markHistoryInitialized(accountKey: String, groupId: Int, expectedGeneration: Int)
+
     fun load(accountKey: String, groupId: Int, limit: Int): List<RadioMessage>
 
     fun save(accountKey: String, groupId: Int, message: RadioMessage, expectedGeneration: Int)
@@ -62,6 +66,13 @@ internal interface RadioMessageCache {
 
 internal class StoredRadioMessageCache(private val store: RadioMessageStore) : RadioMessageCache {
     override fun generation(): Int = store.generation()
+
+    override fun isHistoryInitialized(accountKey: String, groupId: Int): Boolean =
+        store.isHistoryInitialized(accountKey, groupId)
+
+    override fun markHistoryInitialized(accountKey: String, groupId: Int, expectedGeneration: Int) {
+        store.markHistoryInitialized(accountKey, groupId, expectedGeneration)
+    }
 
     override fun load(accountKey: String, groupId: Int, limit: Int): List<RadioMessage> =
         store.load(accountKey, groupId, limit)

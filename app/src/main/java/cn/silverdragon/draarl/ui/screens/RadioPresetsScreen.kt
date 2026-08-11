@@ -63,7 +63,7 @@ internal fun RadioPresetsScreen(tools: ToolsController, onBack: () -> Unit) {
         tools.loadPresets()
     }
     Column(Modifier.fillMaxSize()) {
-        ToolHeader("电台预设", onBack) {
+        ToolHeader("电台预设", onBack, applyWindowInsets = true) {
             DraarlIconButton(
                 icon = Icons.Default.Add,
                 label = "新增预设",

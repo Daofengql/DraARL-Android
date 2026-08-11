@@ -80,6 +80,7 @@ fun CommandButton(
     loading: Boolean = false,
     style: CommandStyle = CommandStyle.SECONDARY,
     supportingText: String? = null,
+    supportingContent: (@Composable () -> Unit)? = null,
     leadingIcon: ImageVector? = null,
     trailingIcon: ImageVector? = null
 ) {
@@ -87,7 +88,7 @@ fun CommandButton(
     Surface(
         onClick = onClick,
         modifier = modifier.semantics { role = Role.Button }.heightIn(
-            min = if (supportingText == null) {
+            min = if (supportingText == null && supportingContent == null) {
                 MaterialTheme.appDimensions.controlHeight
             } else {
                 MaterialTheme.appDimensions.largeControlHeight
@@ -124,14 +125,17 @@ fun CommandButton(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    supportingText?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.dataTypography.compact,
-                            color = colors.secondaryContent,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    supportingContent?.invoke()
+                    if (supportingContent == null) {
+                        supportingText?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.dataTypography.compact,
+                                color = colors.secondaryContent,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
                 trailingIcon?.let {
