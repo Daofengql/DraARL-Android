@@ -128,9 +128,10 @@ class RadioMessageController internal constructor(
         profileLoader.preload(listOf(enriched.senderUsername), context.account.key)
     }
 
-    fun refreshServerMessage(message: RadioMessage, onResult: (Result<RadioMessage>) -> Unit) {
-        val context = currentContext ?: return
-        val recordId = message.serverRecordId ?: return
+    fun refreshServerMessage(message: RadioMessage, onResult: (Result<RadioMessage>) -> Unit): Boolean {
+        val context = currentContext
+        val recordId = message.serverRecordId
+        if (context == null || recordId == null) return false
         val groupId = message.groupId.takeIf { it > 0 } ?: context.groupId
         controllerScope.launch {
             val result = radioMessageAttempt {
@@ -140,6 +141,7 @@ class RadioMessageController internal constructor(
             }
             if (context.matches(account?.key, selectedGroupId, contextGeneration, closed)) onResult(result)
         }
+        return true
     }
 
     fun updateMessage(message: RadioMessage) {

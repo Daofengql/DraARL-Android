@@ -42,6 +42,7 @@ import cn.silverdragon.draarl.network.ApiClient
 import cn.silverdragon.draarl.network.ApiException
 import cn.silverdragon.draarl.profile.ProfileController
 import cn.silverdragon.draarl.radio.AudioLevelThrottler
+import cn.silverdragon.draarl.radio.VoiceAudioSharer
 import cn.silverdragon.draarl.radio.messages.ApiRadioMessageRemoteDataSource
 import cn.silverdragon.draarl.radio.messages.RadioMessageAccount
 import cn.silverdragon.draarl.radio.messages.RadioMessageController
@@ -79,8 +80,16 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
-class AppController internal constructor(application: Application, ioDispatcher: CoroutineDispatcher) :
+class AppController internal constructor(
+    application: Application,
+    private val ioDispatcher: CoroutineDispatcher
+) :
     AndroidViewModel(application) {
     @Suppress("InjectDispatcher")
     constructor(application: Application) : this(application, Dispatchers.IO)
@@ -101,6 +110,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
     private val voiceAutoPlaySkippedIds = mutableSetOf<String>()
     private val playbackLevelThrottler = AudioLevelThrottler()
     private val transmitLevelThrottler = AudioLevelThrottler()
+    private val voiceAudioSharer by lazy { VoiceAudioSharer(appContext) }
     private var voiceAutoPlayCursorMessageId: String? = null
     private var voiceAutoPlayPendingMessageId: String? = null
     private val voiceAutoPlayAdvance = Runnable { advanceVoiceAutoPlay() }
@@ -440,6 +450,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         private set
     var cwPreviewing by mutableStateOf(false)
         private set
+    private var sharingVoiceMessage = false
 
     private val lifecycleCoordinator = AppControllerLifecycleCoordinator(
         disposed = disposed,
@@ -686,11 +697,78 @@ class AppController internal constructor(application: Application, ioDispatcher:
         }
         stopVoiceAutoPlay(stopCurrent = true)
         stopCwPreview()
-        voiceAutoPlaySkippedIds.clear()
-        voiceAutoPlayCursorMessageId = message.id
-        voiceAutoPlayPendingMessageId = message.id
-        voiceAutoPlayEnabled = true
-        requestVoicePlayback(message, fromAutoPlay = true)
+        if (VoicePlaybackQueue.isUnplayed(message)) {
+            voiceAutoPlaySkippedIds.clear()
+            voiceAutoPlayCursorMessageId = message.id
+            voiceAutoPlayPendingMessageId = message.id
+            voiceAutoPlayEnabled = true
+            requestVoicePlayback(message, fromAutoPlay = true)
+        } else {
+            requestVoicePlayback(message, fromAutoPlay = false)
+        }
+    }
+
+    fun shareVoiceMessage(message: RadioMessage) {
+        if (message.type != RadioMessageType.VOICE || sharingVoiceMessage) return
+        sharingVoiceMessage = true
+        notice = "正在转换为 WAV 音频"
+        viewModelScope.launch {
+            val result = runCatching {
+                val stableMessage = withStableAudioCacheKey(message)
+                val cached = withContext(ioDispatcher) {
+                    voiceAudioSharer.hasCachedAudio(stableMessage)
+                }
+                val messageForShare = if (cached) stableMessage else refreshVoiceMessageForShare(stableMessage)
+                if (messageForShare != stableMessage) messageController.updateMessage(messageForShare)
+                val wavFile = withContext(ioDispatcher) {
+                    voiceAudioSharer.createWav(messageForShare)
+                }
+                voiceAudioSharer.share(wavFile)
+            }
+            sharingVoiceMessage = false
+            result.onFailure { error ->
+                if (error is CancellationException) throw error
+                notice = friendlyError(error)
+            }
+        }
+    }
+
+    private suspend fun refreshVoiceMessageForShare(message: RadioMessage): RadioMessage {
+        if (
+            message.serverRecordId == null ||
+            message.syncState != RadioMessageSyncState.CONFIRMED
+        ) {
+            return message
+        }
+        val result = runCatching {
+            withTimeoutOrNull(SHARE_MESSAGE_REFRESH_TIMEOUT_MS) {
+                suspendCancellableCoroutine<RadioMessage?> { continuation ->
+                    val started = messageController.refreshServerMessage(message) { result ->
+                        if (!continuation.isActive) return@refreshServerMessage
+                        result.fold(
+                            onSuccess = { refreshed ->
+                                continuation.resume(
+                                    message.copy(
+                                        audioUrl = refreshed.audioUrl,
+                                        durationMs = refreshed.durationMs.takeIf { it > 0 } ?: message.durationMs,
+                                        content = refreshed.content.ifBlank { message.content }
+                                    )
+                                )
+                            },
+                            onFailure = { continuation.resumeWithException(it) }
+                        )
+                    }
+                    if (!started && continuation.isActive) continuation.resume(null)
+                }
+            }
+        }
+        return result.fold(
+            onSuccess = { it ?: message },
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                if (message.audioUrl.isNotBlank()) message else throw error
+            }
+        )
     }
 
     fun toggleVoiceAutoPlay() {
@@ -993,6 +1071,7 @@ class AppController internal constructor(application: Application, ioDispatcher:
         private const val ANDROID_CLIENT_SSID = 101
         private const val RADIO_SYNC_INTERVAL_MS = 20_000L
         private const val VOICE_AUTO_PLAY_ADVANCE_DELAY_MS = 300L
+        private const val SHARE_MESSAGE_REFRESH_TIMEOUT_MS = 20_000L
         fun formatDuration(milliseconds: Long): String {
             val totalSeconds = milliseconds / 1_000
             val hours = totalSeconds / 3_600

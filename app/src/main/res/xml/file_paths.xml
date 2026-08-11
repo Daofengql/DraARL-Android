@@ -3,4 +3,7 @@
     <files-path
         name="client_updates"
         path="client_updates/" />
+    <cache-path
+        name="shared_audio"
+        path="shared_audio/" />
 </paths>

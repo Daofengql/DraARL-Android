@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -55,5 +56,20 @@ fun UserAvatar(
                 contentScale = ContentScale.Crop,
             )
         }
+    }
+}
+
+@Composable
+fun SystemAvatar(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.clip(CircleShape).background(MaterialTheme.colorScheme.tertiaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Default.SmartToy,
+            contentDescription = "系统头像",
+            modifier = Modifier.size(25.dp),
+            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+        )
     }
 }

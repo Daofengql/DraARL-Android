@@ -76,7 +76,8 @@ internal data class ChannelMessageDto(
     val durationMs: Long,
     val text: String,
     val audioUrl: String,
-    val status: Int
+    val status: Int,
+    val isAutoBroadcast: Boolean = false
 ) {
     fun toDomain(baseUrl: String) = ChannelMessage(
         id = id,
@@ -90,7 +91,8 @@ internal data class ChannelMessageDto(
         durationMs = durationMs,
         text = text,
         audioUrl = optionalHttpsUrl(audioUrl, baseUrl),
-        status = status
+        status = status,
+        isAutoBroadcast = isAutoBroadcast
     )
 }
 
@@ -243,7 +245,8 @@ internal object RadioMessageResponseMapper {
             durationMs = data.optLong("duration_ms"),
             text = data.optStringClean("text_content"),
             audioUrl = data.optStringClean("audio_url"),
-            status = data.optInt("status")
+            status = data.optInt("status"),
+            isAutoBroadcast = data.optBoolean("is_auto_broadcast")
         )
     }
 }

@@ -33,6 +33,37 @@ class ChannelMessageMapperTest {
         assertTrue(mapped.played)
     }
 
+    @Test
+    fun `normalizes automatic broadcasts to the system identity`() {
+        val mapped = ChannelMessageMapper.toRadioMessage(
+            message = channelMessage(sourceGroupId = 1001).copy(isAutoBroadcast = true),
+            accountUser = User(id = 9, username = "system-broadcast"),
+            timestamp = 1234L,
+        )
+
+        assertEquals(SYSTEM_BROADCAST_USERNAME, mapped.senderUsername)
+        assertEquals(SYSTEM_BROADCAST_NICKNAME, mapped.senderNickname)
+        assertEquals(SYSTEM_BROADCAST_CALLSIGN, mapped.senderCallsign)
+        assertEquals(SYSTEM_BROADCAST_SSID, mapped.senderSsid)
+        assertTrue(mapped.isAutoBroadcast)
+        assertFalse(mapped.mine)
+    }
+
+    @Test
+    fun `recognizes live automatic broadcasts by their fixed radio identity`() {
+        val message = RadioMessage(
+            id = "live",
+            type = RadioMessageType.TEXT,
+            senderCallsign = SYSTEM_BROADCAST_CALLSIGN,
+            senderSsid = SYSTEM_BROADCAST_SSID,
+            content = "播报",
+            timestamp = 1234L,
+            mine = false,
+        )
+
+        assertTrue(message.isAutoBroadcast)
+    }
+
     private fun channelMessage(sourceGroupId: Int) = ChannelMessage(
         id = 42,
         messageType = "text",

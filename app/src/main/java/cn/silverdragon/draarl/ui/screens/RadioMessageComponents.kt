@@ -1,6 +1,7 @@
 package cn.silverdragon.draarl.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -44,10 +46,10 @@ import cn.silverdragon.draarl.data.VoicePlaybackQueue
 import cn.silverdragon.draarl.data.Wgs84LocationMessage
 import cn.silverdragon.draarl.data.decodeLocationMessage
 import cn.silverdragon.draarl.data.formatRadioIdentity
+import cn.silverdragon.draarl.data.isAutoBroadcast
 import cn.silverdragon.draarl.ui.components.CommandIconButton
 import cn.silverdragon.draarl.ui.components.CommandButton
-import cn.silverdragon.draarl.ui.components.DraarlIconButton
-import cn.silverdragon.draarl.ui.components.DraarlIconButtonOptions
+import cn.silverdragon.draarl.ui.components.SystemAvatar
 import cn.silverdragon.draarl.ui.components.UserAvatar
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -58,6 +60,7 @@ internal fun MessageItem(
     state: MessageItemState,
     playing: Boolean,
     onToggleVoicePlayback: (RadioMessage) -> Unit,
+    onShareVoiceAudio: (RadioMessage) -> Unit,
     onOpenLocation: (Wgs84LocationMessage) -> Unit
 ) {
     val message = state.message
@@ -68,7 +71,11 @@ internal fun MessageItem(
     if (state.showTimeDivider) MessageTimeDivider(message.timestamp)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         if (!message.mine) {
-            UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
+            if (message.isAutoBroadcast) {
+                SystemAvatar(Modifier.size(38.dp))
+            } else {
+                UserAvatar(profile?.avatarUrl.orEmpty(), Modifier.size(38.dp))
+            }
             Spacer(Modifier.width(8.dp))
         }
         Column(
@@ -101,6 +108,7 @@ internal fun MessageItem(
                 message = message,
                 playing = playing,
                 onToggleVoicePlayback = onToggleVoicePlayback,
+                onShareVoiceAudio = onShareVoiceAudio,
                 onOpenLocation = onOpenLocation
             )
             Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -125,6 +133,7 @@ private fun MessageBubble(
     message: RadioMessage,
     playing: Boolean,
     onToggleVoicePlayback: (RadioMessage) -> Unit,
+    onShareVoiceAudio: (RadioMessage) -> Unit,
     onOpenLocation: (Wgs84LocationMessage) -> Unit
 ) {
     val location = remember(message.content) { decodeLocationMessage(message.content) }
@@ -147,7 +156,8 @@ private fun MessageBubble(
                 VoiceMessageContent(
                     message = message,
                     playing = playing,
-                    onTogglePlayback = { onToggleVoicePlayback(message) }
+                    onTogglePlayback = { onToggleVoicePlayback(message) },
+                    onShareAudio = { onShareVoiceAudio(message) }
                 )
             } else if (location != null) {
                 LocationMessageContent(location, onOpenLocation)
@@ -262,19 +272,34 @@ private fun LocationMessageContent(location: Wgs84LocationMessage, onOpen: (Wgs8
 }
 
 @Composable
-private fun VoiceMessageContent(message: RadioMessage, playing: Boolean, onTogglePlayback: () -> Unit) {
+private fun VoiceMessageContent(
+    message: RadioMessage,
+    playing: Boolean,
+    onTogglePlayback: () -> Unit,
+    onShareAudio: () -> Unit
+) {
     val playable = VoicePlaybackQueue.isPlayable(message)
     val contentColor = LocalContentColor.current
     Row(
-        modifier = Modifier.widthIn(min = 170.dp).padding(horizontal = 6.dp, vertical = 5.dp),
+        modifier = Modifier
+            .widthIn(min = 170.dp)
+            .combinedClickable(
+                enabled = playable,
+                onClickLabel = if (playing) "暂停语音" else "播放语音",
+                onLongClickLabel = "分享 WAV 音频",
+                role = Role.Button,
+                onClick = onTogglePlayback,
+                onLongClick = onShareAudio,
+            )
+            .padding(horizontal = 6.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DraarlIconButton(
-            icon = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-            label = if (playing) "暂停语音" else "播放语音",
-            onClick = onTogglePlayback,
-            options = DraarlIconButtonOptions(enabled = playable)
-        )
+        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = null
+            )
+        }
         Row(
             modifier = Modifier.width(82.dp).height(24.dp),
             horizontalArrangement = Arrangement.spacedBy(3.dp),

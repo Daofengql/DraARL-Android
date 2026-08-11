@@ -4,16 +4,20 @@ import java.util.Locale
 
 internal object ChannelMessageMapper {
     fun toRadioMessage(message: ChannelMessage, accountUser: User, timestamp: Long): RadioMessage {
-        val mine = message.sender.ghost && message.sender.ssid == 101 &&
+        val senderUsername = if (message.isAutoBroadcast) SYSTEM_BROADCAST_USERNAME else message.sender.username
+        val senderCallsign = if (message.isAutoBroadcast) SYSTEM_BROADCAST_CALLSIGN else message.sender.callsign
+        val senderNickname = if (message.isAutoBroadcast) SYSTEM_BROADCAST_NICKNAME else message.sender.nickname
+        val senderSsid = if (message.isAutoBroadcast) SYSTEM_BROADCAST_SSID else message.sender.ssid
+        val mine = !message.isAutoBroadcast && message.sender.ghost && message.sender.ssid == 101 &&
             message.sender.username.equals(accountUser.username, ignoreCase = true)
         val voice = message.messageType.equals("voice", ignoreCase = true)
         return RadioMessage(
             id = "record-${message.id}",
             type = if (voice) RadioMessageType.VOICE else RadioMessageType.TEXT,
-            senderCallsign = message.sender.callsign.ifBlank { message.sender.username },
-            senderSsid = message.sender.ssid,
-            senderUsername = message.sender.username,
-            senderNickname = message.sender.nickname,
+            senderCallsign = senderCallsign.ifBlank { senderUsername },
+            senderSsid = senderSsid,
+            senderUsername = senderUsername,
+            senderNickname = senderNickname,
             content = if (voice) "历史语音 ${formatDuration(message.durationMs)}" else message.text,
             timestamp = timestamp,
             mine = mine,

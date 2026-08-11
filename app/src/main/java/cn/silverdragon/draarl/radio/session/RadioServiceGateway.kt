@@ -95,7 +95,9 @@ private class AndroidRadioServiceConnectionGateway(context: Context) : RadioServ
 
         override fun onServiceDisconnected(name: ComponentName?) {
             binder = null
+            bindingRequested = false
             observer?.onServiceDisconnected()
+            if (listener != null && observer != null) bind()
         }
     }
 

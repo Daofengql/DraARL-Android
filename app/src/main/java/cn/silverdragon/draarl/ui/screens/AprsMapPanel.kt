@@ -39,6 +39,7 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -85,9 +86,9 @@ internal fun AprsMapPanel(
     onStartPtt: () -> Boolean,
     onStopPtt: () -> Unit,
     modifier: Modifier = Modifier,
-    visible: Boolean = true,
-    active: Boolean = visible
+    display: AprsMapPanelDisplay = AprsMapPanelDisplay()
 ) {
+    val visible = display.visible
     val context = LocalContext.current
     // Keep the native MapView mounted while the radio screen shows messages. Recreating
     // the Surface-backed view on every mode switch is the source of the final hitch.
@@ -220,7 +221,7 @@ internal fun AprsMapPanel(
                 coordinate = coordinate,
                 allowSelection = false,
                 gesturesEnabled = visible,
-                active = active,
+                active = display.active,
                 showCompass = true,
                 zoom = 15f,
                 recenterRequest = recenterRequest,
@@ -380,6 +381,12 @@ internal fun AprsMapPanel(
         }
     }
 }
+
+@Immutable
+internal data class AprsMapPanelDisplay(
+    val visible: Boolean = true,
+    val active: Boolean = visible
+)
 
 @Composable
 private fun ControllerMapPttButton(

@@ -5,8 +5,9 @@
 ## 状态边界
 
 - `RadioSessionController` 负责节点发现、连接参数准备、频道路由和 Service Binder 生命周期，并向 UI 发布 `RadioConnectionPhase`。
-- `RadioConnectionService` 持有唯一 `UdpRadioClient`，Service 销毁时调用 `release` 完成最终清理。
+- `RadioConnectionService` 持有唯一 `UdpRadioClient`，Service 销毁时调用 `release` 完成最终清理；活动连接的端点和频道写入恢复存储，Service 重建时使用现有加密会话刷新 Token 并恢复 UDP。
 - `RadioServiceStatePolicy` 只计算各连接阶段的前台动作与通知标题，Android `Service` 保留实际的通知、前台类型和停止调用。
+- Service 只监听默认网络的丢失；网络切换或 Wi-Fi/蜂窝短暂抖动不会主动打断现有 UDP，会在默认网络持续不可用超过短暂宽限后触发恢复。连接/重连阶段持有 CPU `PARTIAL_WAKE_LOCK` 和可用时的 Wi-Fi lock，显式断开、会话失效和销毁时全部释放。
 - `UdpSessionStateContext` 串行持有 UDP 会话代次、目标配置、内部阶段、`RadioStatus` 和认证身份；`UdpConnectionStateMachine` 只计算状态转换。阶段包括断开、连接、认证、在线、等待重连、重连、错误和关闭。
 - 状态通知在上下文锁外由唯一发布者按序发送；阻塞或重入 listener 不会持有状态锁，也不会倒序覆盖新状态。
 - 每次新连接、重连调度、主动断开或关闭都会推进代次。Transport、调度任务和音频回调只有在代次仍匹配时才能更新连接状态。
@@ -23,6 +24,7 @@
 | 认证握手 | `draarl-udp-connect` 单线程执行器 | 仅当前代次可以安装和激活 Transport |
 | UDP 阻塞接收 | 每次在线会话的 `draarl-udp-receiver` | 关闭对应 Transport 或代次失效后退出 |
 | 心跳、服务器静默监测和周期语音清理 tick | `UdpSessionMonitor` | 独占收发时间戳与两个周期任务，通过 `RadioClock` 做确定性时间判断 |
+| Service 重建、网络切换和连接恢复 | `RadioConnectionService` / `RadioConnectionRecoveryStore` | 只持久化非敏感端点参数；Token 继续由 `SecureSessionStore` 加密保存；显式断开清除恢复意图 |
 | PTT 录音、超时、尾音与发送缓存 | `UdpPttCoordinator` | 仅成功发出的 Opus 包进入本地录音，停止和取消均为幂等操作 |
 | 重连与一次性任务句柄 | `UdpSessionTaskCoordinator` | 通过可注入的 `RadioScheduler` 创建，按任务类型统一替换和取消 |
 | 录音、实时播放和录音回放 | `RadioAudioCapture` / `RadioAudioPlayback` | Android 实现委托 `OpusAudioEngine`；连接替换、重连、断开和释放均先停止活动音频；历史录音下载 Job 在新回放、停止回放和引擎释放时取消 |

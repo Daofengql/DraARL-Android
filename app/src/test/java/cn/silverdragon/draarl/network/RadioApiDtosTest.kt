@@ -39,4 +39,13 @@ class RadioApiDtosTest {
 
         assertEquals("", message.audioUrl)
     }
+
+    @Test
+    fun `message parser keeps the automatic broadcast marker`() {
+        val message = RadioMessageResponseMapper.message(
+            JSONObject("""{"data":{"id":10,"is_auto_broadcast":true}}""")
+        ).toDomain("https://api.example.test")
+
+        assertTrue(message.isAutoBroadcast)
+    }
 }

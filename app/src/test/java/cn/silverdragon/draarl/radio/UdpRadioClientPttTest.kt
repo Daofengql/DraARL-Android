@@ -136,6 +136,23 @@ class UdpRadioClientPttTest {
         }
     }
 
+    @Test
+    fun `network change schedules reconnect and releases the old transport`() {
+        val fixture = fixture()
+        try {
+            fixture.connect()
+
+            fixture.client.onNetworkChanged()
+
+            assertTrue(fixture.listener.reconnecting.await(2, TimeUnit.SECONDS))
+            assertEquals("网络发生变化", fixture.listener.latestStatus.error)
+            assertTrue(fixture.transport.isClosed)
+            assertTrue(fixture.scheduler.scheduled.await(1, TimeUnit.SECONDS))
+        } finally {
+            fixture.client.release()
+        }
+    }
+
     private fun fixture(captureStarts: Boolean = true, receiveFailure: RuntimeException? = null): Fixture {
         val listener = RecordingListener()
         val store = FakeAudioStore()

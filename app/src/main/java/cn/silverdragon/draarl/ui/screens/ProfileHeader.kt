@@ -131,13 +131,21 @@ internal fun ProfileHeader(
                     modifier = Modifier.padding(top = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    CommandIconButton(onClick = onEditClick, contentDescription = "编辑资料", icon = Icons.Default.Edit)
+                    CommandIconButton(
+                        onClick = onEditClick,
+                        contentDescription = "编辑资料",
+                        icon = Icons.Default.Edit
+                    )
                     CommandIconButton(
                         onClick = onPresetsClick,
                         contentDescription = "电台预设",
                         icon = Icons.Default.FavoriteBorder
                     )
-                    CommandIconButton(onClick = onSettingsClick, contentDescription = "设置", icon = Icons.Default.Settings)
+                    CommandIconButton(
+                        onClick = onSettingsClick,
+                        contentDescription = "设置",
+                        icon = Icons.Default.Settings
+                    )
                 }
             }
             if (user.introduction.isNotBlank()) {

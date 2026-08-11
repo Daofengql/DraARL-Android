@@ -144,6 +144,13 @@ class UdpRadioClient internal constructor(
         sessionState.dispatch(UdpConnectionEvent.AccessTokenChanged(token))
     }
 
+    fun onNetworkChanged() {
+        val current = status
+        if (current.phase != RadioConnectionPhase.DISCONNECTED) {
+            scheduleReconnect("网络发生变化", generation())
+        }
+    }
+
     @Synchronized
     fun disconnect() {
         sessionState.dispatch(UdpConnectionEvent.Disconnect)

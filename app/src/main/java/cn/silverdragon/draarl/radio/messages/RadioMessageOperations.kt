@@ -1,6 +1,7 @@
 package cn.silverdragon.draarl.radio.messages
 
 import cn.silverdragon.draarl.data.RadioMessage
+import cn.silverdragon.draarl.data.SYSTEM_BROADCAST_USERNAME
 import cn.silverdragon.draarl.data.RadioMessageReconciler
 import cn.silverdragon.draarl.data.RadioMessageType
 import cn.silverdragon.draarl.data.User
@@ -157,6 +158,7 @@ internal class RadioMessageProfileLoader(
         usernames.asSequence()
             .map(String::trim)
             .filter(String::isNotBlank)
+            .filterNot { it.equals(SYSTEM_BROADCAST_USERNAME, ignoreCase = true) }
             .distinctBy(String::lowercase)
             .forEach { username ->
                 val key = username.lowercase()

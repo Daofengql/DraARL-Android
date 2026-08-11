@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.structuralEqualityPolicy
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -138,17 +139,9 @@ private fun RadioConnectionEffects(controller: AppController, onConnect: () -> U
 @Composable
 private fun RadioMessagesPane(
     controller: AppController,
-    messages: List<RadioMessage>,
-    historyLoading: Boolean,
-    syncError: String,
-    publicProfiles: Map<String, User>,
-    groupNames: Map<Int, String>,
+    state: RadioMessagesPaneState,
     listState: LazyListState,
-    showUnreadJump: Boolean,
-    onJumpToUnread: () -> Unit,
-    onMarkAllUnplayed: () -> Unit,
-    onScrollToBottom: () -> Unit,
-    onOpenLocation: (Wgs84LocationMessage) -> Unit,
+    actions: RadioMessagesPaneActions,
     modifier: Modifier = Modifier
 ) {
     androidx.compose.material3.Surface(
@@ -156,69 +149,150 @@ private fun RadioMessagesPane(
         color = MaterialTheme.colorScheme.background
     ) {
         Column(Modifier.fillMaxSize()) {
-            if (messages.isEmpty()) {
+            if (state.messages.isEmpty()) {
                 RadioMessageEmptyFeedback(
-                    hasSyncError = syncError.isNotBlank(),
+                    hasSyncError = state.history.syncError.isNotBlank(),
                     modifier = Modifier.weight(1f)
                 )
             } else {
-                Box(Modifier.fillMaxWidth().weight(1f)) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            start = 12.dp,
-                            top = 12.dp,
-                            end = 12.dp,
-                            bottom = if (listState.canScrollForward) 76.dp else 12.dp
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (historyLoading || syncError.isNotBlank()) {
-                            item(key = "radio-history-status") {
-                                RadioHistoryFeedback(
-                                    loading = historyLoading,
-                                    hasSyncError = syncError.isNotBlank(),
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                                )
-                            }
-                        }
-                        itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
-                            val previousTimestamp = messages.getOrNull(index - 1)?.timestamp
-                            ControllerMessageItem(
-                                controller = controller,
-                                state = MessageItemState(
-                                    message = message,
-                                    profile = if (message.mine) {
-                                        controller.session.uiState.user
-                                    } else {
-                                        publicProfiles[message.senderUsername.lowercase()]
-                                    },
-                                    sourceGroupName = groupNames[message.groupId].orEmpty(),
-                                    showTimeDivider = previousTimestamp == null ||
-                                        message.timestamp - previousTimestamp >= RADIO_TIME_DIVIDER_MS
-                                ),
-                                onOpenLocation = onOpenLocation
-                            )
-                        }
-                    }
-                    if (controller.unplayedVoiceCount > 0) {
-                        UnreadVoiceJumpAction(
-                            unplayedCount = controller.unplayedVoiceCount,
-                            showJump = showUnreadJump,
-                            onClick = onJumpToUnread,
-                            onMarkAllPlayed = onMarkAllUnplayed,
-                            modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 12.dp)
-                        )
-                    }
-                    MessageListFloatingActions(
-                        canScrollToBottom = listState.canScrollForward,
-                        onScrollToBottom = onScrollToBottom,
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp)
-                    )
-                }
+                RadioMessageList(
+                    controller = controller,
+                    state = state,
+                    listState = listState,
+                    actions = actions,
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
             }
         }
+    }
+}
+
+@Immutable
+private data class RadioMessagesHistoryState(
+    val loading: Boolean,
+    val syncError: String
+)
+
+@Immutable
+private data class RadioMessagesPaneState(
+    val messages: List<RadioMessage>,
+    val history: RadioMessagesHistoryState,
+    val publicProfiles: Map<String, User>,
+    val groupNames: Map<Int, String>,
+    val showUnreadJump: Boolean
+)
+
+private data class RadioMessagesPaneActions(
+    val onJumpToUnread: () -> Unit,
+    val onMarkAllUnplayed: () -> Unit,
+    val onScrollToBottom: () -> Unit,
+    val onOpenLocation: (Wgs84LocationMessage) -> Unit
+)
+
+@Composable
+private fun RadioMessageList(
+    controller: AppController,
+    state: RadioMessagesPaneState,
+    listState: LazyListState,
+    actions: RadioMessagesPaneActions,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier) {
+        RadioMessageLazyColumn(
+            controller = controller,
+            state = state,
+            listState = listState,
+            onOpenLocation = actions.onOpenLocation,
+            modifier = Modifier.fillMaxSize()
+        )
+        RadioMessageListActions(
+            controller = controller,
+            state = state,
+            listState = listState,
+            actions = actions,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+private fun RadioMessageLazyColumn(
+    controller: AppController,
+    state: RadioMessagesPaneState,
+    listState: LazyListState,
+    onOpenLocation: (Wgs84LocationMessage) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 12.dp,
+            top = 12.dp,
+            end = 12.dp,
+            bottom = if (listState.canScrollForward) 76.dp else 12.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (state.history.loading || state.history.syncError.isNotBlank()) {
+            item(key = "radio-history-status") {
+                RadioHistoryFeedback(
+                    loading = state.history.loading,
+                    hasSyncError = state.history.syncError.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                )
+            }
+        }
+        itemsIndexed(state.messages, key = { _, message -> message.id }) { index, message ->
+            val previousTimestamp = state.messages.getOrNull(index - 1)?.timestamp
+            ControllerMessageItem(
+                controller = controller,
+                state = MessageItemState(
+                    message = message,
+                    profile = messageProfile(controller, message, state.publicProfiles),
+                    sourceGroupName = state.groupNames[message.groupId].orEmpty(),
+                    showTimeDivider = previousTimestamp == null ||
+                        message.timestamp - previousTimestamp >= RADIO_TIME_DIVIDER_MS
+                ),
+                onOpenLocation = onOpenLocation
+            )
+        }
+    }
+}
+
+private fun messageProfile(
+    controller: AppController,
+    message: RadioMessage,
+    publicProfiles: Map<String, User>
+): User? = if (message.mine) {
+    controller.session.uiState.user
+} else {
+    publicProfiles[message.senderUsername.lowercase()]
+}
+
+@Composable
+private fun RadioMessageListActions(
+    controller: AppController,
+    state: RadioMessagesPaneState,
+    listState: LazyListState,
+    actions: RadioMessagesPaneActions,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier) {
+        if (controller.unplayedVoiceCount > 0) {
+            UnreadVoiceJumpAction(
+                unplayedCount = controller.unplayedVoiceCount,
+                showJump = state.showUnreadJump,
+                onClick = actions.onJumpToUnread,
+                onMarkAllPlayed = actions.onMarkAllUnplayed,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 12.dp)
+            )
+        }
+        MessageListFloatingActions(
+            canScrollToBottom = listState.canScrollForward,
+            onScrollToBottom = actions.onScrollToBottom,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 12.dp)
+        )
     }
 }
 
@@ -254,6 +328,7 @@ private fun ControllerMessageItem(
         state = state,
         playing = playing,
         onToggleVoicePlayback = controller::toggleVoicePlayback,
+        onShareVoiceAudio = controller::shareVoiceMessage,
         onOpenLocation = onOpenLocation
     )
 }
@@ -382,6 +457,11 @@ fun RadioScreen(
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
+    LaunchedEffect(contentMode, selectedGroupId) {
+        if (contentMode != RadioContentMode.MESSAGES || !followLatest || messages.isEmpty()) return@LaunchedEffect
+        withFrameNanos { }
+        listState.scrollToItem(messages.lastIndex)
+    }
     AutoPlayMessageScrollEffect(controller, selectedGroupId, messages, listState)
     LaunchedEffect(messages.firstOrNull()?.id, messages.size, historyLoading) {
         if (historyLoading || historyAnchorId.isBlank()) return@LaunchedEffect
@@ -438,28 +518,31 @@ fun RadioScreen(
         Box(Modifier.fillMaxWidth().weight(1f)) {
             RadioMessagesPane(
                 controller = controller,
-                messages = messages,
-                historyLoading = historyLoading,
-                syncError = syncError,
-                publicProfiles = publicProfiles,
-                groupNames = groupNames,
+                state = RadioMessagesPaneState(
+                    messages = messages,
+                    history = RadioMessagesHistoryState(historyLoading, syncError),
+                    publicProfiles = publicProfiles,
+                    groupNames = groupNames,
+                    showUnreadJump = unplayedVoiceCount > 0 && !unreadJumpDismissed
+                ),
                 listState = listState,
-                showUnreadJump = unplayedVoiceCount > 0 && !unreadJumpDismissed,
-                onJumpToUnread = {
-                    val unreadIndex = messages.indexOfFirst(VoicePlaybackQueue::isUnplayed)
-                    unreadJumpDismissed = true
-                    if (unreadIndex >= 0) {
-                        followLatest = false
-                        val statusItemCount = if (historyLoading || syncError.isNotBlank()) 1 else 0
-                        scope.launch { listState.animateScrollToItem(unreadIndex + statusItemCount) }
-                    }
-                },
-                onMarkAllUnplayed = controller::clearUnplayedVoiceMessages,
-                onScrollToBottom = {
-                    followLatest = true
-                    scope.launch { listState.animateScrollToItem(messages.lastIndex) }
-                },
-                onOpenLocation = onOpenLocation,
+                actions = RadioMessagesPaneActions(
+                    onJumpToUnread = {
+                        val unreadIndex = messages.indexOfFirst(VoicePlaybackQueue::isUnplayed)
+                        unreadJumpDismissed = true
+                        if (unreadIndex >= 0) {
+                            followLatest = false
+                            val statusItemCount = if (historyLoading || syncError.isNotBlank()) 1 else 0
+                            scope.launch { listState.animateScrollToItem(unreadIndex + statusItemCount) }
+                        }
+                    },
+                    onMarkAllUnplayed = controller::clearUnplayedVoiceMessages,
+                    onScrollToBottom = {
+                        followLatest = true
+                        scope.launch { listState.animateScrollToItem(messages.lastIndex) }
+                    },
+                    onOpenLocation = onOpenLocation
+                ),
                 modifier = Modifier.fillMaxSize()
             )
             val mapVisible = contentMode == RadioContentMode.MAP
@@ -478,8 +561,10 @@ fun RadioScreen(
                     controller = controller,
                     onStartPtt = startPtt,
                     onStopPtt = controller::stopPtt,
-                    visible = mapVisible,
-                    active = mapVisible || mapAlpha > 0.01f,
+                    display = AprsMapPanelDisplay(
+                        visible = mapVisible,
+                        active = mapVisible || mapAlpha > 0.01f
+                    ),
                     modifier = Modifier.fillMaxSize()
                 )
             }

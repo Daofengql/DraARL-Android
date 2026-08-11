@@ -230,6 +230,7 @@ data class ChannelMessage(
     val text: String,
     val audioUrl: String,
     val status: Int,
+    val isAutoBroadcast: Boolean = false,
 )
 
 data class ChannelMessagePage(
@@ -293,6 +294,16 @@ data class RadioMessage(
     val groupId: Int = 0, // 0 表示未知，用于兼容旧数据
     val played: Boolean = false,
 )
+
+val RadioMessage.isAutoBroadcast: Boolean
+    get() = senderUsername.equals(SYSTEM_BROADCAST_USERNAME, ignoreCase = true) ||
+        (senderCallsign.equals(SYSTEM_BROADCAST_CALLSIGN, ignoreCase = true) &&
+            senderSsid == SYSTEM_BROADCAST_SSID)
+
+const val SYSTEM_BROADCAST_USERNAME = "system-broadcast"
+const val SYSTEM_BROADCAST_NICKNAME = "自动播报"
+const val SYSTEM_BROADCAST_CALLSIGN = "AUTO"
+const val SYSTEM_BROADCAST_SSID = 255
 
 data class DashboardData(
     val devices: Int = 0,

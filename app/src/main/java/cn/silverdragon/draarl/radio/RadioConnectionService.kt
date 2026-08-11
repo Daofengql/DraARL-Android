@@ -8,16 +8,26 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.MainActivity
 import cn.silverdragon.draarl.R
+import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioStatus
+import cn.silverdragon.draarl.network.ApiClient
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 interface RadioServiceListener {
     fun onRadioStatus(status: RadioStatus)
@@ -34,6 +44,26 @@ class RadioConnectionService :
     private val binder = LocalBinder()
     private lateinit var radioClient: UdpRadioClient
     private lateinit var pttOverlay: PttOverlayWindow
+    private lateinit var recoveryStore: RadioConnectionRecoveryStore
+    private lateinit var sessionStore: SecureSessionStore
+    private lateinit var apiClient: ApiClient
+    private lateinit var connectivityManager: ConnectivityManager
+    private lateinit var networkCallback: ConnectivityManager.NetworkCallback
+    private lateinit var cpuWakeLock: PowerManager.WakeLock
+    private var wifiLock: WifiManager.WifiLock? = null
+    private val networkStateLock = Any()
+    private var observedDefaultNetwork: Network? = null
+    private var networkLossTask: ScheduledFuture<*>? = null
+
+    private val recoveryExecutor = ScheduledThreadPoolExecutor(1) { runnable ->
+        Thread(runnable, "draarl-radio-recovery")
+    }.apply {
+        removeOnCancelPolicy = true
+    }
+    private val recoveryLock = Any()
+    private var recoveryTask: ScheduledFuture<*>? = null
+    private var recoveryGeneration = 0
+    private var destroyed = false
 
     @Volatile private var foreground = false
 
@@ -43,12 +73,23 @@ class RadioConnectionService :
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        recoveryStore = RadioConnectionRecoveryStore(applicationContext)
+        sessionStore = SecureSessionStore(applicationContext)
+        apiClient = ApiClient(sessionStore)
+        connectivityManager = getSystemService(ConnectivityManager::class.java)
+        observedDefaultNetwork = connectivityManager.activeNetwork
+        cpuWakeLock = getSystemService(PowerManager::class.java).newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "${applicationContext.packageName}:radio"
+        ).apply { setReferenceCounted(false) }
+        wifiLock = createWifiLock()
         radioClient = UdpRadioClient(applicationContext, this)
         pttOverlay = PttOverlayWindow(
             context = applicationContext,
             onStartPtt = ::startPtt,
             onStopPtt = radioClient::stopPtt
         )
+        registerNetworkCallback()
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -56,13 +97,33 @@ class RadioConnectionService :
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
             disconnect()
+            return START_NOT_STICKY
         } else {
-            ensureForeground(radioClient.snapshot().copy(phase = RadioConnectionPhase.CONNECTING))
+            val status = radioClient.snapshot()
+            val hasRecoveryConfig = recoveryStore.load() != null
+            ensureForeground(
+                status.copy(
+                    phase = status.phase.takeUnless { it == RadioConnectionPhase.DISCONNECTED }
+                        ?: RadioConnectionPhase.CONNECTING
+                )
+            )
+            if (status.phase == RadioConnectionPhase.DISCONNECTED) scheduleRecovery(delayMillis = 0L)
+            return if (hasRecoveryConfig || status.phase != RadioConnectionPhase.DISCONNECTED) {
+                START_STICKY
+            } else {
+                START_NOT_STICKY
+            }
         }
-        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        destroyed = true
+        cancelRecovery()
+        cancelNetworkLossRecovery()
+        unregisterNetworkCallback()
+        releaseCpuWakeLock()
+        releaseWifiLock()
+        recoveryExecutor.shutdownNow()
         messageDispatcher.clear()
         pttOverlay.hide()
         radioClient.release()
@@ -72,11 +133,13 @@ class RadioConnectionService :
     override fun onStatus(status: RadioStatus) {
         messageDispatcher.listener?.onRadioStatus(status)
         pttOverlay.updateStatus(status)
+        updateCpuWakeLock(status)
         when (RadioServiceStatePolicy.foregroundAction(status.phase, overlayFeatureEnabled)) {
             RadioServiceForegroundAction.ENSURE -> ensureForeground(status)
             RadioServiceForegroundAction.UPDATE -> updateNotification(status)
             RadioServiceForegroundAction.STOP -> stopForegroundService()
         }
+        if (status.phase == RadioConnectionPhase.ERROR) scheduleRecovery()
     }
 
     override fun onMessage(message: RadioMessage) {
@@ -101,6 +164,9 @@ class RadioConnectionService :
     }
 
     private fun connect(config: RadioConnectionConfig) {
+        cancelRecovery()
+        recoveryStore.save(config)
+        ContextCompat.startForegroundService(applicationContext, startIntent(applicationContext))
         ensureForeground(
             RadioStatus(
                 phase = RadioConnectionPhase.CONNECTING,
@@ -112,10 +178,18 @@ class RadioConnectionService :
     }
 
     private fun disconnect() {
+        cancelRecovery()
+        recoveryStore.clear()
         radioClient.disconnect()
     }
 
+    private fun setRouting(groupId: Int, receiveGroupIds: Collection<Int>) {
+        recoveryStore.updateGroupId(groupId)
+        radioClient.setRouting(groupId, receiveGroupIds)
+    }
+
     private fun ensureForeground(status: RadioStatus) {
+        updateCpuWakeLock(status)
         val notification = buildNotification(status)
         if (!foreground) {
             startRadioForeground(notification, microphone = status.transmitting || overlayFeatureEnabled)
@@ -132,7 +206,195 @@ class RadioConnectionService :
     private fun stopForegroundService() {
         if (foreground) stopForeground(STOP_FOREGROUND_REMOVE)
         foreground = false
+        releaseCpuWakeLock()
+        releaseWifiLock()
         stopSelf()
+    }
+
+    private fun registerNetworkCallback() {
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                markDefaultNetworkAvailable(network)
+                cancelNetworkLossRecovery()
+            }
+
+            override fun onLost(network: Network) {
+                if (markDefaultNetworkLost(network)) scheduleNetworkLossRecovery()
+            }
+        }
+        runCatching {
+            connectivityManager.registerDefaultNetworkCallback(networkCallback)
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+    }
+
+    private fun handleNetworkChange() {
+        if (destroyed) return
+        radioClient.onNetworkChanged()
+        if (radioClient.snapshot().phase == RadioConnectionPhase.DISCONNECTED) {
+            scheduleRecovery(delayMillis = 0L)
+        }
+    }
+
+    private fun markDefaultNetworkAvailable(network: Network) = synchronized(networkStateLock) {
+        observedDefaultNetwork = network
+    }
+
+    private fun markDefaultNetworkLost(network: Network): Boolean = synchronized(networkStateLock) {
+        if (observedDefaultNetwork != network) return@synchronized false
+        observedDefaultNetwork = null
+        true
+    }
+
+    private fun scheduleNetworkLossRecovery() {
+        if (destroyed) return
+        synchronized(networkStateLock) {
+            networkLossTask?.cancel(false)
+            networkLossTask = runCatching {
+                recoveryExecutor.schedule(
+                    {
+                        val networkStillUnavailable = synchronized(networkStateLock) {
+                            networkLossTask = null
+                            observedDefaultNetwork == null
+                        }
+                        if (networkStillUnavailable) handleNetworkChange()
+                    },
+                    NETWORK_LOSS_GRACE_MS,
+                    TimeUnit.MILLISECONDS
+                )
+            }.getOrNull()
+        }
+    }
+
+    private fun cancelNetworkLossRecovery() {
+        synchronized(networkStateLock) {
+            networkLossTask?.cancel(false)
+            networkLossTask = null
+        }
+    }
+
+    private fun scheduleRecovery(delayMillis: Long = RECOVERY_RETRY_DELAY_MS) {
+        if (recoveryStore.load() == null || destroyed) return
+        synchronized(recoveryLock) {
+            if (recoveryTask?.isDone == false) return
+            val generation = ++recoveryGeneration
+            recoveryTask = recoveryExecutor.schedule(
+                { recoverConnection(generation) },
+                delayMillis,
+                TimeUnit.MILLISECONDS
+            )
+        }
+    }
+
+    private fun cancelRecovery() {
+        synchronized(recoveryLock) {
+            recoveryGeneration++
+            recoveryTask?.cancel(false)
+            recoveryTask = null
+        }
+    }
+
+    private fun recoverConnection(expectedGeneration: Int) {
+        if (!beginRecovery(expectedGeneration)) return
+        val saved = recoveryStore.load()
+        when {
+            saved == null -> Unit
+            sessionStore.load()?.user?.isApproved != true -> abandonRecovery()
+            else -> recoverApprovedConnection(expectedGeneration, saved)
+        }
+    }
+
+    private fun beginRecovery(expectedGeneration: Int): Boolean = synchronized(recoveryLock) {
+        val current = expectedGeneration == recoveryGeneration && !destroyed
+        if (current) recoveryTask = null
+        current
+    }
+
+    private fun abandonRecovery() {
+        recoveryStore.clear()
+        stopForegroundService()
+    }
+
+    private fun recoverApprovedConnection(expectedGeneration: Int, saved: RadioRecoveryConfig) {
+        runCatching { apiClient.freshAccessToken() }
+            .onSuccess { token ->
+                if (recoveryIsCurrent(expectedGeneration, saved)) {
+                    connectRecoveredSession(saved, token)
+                }
+            }
+            .onFailure { handleRecoveryAuthenticationFailure() }
+    }
+
+    private fun recoveryIsCurrent(expectedGeneration: Int, saved: RadioRecoveryConfig): Boolean {
+        val generationMatches = synchronized(recoveryLock) {
+            expectedGeneration == recoveryGeneration && !destroyed
+        }
+        return generationMatches && recoveryStore.load() == saved
+    }
+
+    private fun connectRecoveredSession(saved: RadioRecoveryConfig, token: String) {
+        radioClient.connect(
+            RadioConnectionConfig(
+                accessPoint = saved.accessPoint,
+                accessToken = token,
+                clientInstanceId = sessionStore.clientInstanceId(),
+                groupId = saved.groupId
+            )
+        )
+    }
+
+    private fun handleRecoveryAuthenticationFailure() {
+        if (apiClient.currentSession() == null) {
+            abandonRecovery()
+        } else {
+            scheduleRecovery()
+        }
+    }
+
+    private fun updateCpuWakeLock(status: RadioStatus) {
+        if (destroyed) {
+            releaseCpuWakeLock()
+            return
+        }
+        val active = status.phase != RadioConnectionPhase.DISCONNECTED &&
+            (status.phase != RadioConnectionPhase.ERROR || recoveryStore.load() != null)
+        if (active) {
+            if (!cpuWakeLock.isHeld) runCatching { cpuWakeLock.acquire() }
+            wifiLock?.let { lock ->
+                if (!lock.isHeld) runCatching { lock.acquire() }
+            }
+        } else {
+            releaseCpuWakeLock()
+            releaseWifiLock()
+        }
+    }
+
+    private fun releaseCpuWakeLock() {
+        if (::cpuWakeLock.isInitialized && cpuWakeLock.isHeld) {
+            runCatching { cpuWakeLock.release() }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun createWifiLock(): WifiManager.WifiLock? = runCatching {
+        val wifiManager = getSystemService(WifiManager::class.java) ?: return null
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+        } else {
+            WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        }
+        wifiManager.createWifiLock(mode, "${applicationContext.packageName}:radio-wifi").apply {
+            setReferenceCounted(false)
+        }
+    }.getOrNull()
+
+    private fun releaseWifiLock() {
+        wifiLock?.let { lock ->
+            if (lock.isHeld) runCatching { lock.release() }
+        }
     }
 
     private fun buildNotification(status: RadioStatus): Notification {
@@ -272,7 +534,7 @@ class RadioConnectionService :
         fun hasAudioCacheKey(key: String): Boolean = radioClient.hasAudioCacheKey(key)
         fun clearAudioCache() = radioClient.clearAudioCache()
         fun setRouting(groupId: Int, receiveGroupIds: Collection<Int>) =
-            radioClient.setRouting(groupId, receiveGroupIds)
+            this@RadioConnectionService.setRouting(groupId, receiveGroupIds)
         fun configurePttOverlay(enabled: Boolean, visible: Boolean, groupName: String): Boolean =
             this@RadioConnectionService.configurePttOverlay(enabled, visible, groupName)
         fun updateAccessToken(token: String) = radioClient.updateAccessToken(token)
@@ -283,6 +545,8 @@ class RadioConnectionService :
         private const val CHANNEL_ID = "draarl_radio_connection"
         private const val NOTIFICATION_ID = 101
         private const val MAX_PENDING_MESSAGES = 100
+        private const val RECOVERY_RETRY_DELAY_MS = 10_000L
+        private const val NETWORK_LOSS_GRACE_MS = 1_500L
         private const val ACTION_DISCONNECT = "cn.silverdragon.draarl.action.DISCONNECT"
 
         fun startIntent(context: Context): Intent = Intent(context, RadioConnectionService::class.java)
