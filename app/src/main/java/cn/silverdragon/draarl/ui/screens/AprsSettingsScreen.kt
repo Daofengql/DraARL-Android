@@ -2,6 +2,10 @@ package cn.silverdragon.draarl.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -149,6 +153,28 @@ fun AprsSettingsScreen(
             onNotice("需要定位权限才能发送 APRS 位置")
         }
     }
+    val backgroundLocationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            autoReport = true
+        } else {
+            autoReport = false
+            onNotice("未授予后台定位权限，已关闭 APRS 后台自动上报")
+        }
+    }
+    val backgroundLocationSettings = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        autoReport = granted
+        if (!granted) {
+            onNotice("未授予后台定位权限，已关闭 APRS 后台自动上报")
+        }
+    }
 
     fun sendNow() {
         val fine =
@@ -182,6 +208,16 @@ fun AprsSettingsScreen(
         }
     }
 
+    fun requiresBackgroundLocationPermission(): Boolean =
+        enabled &&
+            autoReport &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+
+    @Suppress("ReturnCount")
     fun save() {
         val parsedPort = port.toIntOrNull()
         if (callsign.isBlank()) {
@@ -190,6 +226,10 @@ fun AprsSettingsScreen(
         }
         if (parsedPort == null || parsedPort !in 1..65535) {
             onNotice("请输入有效的 APRS 端口")
+            return
+        }
+        if (requiresBackgroundLocationPermission()) {
+            onNotice("后台自动上报需要“始终允许”定位权限，请先授予后台定位权限")
             return
         }
         onEvent(
@@ -245,7 +285,42 @@ fun AprsSettingsScreen(
 
                 is AprsSettingsContentAction.SetComment -> comment = action.comment.take(43)
 
-                is AprsSettingsContentAction.SetAutoReport -> autoReport = action.enabled
+                is AprsSettingsContentAction.SetAutoReport -> {
+                    if (
+                        action.enabled &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        val hasForegroundLocation = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED ||
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                        if (hasForegroundLocation) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                onNotice("请在应用权限中将定位设置为“始终允许”，返回后再保存")
+                                backgroundLocationSettings.launch(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:${context.packageName}")
+                                    )
+                                )
+                            } else {
+                                backgroundLocationPermission.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            }
+                        } else {
+                            onNotice("请先授予前台定位权限，再开启后台自动上报")
+                        }
+                    } else {
+                        autoReport = action.enabled
+                    }
+                }
 
                 is AprsSettingsContentAction.SetStationaryInterval -> {
                     stationaryInterval = action.seconds

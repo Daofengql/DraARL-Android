@@ -3,17 +3,14 @@ package cn.silverdragon.draarl.radio
 import kotlin.math.PI
 import kotlin.math.sin
 
-internal data class CwTone(
-    val normalizedText: String,
-    val samples: ShortArray,
-) {
+internal data class CwTone(val normalizedText: String, val samples: ShortArray) {
     val durationMs: Long
         get() = samples.size * 1_000L / OpusAudioFormat.SAMPLE_RATE
 }
 
 internal object CwToneGenerator {
     fun generate(text: String, wordsPerMinute: Int, toneHz: Int): CwTone {
-        val normalized = normalize(text)
+        val normalized = MorseCodec.normalizeText(text)
         require(normalized.isNotBlank()) { "请输入字母、数字或常用 CW 符号" }
         require(normalized.length <= MAX_TEXT_LENGTH) { "CW 内容不能超过 $MAX_TEXT_LENGTH 个字符" }
 
@@ -44,18 +41,12 @@ internal object CwToneGenerator {
         return CwTone(normalized, samples)
     }
 
-    fun normalize(text: String): String = text
-        .trim()
-        .uppercase()
-        .map { character -> if (character == '\n' || character == '\t') ' ' else character }
-        .filter { it == ' ' || MORSE.containsKey(it) }
-        .joinToString("")
-        .replace(Regex(" +"), " ")
+    fun normalize(text: String): String = MorseCodec.normalizeText(text)
 
     private fun buildSegments(text: String): List<Segment> = buildList {
         text.forEachIndexed { characterIndex, character ->
             if (character == ' ') return@forEachIndexed
-            val code = MORSE.getValue(character)
+            val code = MorseCodec.codeFor(character)
             code.forEachIndexed { symbolIndex, symbol ->
                 add(Segment(tone = true, units = if (symbol == '-') 3 else 1))
                 if (symbolIndex != code.lastIndex) add(Segment(tone = false, units = 1))
@@ -67,18 +58,6 @@ internal object CwToneGenerator {
     }
 
     private data class Segment(val tone: Boolean, val units: Int)
-
-    private val MORSE = mapOf(
-        'A' to ".-", 'B' to "-...", 'C' to "-.-.", 'D' to "-..", 'E' to ".",
-        'F' to "..-.", 'G' to "--.", 'H' to "....", 'I' to "..", 'J' to ".---",
-        'K' to "-.-", 'L' to ".-..", 'M' to "--", 'N' to "-.", 'O' to "---",
-        'P' to ".--.", 'Q' to "--.-", 'R' to ".-.", 'S' to "...", 'T' to "-",
-        'U' to "..-", 'V' to "...-", 'W' to ".--", 'X' to "-..-", 'Y' to "-.--",
-        'Z' to "--..", '0' to "-----", '1' to ".----", '2' to "..---", '3' to "...--",
-        '4' to "....-", '5' to ".....", '6' to "-....", '7' to "--...", '8' to "---..",
-        '9' to "----.", '/' to "-..-.", '?' to "..--..", '.' to ".-.-.-", ',' to "--..--",
-        '=' to "-...-", '+' to ".-.-.", '-' to "-....-", '@' to ".--.-.",
-    )
 
     const val MIN_WPM = 8
     const val MAX_WPM = 40

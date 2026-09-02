@@ -5,9 +5,10 @@
 ## 状态边界
 
 - `RadioSessionController` 负责节点发现、连接参数准备、频道路由和 Service Binder 生命周期，并向 UI 发布 `RadioConnectionPhase`。
+- `DraarlApplication` 在进程内共享唯一 `SecureSessionStore` 与 `ApiClient`；界面控制器和通信 Service 共用同一份内存会话，Token 刷新会串行执行并同步到双方，避免启动恢复期间重复刷新或继续使用旧 Token。
 - `RadioConnectionService` 持有唯一 `UdpRadioClient`，Service 销毁时调用 `release` 完成最终清理；活动连接的端点和频道写入恢复存储，Service 重建时使用现有加密会话刷新 Token 并恢复 UDP。
 - `RadioServiceStatePolicy` 只计算各连接阶段的前台动作与通知标题，Android `Service` 保留实际的通知、前台类型和停止调用。
-- Service 只监听默认网络的丢失；网络切换或 Wi-Fi/蜂窝短暂抖动不会主动打断现有 UDP，会在默认网络持续不可用超过短暂宽限后触发恢复。连接/重连阶段持有 CPU `PARTIAL_WAKE_LOCK` 和可用时的 Wi-Fi lock，显式断开、会话失效和销毁时全部释放。
+- Service 注册默认网络回调后的首次状态只用于建立基线，不会打断启动中的 UDP；后续 Wi-Fi/蜂窝真实切换会主动重连，短暂丢网则在默认网络持续不可用超过宽限后恢复。连接/重连阶段持有 CPU `PARTIAL_WAKE_LOCK` 和可用时的 Wi-Fi lock，显式断开、会话失效和销毁时全部释放。
 - `UdpSessionStateContext` 串行持有 UDP 会话代次、目标配置、内部阶段、`RadioStatus` 和认证身份；`UdpConnectionStateMachine` 只计算状态转换。阶段包括断开、连接、认证、在线、等待重连、重连、错误和关闭。
 - 状态通知在上下文锁外由唯一发布者按序发送；阻塞或重入 listener 不会持有状态锁，也不会倒序覆盖新状态。
 - 每次新连接、重连调度、主动断开或关闭都会推进代次。Transport、调度任务和音频回调只有在代次仍匹配时才能更新连接状态。

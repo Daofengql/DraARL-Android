@@ -1,5 +1,6 @@
 package cn.silverdragon.draarl.radio
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -18,12 +19,13 @@ import android.os.PowerManager
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import cn.silverdragon.draarl.DraarlApplication
 import cn.silverdragon.draarl.MainActivity
 import cn.silverdragon.draarl.R
-import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.RadioConnectionPhase
 import cn.silverdragon.draarl.data.RadioMessage
 import cn.silverdragon.draarl.data.RadioStatus
+import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.network.ApiClient
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.ScheduledThreadPoolExecutor
@@ -52,7 +54,7 @@ class RadioConnectionService :
     private lateinit var cpuWakeLock: PowerManager.WakeLock
     private var wifiLock: WifiManager.WifiLock? = null
     private val networkStateLock = Any()
-    private var observedDefaultNetwork: Network? = null
+    private lateinit var defaultNetworkState: DefaultNetworkState<Network>
     private var networkLossTask: ScheduledFuture<*>? = null
 
     private val recoveryExecutor = ScheduledThreadPoolExecutor(1) { runnable ->
@@ -74,10 +76,11 @@ class RadioConnectionService :
         super.onCreate()
         createNotificationChannel()
         recoveryStore = RadioConnectionRecoveryStore(applicationContext)
-        sessionStore = SecureSessionStore(applicationContext)
-        apiClient = ApiClient(sessionStore)
+        val application = applicationContext as DraarlApplication
+        sessionStore = application.sessionStore
+        apiClient = application.apiClient
         connectivityManager = getSystemService(ConnectivityManager::class.java)
-        observedDefaultNetwork = connectivityManager.activeNetwork
+        defaultNetworkState = DefaultNetworkState(connectivityManager.activeNetwork)
         cpuWakeLock = getSystemService(PowerManager::class.java).newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "${applicationContext.packageName}:radio"
@@ -97,6 +100,7 @@ class RadioConnectionService :
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_DISCONNECT) {
             disconnect()
+            stopForegroundService()
             return START_NOT_STICKY
         } else {
             val status = radioClient.snapshot()
@@ -214,8 +218,13 @@ class RadioConnectionService :
     private fun registerNetworkCallback() {
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                markDefaultNetworkAvailable(network)
+                val changed = markDefaultNetworkAvailable(network)
                 cancelNetworkLossRecovery()
+                if (changed) {
+                    handleNetworkChange()
+                } else if (radioClient.snapshot().phase == RadioConnectionPhase.DISCONNECTED) {
+                    scheduleRecovery(delayMillis = 0L)
+                }
             }
 
             override fun onLost(network: Network) {
@@ -239,14 +248,12 @@ class RadioConnectionService :
         }
     }
 
-    private fun markDefaultNetworkAvailable(network: Network) = synchronized(networkStateLock) {
-        observedDefaultNetwork = network
+    private fun markDefaultNetworkAvailable(network: Network): Boolean = synchronized(networkStateLock) {
+        defaultNetworkState.onAvailable(network)
     }
 
     private fun markDefaultNetworkLost(network: Network): Boolean = synchronized(networkStateLock) {
-        if (observedDefaultNetwork != network) return@synchronized false
-        observedDefaultNetwork = null
-        true
+        defaultNetworkState.onLost(network)
     }
 
     private fun scheduleNetworkLossRecovery() {
@@ -258,7 +265,7 @@ class RadioConnectionService :
                     {
                         val networkStillUnavailable = synchronized(networkStateLock) {
                             networkLossTask = null
-                            observedDefaultNetwork == null
+                            defaultNetworkState.isUnavailable()
                         }
                         if (networkStillUnavailable) handleNetworkChange()
                     },
@@ -354,6 +361,7 @@ class RadioConnectionService :
         }
     }
 
+    @SuppressLint("WakelockTimeout")
     private fun updateCpuWakeLock(status: RadioStatus) {
         if (destroyed) {
             releaseCpuWakeLock()
@@ -362,6 +370,7 @@ class RadioConnectionService :
         val active = status.phase != RadioConnectionPhase.DISCONNECTED &&
             (status.phase != RadioConnectionPhase.ERROR || recoveryStore.load() != null)
         if (active) {
+            // The foreground radio service owns this lock and releases it on disconnect and onDestroy.
             if (!cpuWakeLock.isHeld) runCatching { cpuWakeLock.acquire() }
             wifiLock?.let { lock ->
                 if (!lock.isHeld) runCatching { lock.acquire() }

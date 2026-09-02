@@ -99,7 +99,7 @@ class AmapPlaceService(context: Context) {
     }
 
     private companion object {
-        val SUPPORTED_AMAP_ABIS = setOf("arm64-v8a")
+        val SUPPORTED_AMAP_ABIS = setOf("armeabi-v7a", "arm64-v8a")
         const val REVERSE_GEOCODE_RADIUS_METERS = 200f
         const val SEARCH_PAGE_SIZE = 20
     }

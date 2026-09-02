@@ -41,6 +41,10 @@ internal interface RadioSessionStorage {
 
     fun saveRouting(userId: Int, txGroupId: Int, rxGroupIds: Collection<Int>)
 
+    fun loadSelectedAccessPoint(userId: Int): String = ""
+
+    fun saveSelectedAccessPoint(userId: Int, id: String) = saveSelectedAccessPoint(id)
+
     fun saveSelectedAccessPoint(id: String)
 }
 
@@ -57,6 +61,13 @@ internal class StoredRadioSessionStorage(private val store: SecureSessionStore) 
 
     override fun saveRouting(userId: Int, txGroupId: Int, rxGroupIds: Collection<Int>) {
         store.setRadioRouting(userId, txGroupId, rxGroupIds)
+    }
+
+    override fun loadSelectedAccessPoint(userId: Int): String =
+        store.selectedAccessPointId(userId).ifBlank { store.selectedAccessPointId() }
+
+    override fun saveSelectedAccessPoint(userId: Int, id: String) {
+        store.setSelectedAccessPointId(userId, id)
     }
 
     override fun saveSelectedAccessPoint(id: String) {

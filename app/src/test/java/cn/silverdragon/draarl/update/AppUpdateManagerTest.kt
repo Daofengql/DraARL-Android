@@ -23,6 +23,20 @@ class AppUpdateManagerTest {
     }
 
     @Test
+    fun onlyNewerReleasesAreUpdates() {
+        assertTrue(isNewerAppRelease("1.0.1", "1.0.0"))
+        assertEquals(false, isNewerAppRelease("1.0.0", "1.0.0"))
+        assertEquals(false, isNewerAppRelease("0.9.9", "1.0.0"))
+    }
+
+    @Test
+    fun validatesPartialDownloadRangeStart() {
+        assertTrue(matchesPartialContentRange("bytes 1024-2047/4096", 1024))
+        assertEquals(false, matchesPartialContentRange("bytes 0-1023/4096", 1024))
+        assertEquals(false, matchesPartialContentRange(null, 1024))
+    }
+
+    @Test
     fun mapsAndroidAbiToServerArch() {
         assertEquals("arm64", preferredAndroidResourceArch(arrayOf("arm64-v8a")))
         assertEquals("armv7", preferredAndroidResourceArch(arrayOf("armeabi-v7a")))
@@ -33,7 +47,7 @@ class AppUpdateManagerTest {
     fun acceptsCompatibleServerContract() {
         requireCompatibleAppUpdateServerContract(
             manifest = manifest(),
-            release = release(),
+            release = release()
         )
     }
 
@@ -61,20 +75,20 @@ class AppUpdateManagerTest {
     fun permitsSchemaOneReleaseWithoutServerRequirements() {
         requireCompatibleAppUpdateServerContract(
             manifest = ClientResourceManifest(schemaVersion = 1, resources = emptyList()),
-            release = ClientResourceRelease(id = 1, version = "1.0.3", channel = "stable"),
+            release = ClientResourceRelease(id = 1, version = "1.0.3", channel = "stable")
         )
     }
 
     private fun manifest(
         serverVersion: String = "1.1.5-alpha7",
         protocolVersion: Int = 1,
-        capabilities: List<String> = listOf("multi_receive_v1", "source_group_v1"),
+        capabilities: List<String> = listOf("multi_receive_v1", "source_group_v1")
     ) = ClientResourceManifest(
         schemaVersion = 1,
         serverVersion = serverVersion,
         protocolVersion = protocolVersion,
         capabilities = capabilities,
-        resources = emptyList(),
+        resources = emptyList()
     )
 
     private fun release() = ClientResourceRelease(
@@ -83,6 +97,6 @@ class AppUpdateManagerTest {
         channel = "stable",
         minServerVersion = "1.1.5-alpha7",
         requiredProtocolVersion = 1,
-        requiredCapabilities = listOf("multi_receive_v1", "source_group_v1"),
+        requiredCapabilities = listOf("multi_receive_v1", "source_group_v1")
     )
 }

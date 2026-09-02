@@ -30,4 +30,24 @@ class AprsPacketFormatterTest {
         assertTrue(!packet.contains('\n'))
         assertTrue(packet.endsWith(" a b c"))
     }
+
+    @Test
+    fun packetFormatsNegativeAltitudeWithoutPaddingInsideSign() {
+        val packet = AprsPacketFormatter.positionPacket(
+            AprsConfig(callsign = "N0CALL"),
+            AprsPosition(latitude = 39.0, longitude = 116.0, altitudeMeters = -100.0),
+        )
+        assertTrue(packet.contains("/A=-00328"))
+    }
+
+    @Test
+    fun packetCarriesCoordinateRoundingAcrossDegreeBoundary() {
+        val packet = AprsPacketFormatter.positionPacket(
+            AprsConfig(callsign = "N0CALL"),
+            AprsPosition(latitude = 39.999999, longitude = 116.999999),
+        )
+        assertTrue(packet.contains("4000.00N"))
+        assertTrue(packet.contains("11700.00E"))
+        assertTrue(!packet.contains("60.00"))
+    }
 }

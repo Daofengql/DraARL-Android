@@ -51,7 +51,10 @@ class ApiDomainClientsTest {
         val requester = RecordingApiJsonRequester { call ->
             assertEquals("GET", call.method)
             JSONObject(
-                """{"code":200,"data":{"total":1,"items":[{"id":3,"name":"Handheld","callsign":"BG0ABC","ssid":2,"is_online":true,"status":1}]}}"""
+                """
+                    {"code":200,"data":{"total":1,"items":[{"id":3,"name":"Handheld","callsign":"BG0ABC",
+                    "ssid":2,"is_online":true,"status":1}]}}
+                """.trimIndent()
             )
         }
         val api: DevicesApi = DevicesApiClient(requester)
@@ -104,7 +107,11 @@ class ApiDomainClientsTest {
     fun radioApiBuildsCursorPathAndResolvesMessageAudioUrl() {
         val requester = RecordingApiJsonRequester {
             JSONObject(
-                """{"code":200,"data":{"messages":[{"id":9,"message_type":"voice","source_group_id":7,"sender":{"username":"bg0abc"},"sent_at":"2026-08-09T10:00:00Z","audio_url":"/uploads/voice.raw"}],"next_cursor":"next","has_more":true}}"""
+                """
+                    {"code":200,"data":{"messages":[{"id":9,"message_type":"voice","source_group_id":7,
+                    "sender":{"username":"bg0abc"},"sent_at":"2026-08-09T10:00:00Z","audio_url":"/uploads/voice.raw"}],
+                    "next_cursor":"next","has_more":true}}
+                """.trimIndent()
             )
         }
         val sessions = sessionManager(session())
@@ -125,7 +132,10 @@ class ApiDomainClientsTest {
                 JSONObject().put("code", 200)
             } else {
                 JSONObject(
-                    """{"code":200,"data":{"id":7,"username":"bg0abc","nickname":"New name","approval_status":1,"status":1}}"""
+                    """
+                        {"code":200,"data":{"id":7,"username":"bg0abc","nickname":"New name",
+                        "approval_status":1,"status":1}}
+                    """.trimIndent()
                 )
             }
         }
@@ -192,7 +202,13 @@ class ApiDomainClientsTest {
     fun updatesApiEncodesQueryAndMapsArtifactUrl() {
         val requester = RecordingApiJsonRequester {
             JSONObject(
-                """{"code":200,"data":{"schema_version":1,"server_version":"2.0.0","protocol_version":1,"resources":[{"resource":{"id":1,"resource_key":"app.draarl","name":"DraARL","category":"application"},"release":{"id":2,"version":"2.1.0","channel":"stable"},"artifacts":[{"id":3,"release_id":2,"format":"apk","external_url":"/downloads/app.apk","targets":[]}]}]}}"""
+                """
+                    {"code":200,"data":{"schema_version":1,"server_version":"2.0.0","protocol_version":1,
+                    "resources":[{"resource":{"id":1,"resource_key":"app.draarl","name":"DraARL",
+                    "category":"application"},
+                    "release":{"id":2,"version":"2.1.0","channel":"stable"},"artifacts":[{"id":3,"release_id":2,
+                    "format":"apk","external_url":"/downloads/app.apk","targets":[]}] }]}}
+                """.trimIndent()
             )
         }
         val api: UpdatesApi = UpdatesApiClient(requester) { session() }
@@ -207,7 +223,8 @@ class ApiDomainClientsTest {
         )
 
         assertEquals(
-            "/api/public/client-resources/manifest?platform=android&arch=arm64+v8a&channel=stable&client_version=2.0.0-alpha1&android_api=36",
+            "/api/public/client-resources/manifest?platform=android&arch=arm64+v8a&channel=stable&" +
+                "client_version=2.0.0-alpha1&android_api=36",
             requester.singleCall().path
         )
         assertFalse(requester.singleCall().requiresAuth)

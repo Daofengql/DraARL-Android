@@ -52,7 +52,7 @@ class RadioSessionController internal constructor(
     internal fun onAccountChanged(account: RadioSessionAccount?) {
         val accountChanged = state.setAccount(account)
         if (accountChanged) {
-            accessPoints.cancel()
+            accessPoints.onAccountChanged(account, changed = true)
             routing.cancel()
         }
         connection.onAccountChanged(accountChanged)

@@ -20,6 +20,15 @@ data class RadioConnectionConfig(
     val groupId: Int
 )
 
+private data class CwTransmission(
+    val text: String,
+    val toneSamples: ShortArray,
+    val tailSamples: ShortArray,
+    val sessionGeneration: Int,
+    val cwGeneration: Int,
+    val startedAt: Long
+)
+
 interface UdpRadioListener {
     fun onStatus(status: RadioStatus)
     fun onMessage(message: RadioMessage)
@@ -34,7 +43,8 @@ class UdpRadioClient internal constructor(
     audioRuntime: RadioAudioRuntime,
     private val transportFactory: UdpTransportFactory,
     private val clock: RadioClock,
-    scheduler: RadioScheduler
+    scheduler: RadioScheduler,
+    private val cwToneGenerator: (String, Int, Int) -> CwTone = CwToneGenerator::generate
 ) {
     constructor(context: Context, listener: UdpRadioListener) : this(
         listener = listener,
@@ -104,6 +114,8 @@ class UdpRadioClient internal constructor(
     private val authenticationReceiver = UdpAuthenticationReceiver(AUTH_TOTAL_TIMEOUT_MS, clock::nowMillis)
     private val cwTransmitActive = AtomicBoolean(false)
     private val cwPreviewActive = AtomicBoolean(false)
+    private val cwTransmitGeneration = java.util.concurrent.atomic.AtomicInteger()
+    private val cwPreviewGeneration = java.util.concurrent.atomic.AtomicInteger()
     private val sendLock = Any()
     private val cwVoiceLock = Any()
 
@@ -130,6 +142,8 @@ class UdpRadioClient internal constructor(
         sessionTasks.cancelReconnect()
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
+        cwTransmitGeneration.incrementAndGet()
+        cwPreviewGeneration.incrementAndGet()
         listener.onCwPreviewState(false)
         listener.onTransmitLevel(0f)
         stopSessionTasks()
@@ -157,6 +171,8 @@ class UdpRadioClient internal constructor(
         sessionTasks.cancelReconnect()
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
+        cwTransmitGeneration.incrementAndGet()
+        cwPreviewGeneration.incrementAndGet()
         listener.onCwPreviewState(false)
         listener.onTransmitLevel(0f)
         stopSessionTasks()
@@ -199,25 +215,18 @@ class UdpRadioClient internal constructor(
 
     fun sendCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean {
         if (!status.connected || status.transmitting || status.speaker.isNotBlank()) return false
-        stopCwPreview()
-        val tone = runCatching { CwToneGenerator.generate(text, wordsPerMinute, toneHz) }
-            .getOrElse { error ->
-                reportNonFatal(error.message ?: "CW 内容无效", generation())
-                return false
-            }
-        val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
-        val transmitDurationMs = (tone.samples.size + tailSamples.size) * 1_000L / OpusAudioFormat.SAMPLE_RATE
-        if (transmitDurationMs > transmitTimeoutSeconds * 1_000L) {
-            reportNonFatal("CW 音频超过当前发射限时，请缩短内容或提高速度", generation())
+        val normalized = CwToneGenerator.normalize(text)
+        if (normalized.isBlank() || normalized.length > CwToneGenerator.MAX_TEXT_LENGTH) {
+            reportNonFatal("CW 内容无效或超过 ${CwToneGenerator.MAX_TEXT_LENGTH} 个字符", generation())
             return false
         }
+        stopCwPreview()
         if (!cwTransmitActive.compareAndSet(false, true)) return false
 
         stopPlayback()
         audioEngine.playback.resetDecoder()
-        synchronized(cwVoiceLock) { cwVoiceBuffer = ByteArrayOutputStream() }
         val currentGeneration = generation()
-        val startedAt = clock.nowMillis()
+        val currentCwGeneration = cwTransmitGeneration.incrementAndGet()
         val statusUpdated = updateStatusIfActive(currentGeneration) { current ->
             if (!current.connected) current else current.copy(transmitting = true, speaker = "", error = "")
         }
@@ -227,13 +236,7 @@ class UdpRadioClient internal constructor(
         }
         return runCatching {
             sessionTasks.execute {
-                transmitCw(
-                    text = tone.normalizedText,
-                    toneSamples = tone.samples,
-                    tailSamples = tailSamples,
-                    currentGeneration = currentGeneration,
-                    startedAt = startedAt
-                )
+                prepareAndTransmitCw(normalized, wordsPerMinute, toneHz, currentGeneration, currentCwGeneration)
             }
             true
         }.getOrElse { error ->
@@ -248,24 +251,27 @@ class UdpRadioClient internal constructor(
         if (!cwTransmitActive.compareAndSet(true, false)) return false
         audioEngine.playback.stopRecording()
         listener.onTransmitLevel(0f)
+        updateStatusIfActive(generation()) { it.copy(transmitting = false) }
         return true
     }
 
     fun previewCw(text: String, wordsPerMinute: Int, toneHz: Int): Boolean {
         if (status.transmitting || status.speaker.isNotBlank()) return false
-        val tone = runCatching { CwToneGenerator.generate(text, wordsPerMinute, toneHz) }
-            .getOrElse { error ->
-                reportNonFatal(error.message ?: "CW 内容无效", generation())
-                return false
-            }
-        val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
+        val normalized = CwToneGenerator.normalize(text)
+        if (normalized.isBlank() || normalized.length > CwToneGenerator.MAX_TEXT_LENGTH) {
+            reportNonFatal("CW 内容无效或超过 ${CwToneGenerator.MAX_TEXT_LENGTH} 个字符", generation())
+            return false
+        }
         if (!cwPreviewActive.compareAndSet(false, true)) return false
         stopPlayback()
         audioEngine.playback.resetDecoder()
         listener.onCwPreviewState(true)
         val currentGeneration = generation()
+        val currentCwGeneration = cwPreviewGeneration.incrementAndGet()
         return runCatching {
-            sessionTasks.execute { previewCwAudio(tone.samples, tailSamples, currentGeneration) }
+            sessionTasks.execute {
+                prepareAndPreviewCw(normalized, wordsPerMinute, toneHz, currentGeneration, currentCwGeneration)
+            }
             true
         }.getOrElse { error ->
             cwPreviewActive.set(false)
@@ -646,22 +652,31 @@ class UdpRadioClient internal constructor(
         }
     }
 
-    private fun previewCwAudio(toneSamples: ShortArray, tailSamples: ShortArray, currentGeneration: Int) {
+    private fun prepareAndPreviewCw(
+        text: String,
+        wordsPerMinute: Int,
+        toneHz: Int,
+        currentGeneration: Int,
+        currentCwGeneration: Int
+    ) {
         try {
+            val toneSamples = cwToneGenerator(text, wordsPerMinute, toneHz).samples
+            val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
+            if (!isCurrentCwPreview(currentCwGeneration)) return
             streamPcmPackets(
                 samples = toneSamples,
                 currentGeneration = currentGeneration,
-                shouldContinue = { cwPreviewActive.get() },
+                shouldContinue = { isCurrentCwPreview(currentCwGeneration) },
                 sendToRemote = false,
                 monitorLocally = true,
                 reportTransmitLevel = false,
                 requireActive = false
             )
-            if (tailSamples.isNotEmpty() && cwPreviewActive.get()) {
+            if (tailSamples.isNotEmpty() && isCurrentCwPreview(currentCwGeneration)) {
                 streamPcmPackets(
                     samples = tailSamples,
                     currentGeneration = currentGeneration,
-                    shouldContinue = { cwPreviewActive.get() },
+                    shouldContinue = { isCurrentCwPreview(currentCwGeneration) },
                     sendToRemote = false,
                     monitorLocally = true,
                     reportTransmitLevel = false,
@@ -669,37 +684,67 @@ class UdpRadioClient internal constructor(
                 )
             }
         } catch (error: Exception) {
-            reportNonFatal(error.message ?: "CW 试听失败", currentGeneration)
+            if (isCurrentCwPreview(currentCwGeneration)) {
+                reportNonFatal(error.message ?: "CW 试听失败", currentGeneration)
+            }
         } finally {
-            cwPreviewActive.set(false)
-            listener.onCwPreviewState(false)
-            if (status.speaker.isBlank()) listener.onPlaybackLevel(0f)
+            if (cwPreviewGeneration.get() == currentCwGeneration) {
+                cwPreviewActive.set(false)
+                listener.onCwPreviewState(false)
+                if (status.speaker.isBlank()) listener.onPlaybackLevel(0f)
+            }
         }
     }
 
-    private fun transmitCw(
+    private fun prepareAndTransmitCw(
         text: String,
-        toneSamples: ShortArray,
-        tailSamples: ShortArray,
+        wordsPerMinute: Int,
+        toneHz: Int,
         currentGeneration: Int,
-        startedAt: Long
+        currentCwGeneration: Int
     ) {
         try {
+            val tone = cwToneGenerator(text, wordsPerMinute, toneHz)
+            val tailSamples = TransmitTailToneGenerator.generate(transmitTailTone)
+            if (!isCurrentCwTransmission(currentCwGeneration) || !isActive(currentGeneration)) return
+            val durationMs = (tone.samples.size + tailSamples.size) * 1_000L / OpusAudioFormat.SAMPLE_RATE
+            if (durationMs > transmitTimeoutSeconds * 1_000L) {
+                failCwPreparation("CW 音频超过当前发射限时，请缩短内容或提高速度", currentGeneration, currentCwGeneration)
+                return
+            }
+            synchronized(cwVoiceLock) { cwVoiceBuffer = ByteArrayOutputStream() }
+            transmitCw(
+                CwTransmission(
+                    text = tone.normalizedText,
+                    toneSamples = tone.samples,
+                    tailSamples = tailSamples,
+                    sessionGeneration = currentGeneration,
+                    cwGeneration = currentCwGeneration,
+                    startedAt = clock.nowMillis()
+                )
+            )
+        } catch (error: Exception) {
+            failCwPreparation(error.message ?: "无法启动 CW 发送", currentGeneration, currentCwGeneration)
+        }
+    }
+
+    private fun transmitCw(transmission: CwTransmission) {
+        try {
             streamPcmPackets(
-                samples = toneSamples,
-                currentGeneration = currentGeneration,
-                shouldContinue = { cwTransmitActive.get() },
+                samples = transmission.toneSamples,
+                currentGeneration = transmission.sessionGeneration,
+                shouldContinue = { isCurrentCwTransmission(transmission.cwGeneration) },
                 sendToRemote = true,
                 monitorLocally = true,
                 reportTransmitLevel = true,
                 requireActive = true,
                 onRemotePacket = ::appendCwPacket
             )
-            if (tailSamples.isNotEmpty() && cwTransmitActive.get()) {
+            if (transmission.tailSamples.isNotEmpty() && isCurrentCwTransmission(transmission.cwGeneration)) {
                 streamPcmPackets(
-                    samples = tailSamples,
-                    currentGeneration = currentGeneration,
-                    shouldContinue = { cwTransmitActive.get() },
+                    samples = transmission.tailSamples,
+                    currentGeneration = transmission.sessionGeneration,
+                    shouldContinue = { isCurrentCwTransmission(transmission.cwGeneration) },
                     sendToRemote = transmitTailToneToRemoteEnabled,
                     monitorLocally = true,
                     reportTransmitLevel = true,
@@ -708,13 +753,31 @@ class UdpRadioClient internal constructor(
                 )
             }
         } catch (error: Exception) {
-            reportNonFatal(error.message ?: "CW 音频发送失败", currentGeneration)
+            if (cwTransmitGeneration.get() == transmission.cwGeneration) {
+                reportNonFatal(error.message ?: "CW 音频发送失败", transmission.sessionGeneration)
+            }
         } finally {
-            cwTransmitActive.set(false)
-            listener.onTransmitLevel(0f)
-            finishCwTransmission(text, currentGeneration, startedAt)
+            if (cwTransmitGeneration.get() == transmission.cwGeneration) {
+                cwTransmitActive.set(false)
+                listener.onTransmitLevel(0f)
+                finishCwTransmission(transmission.text, transmission.sessionGeneration, transmission.startedAt)
+            }
         }
     }
+
+    private fun failCwPreparation(message: String, currentGeneration: Int, currentCwGeneration: Int) {
+        if (cwTransmitGeneration.get() != currentCwGeneration) return
+        cwTransmitActive.set(false)
+        listener.onTransmitLevel(0f)
+        updateStatusIfActive(currentGeneration) { it.copy(transmitting = false) }
+        reportNonFatal(message, currentGeneration)
+    }
+
+    private fun isCurrentCwTransmission(currentCwGeneration: Int): Boolean =
+        cwTransmitActive.get() && cwTransmitGeneration.get() == currentCwGeneration
+
+    private fun isCurrentCwPreview(currentCwGeneration: Int): Boolean =
+        cwPreviewActive.get() && cwPreviewGeneration.get() == currentCwGeneration
 
     private fun streamPcmPackets(
         samples: ShortArray,
@@ -825,6 +888,8 @@ class UdpRadioClient internal constructor(
         val reconnectGeneration = sessionState.scheduleReconnect(expectedGeneration) ?: return
         cwTransmitActive.set(false)
         cwPreviewActive.set(false)
+        cwTransmitGeneration.incrementAndGet()
+        cwPreviewGeneration.incrementAndGet()
         listener.onCwPreviewState(false)
         listener.onTransmitLevel(0f)
         stopSessionTasks()

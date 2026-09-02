@@ -3,6 +3,7 @@ package cn.silverdragon.draarl.network
 import cn.silverdragon.draarl.data.SecureSessionStore
 import cn.silverdragon.draarl.data.Session
 import cn.silverdragon.draarl.data.User
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
@@ -69,6 +70,7 @@ internal class ApiRequestExecutor(private val transport: HttpTransport) {
     }
 }
 
+@Suppress("TooManyFunctions")
 internal class ApiSessionManager(
     storage: ApiSessionStorage,
     private val requests: ApiRequestExecutor,
@@ -80,6 +82,8 @@ internal class ApiSessionManager(
     private val requester = AuthenticatedApiRequester(state, requests, tokenRefresher)
 
     fun currentSession(): Session? = state.current()
+
+    fun addSessionListener(listener: (Session?) -> Unit): () -> Unit = state.addListener(listener)
 
     fun sessionExpectation(): ApiSessionExpectation? = state.expectation()
 
@@ -125,8 +129,14 @@ private class ApiSessionState(
     private val lock = Any()
     private val operationGeneration = AtomicInteger(0)
     private val sessionRef = AtomicReference(storage.load())
+    private val listeners = CopyOnWriteArrayList<(Session?) -> Unit>()
 
     fun current(): Session? = sessionRef.get()
+
+    fun addListener(listener: (Session?) -> Unit): () -> Unit {
+        listeners += listener
+        return { listeners -= listener }
+    }
 
     fun expectation(): ApiSessionExpectation? = locked { current ->
         current?.let { ApiSessionExpectation(it.baseUrl, it.user.id, operationGeneration.get()) }
@@ -154,6 +164,7 @@ private class ApiSessionState(
         sessionRef.set(session)
         if (session == null) storage.clear() else storage.save(session)
         onSessionChanged(session)
+        listeners.forEach { listener -> listener(session) }
     }
 
     fun detach(expected: Session?): Session? = locked { current ->
@@ -213,34 +224,39 @@ private class ApiTokenRefresher(
         }
     }
 
-    private fun refresh(current: Session): Boolean = runCatching {
-        val refresh = decodeApiResponse(
-            "POST",
-            TOKEN_REFRESH_PATH,
-            {
-                requests.executeJson(
-                    baseUrl = current.baseUrl,
-                    method = "POST",
-                    path = TOKEN_REFRESH_PATH,
-                    body = JSONObject().put("refresh_token", current.refreshToken),
-                    accessToken = null
-                )
-            },
-            AuthApiResponseMapper::tokenRefresh
-        )
-        val now = clockMillis()
-        state.replace(
-            current.copy(
-                accessToken = refresh.accessToken,
-                refreshToken = refresh.refreshToken.ifBlank { current.refreshToken },
-                accessExpiresAt = now + refresh.accessExpiresInSeconds * MILLIS_PER_SECOND,
-                refreshExpiresAt = now + refresh.refreshExpiresInSeconds * MILLIS_PER_SECOND
+    private fun refresh(current: Session): Boolean {
+        try {
+            val refresh = decodeApiResponse(
+                "POST",
+                TOKEN_REFRESH_PATH,
+                {
+                    requests.executeJson(
+                        baseUrl = current.baseUrl,
+                        method = "POST",
+                        path = TOKEN_REFRESH_PATH,
+                        body = JSONObject().put("refresh_token", current.refreshToken),
+                        accessToken = null
+                    )
+                },
+                AuthApiResponseMapper::tokenRefresh
             )
-        )
-        true
-    }.getOrElse {
-        state.replace(null)
-        false
+            val now = clockMillis()
+            state.replace(
+                current.copy(
+                    accessToken = refresh.accessToken,
+                    refreshToken = refresh.refreshToken.ifBlank { current.refreshToken },
+                    accessExpiresAt = now + refresh.accessExpiresInSeconds * MILLIS_PER_SECOND,
+                    refreshExpiresAt = now + refresh.refreshExpiresInSeconds * MILLIS_PER_SECOND
+                )
+            )
+            return true
+        } catch (error: ApiException) {
+            if (error.code == HTTP_UNAUTHORIZED) {
+                state.replace(null)
+                return false
+            }
+            throw error
+        }
     }
 
     private fun requireSession(message: String): Session = state.current()

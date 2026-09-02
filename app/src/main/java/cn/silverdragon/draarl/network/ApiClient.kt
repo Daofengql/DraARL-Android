@@ -51,6 +51,8 @@ class ApiClient private constructor(dependencies: ApiClientDependencies) :
 
     fun currentSession(): Session? = sessions.currentSession()
 
+    internal fun addSessionListener(listener: (Session?) -> Unit): () -> Unit = sessions.addSessionListener(listener)
+
     internal fun prepareCurrentSession(baseUrl: String): Session? = sessions.prepareCurrentSession(baseUrl)
 
     fun restoreAndValidate(): Session {

@@ -11,7 +11,11 @@ class ToolApiDtosTest {
     fun `relay parser follows server legacy field names`() {
         val relay = ToolApiResponseMapper.relays(
             response(
-                """{"items":[{"id":7,"name":"广州中继","up_freq":"439.500","down_freq":"438.500","send_ctss":"88.5","recive_ctss":"88.5","ower_callsign":"BG7TEST","location":"广东省 广州市","status":1,"note":"测试"}]}"""
+                """
+                    {"items":[{"id":7,"name":"广州中继","up_freq":"439.500","down_freq":"438.500",
+                    "send_ctss":"88.5","recive_ctss":"88.5","ower_callsign":"BG7TEST","location":"广东省 广州市",
+                    "status":1,"note":"测试"}]}
+                """.trimIndent()
             )
         ).single().toDomain()
 
@@ -24,7 +28,11 @@ class ToolApiDtosTest {
     fun `logbook parser preserves nullable powers and station details`() {
         val logbook = ToolApiResponseMapper.logbook(
             response(
-                """{"id":9,"my_callsign":"BG7MINE","time_utc":"2026-07-27 12:00:00","tx_frequency":439.5,"rx_frequency":438.5,"mode":"FM","callsign":"BG7THEIR","their_power":null,"their_radio":"HT","my_power":25,"my_antenna":"Vertical"}"""
+                """
+                    {"id":9,"my_callsign":"BG7MINE","time_utc":"2026-07-27 12:00:00","tx_frequency":439.5,
+                    "rx_frequency":438.5,"mode":"FM","callsign":"BG7THEIR","their_power":null,"their_radio":"HT",
+                    "my_power":25,"my_antenna":"Vertical"}
+                """.trimIndent()
             )
         ).toDomain()
 

@@ -1,17 +1,23 @@
 package cn.silverdragon.draarl.aprs
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.content.pm.ServiceInfo
+import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.R
 import cn.silverdragon.draarl.maps.CurrentLocationProvider
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,9 +26,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 class AprsService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -49,8 +52,12 @@ class AprsService : Service() {
             while (isActive) {
                 val config = store.load(userId)
                 if (!config.enabled || !config.autoReport || config.callsign.isBlank()) {
-                    delay(IDLE_DELAY_MS)
-                    continue
+                    stopReportingService()
+                    return@launch
+                }
+                if (!hasLocationPermission()) {
+                    stopReportingService()
+                    return@launch
                 }
                 val currentPosition = runCatching {
                     val location = locationProvider.locate()
@@ -58,25 +65,29 @@ class AprsService : Service() {
                         latitude = location.latitude,
                         longitude = location.longitude,
                         altitudeMeters = if (location.hasAltitude()) location.altitude else null,
-                        accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
+                        accuracyMeters = if (location.hasAccuracy()) location.accuracy else null
                     )
                 }.getOrNull()
                 if (currentPosition != null && (currentPosition.accuracyMeters ?: 0f) <= MAX_ACCEPTED_ACCURACY_METERS) {
-                    val movedMeters = previousPosition?.let { distanceMeters(it, currentPosition) } ?: Float.POSITIVE_INFINITY
-                    runCatching { client.sendPosition(config, currentPosition) }
-                    previousPosition = currentPosition
-                    val interval = if (movedMeters >= MOVING_DISTANCE_METERS) {
-                        config.movingIntervalSeconds
+                    val movedMeters =
+                        previousPosition?.let { distanceMeters(it, currentPosition) } ?: Float.POSITIVE_INFINITY
+                    if (runCatching { client.sendPosition(config, currentPosition) }.isSuccess) {
+                        previousPosition = currentPosition
+                        val interval = if (movedMeters >= MOVING_DISTANCE_METERS) {
+                            config.movingIntervalSeconds
+                        } else {
+                            config.stationaryIntervalSeconds
+                        }
+                        delay(interval.coerceIn(60, 3_600) * 1_000L)
                     } else {
-                        config.stationaryIntervalSeconds
+                        delay(RETRY_DELAY_MS)
                     }
-                    delay(interval.coerceIn(60, 3_600) * 1_000L)
                 } else {
                     delay(RETRY_DELAY_MS)
                 }
             }
         }
-        return START_STICKY
+        return START_REDELIVER_INTENT
     }
 
     override fun onDestroy() {
@@ -105,10 +116,31 @@ class AprsService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "APRS", NotificationManager.IMPORTANCE_LOW),
+                NotificationChannel(CHANNEL_ID, "APRS", NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
+
+    private fun stopReportingService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        (
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+            ) &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED)
 
     private fun distanceMeters(first: AprsPosition, second: AprsPosition): Float {
         val radius = 6_371_000.0
@@ -124,7 +156,6 @@ class AprsService : Service() {
         private const val CHANNEL_ID = "aprs_reporting"
         private const val NOTIFICATION_ID = 4102
         private const val EXTRA_USER_ID = "user_id"
-        private const val IDLE_DELAY_MS = 60_000L
         private const val RETRY_DELAY_MS = 60_000L
         private const val MOVING_DISTANCE_METERS = 150f
         private const val MAX_ACCEPTED_ACCURACY_METERS = 100f

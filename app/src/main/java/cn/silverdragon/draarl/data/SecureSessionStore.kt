@@ -55,8 +55,19 @@ class SecureSessionStore(context: Context) {
 
     fun selectedAccessPointId(): String = preferences.getString(KEY_ACCESS_POINT, "") ?: ""
 
+    fun selectedAccessPointId(userId: Int): String {
+        if (userId <= 0) return ""
+        return preferences.getString("$KEY_ACCESS_POINT_PREFIX$userId", "") ?: ""
+    }
+
     fun setSelectedAccessPointId(id: String) {
         preferences.edit { putString(KEY_ACCESS_POINT, id) }
+    }
+
+    fun setSelectedAccessPointId(userId: Int, id: String) {
+        if (userId > 0) {
+            preferences.edit { putString("$KEY_ACCESS_POINT_PREFIX$userId", id) }
+        }
     }
 
     @Synchronized
@@ -268,6 +279,7 @@ class SecureSessionStore(context: Context) {
         private const val KEY_SESSION = "session"
         private const val KEY_LAST_SERVER = "last_server"
         private const val KEY_ACCESS_POINT = "access_point"
+        private const val KEY_ACCESS_POINT_PREFIX = "access_point_"
         private const val KEY_CLIENT_INSTANCE_ID = "client_instance_id"
         private const val KEY_GROUP_PREFIX = "android_group_"
         private const val KEY_RX_GROUP_PREFIX = "android_rx_groups_"

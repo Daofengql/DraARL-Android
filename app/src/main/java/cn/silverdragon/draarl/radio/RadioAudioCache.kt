@@ -12,7 +12,8 @@ class RadioAudioCache(private val directory: File, private val maxBytes: Long = 
     override fun get(key: String): ByteArray? {
         if (key.isBlank()) return null
         val file = fileFor(key)
-        val bytes = file.takeIf(File::isFile)?.let { runCatching { it.readBytes() }.getOrNull() }
+        val bytes = file.takeIf { it.isFile && it.length() <= MAX_RAW_OPUS_RECORDING_BYTES }
+            ?.let { runCatching { it.readBytes() }.getOrNull() }
         return if (bytes == null || runCatching { RawOpusRecording.decode(bytes) }.isFailure) {
             file.delete()
             null
@@ -25,6 +26,7 @@ class RadioAudioCache(private val directory: File, private val maxBytes: Long = 
     @Synchronized
     override fun put(key: String, bytes: ByteArray) {
         require(key.isNotBlank()) { "语音缓存键不能为空" }
+        require(bytes.size <= MAX_RAW_OPUS_RECORDING_BYTES) { "语音记录超过 16 MiB 限制" }
         RawOpusRecording.decode(bytes)
         check(directory.exists() || directory.mkdirs()) { "无法创建语音缓存目录" }
         val target = fileFor(key)

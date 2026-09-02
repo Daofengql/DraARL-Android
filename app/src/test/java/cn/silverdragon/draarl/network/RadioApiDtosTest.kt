@@ -11,7 +11,10 @@ class RadioApiDtosTest {
     fun `access point parser filters invalid endpoints and supplies display defaults`() {
         val accessPoints = RadioSessionResponseMapper.accessPoints(
             JSONObject(
-                """{"data":{"items":[{"udp_host":"edge.example.test","udp_port":60050},{"udp_host":"bad.example.test","udp_port":0}]}}"""
+                """
+                    {"data":{"items":[{"udp_host":"edge.example.test","udp_port":60050},
+                    {"udp_host":"bad.example.test","udp_port":0}]}}
+                """.trimIndent()
             )
         )
 

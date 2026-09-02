@@ -111,11 +111,31 @@ private class OkHttpCall(private val request: HttpRequest, private val call: Cal
     override fun cancel() = call.cancel()
 }
 
-private fun readResponse(response: Response): HttpResponse = HttpResponse(
-    status = response.code,
-    headers = response.headers.toMultimap(),
-    body = response.body?.bytes() ?: ByteArray(0)
-)
+private fun readResponse(response: Response): HttpResponse {
+    val body = response.body
+    if (body != null && body.contentLength() > MAX_RESPONSE_BYTES) {
+        throw IOException("服务器响应超过 $MAX_RESPONSE_MIB MiB 限制")
+    }
+    return HttpResponse(
+        status = response.code,
+        headers = response.headers.toMultimap(),
+        body = body?.byteStream()?.use { input ->
+            val output = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > MAX_RESPONSE_BYTES) {
+                    throw IOException("服务器响应超过 $MAX_RESPONSE_MIB MiB 限制")
+                }
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        } ?: ByteArray(0)
+    )
+}
 
 private fun HttpRequestBody.toOkHttpRequestBody(): RequestBody = when (this) {
     is HttpRequestBody.Bytes -> content.toRequestBody(mediaType.toMediaTypeOrNull())
@@ -142,6 +162,9 @@ internal const val HTTP_RETRY_AFTER_SECONDS = "_http_retry_after_seconds"
 private const val DEFAULT_CONNECT_TIMEOUT_MILLIS = 10_000L
 private const val DEFAULT_READ_TIMEOUT_MILLIS = 15_000L
 private const val DEFAULT_WRITE_TIMEOUT_MILLIS = 15_000L
+private const val BYTES_PER_MEBIBYTE = 1024 * 1024
+private const val MAX_RESPONSE_MIB = 4
+internal const val MAX_RESPONSE_BYTES = MAX_RESPONSE_MIB * BYTES_PER_MEBIBYTE
 private const val HTTP_ERROR_MIN = 400
 private const val HTTP_SUCCESS_MAX = 299
 private const val HTTP_SUCCESS_MIN = 200

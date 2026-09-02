@@ -67,9 +67,10 @@ class RadioMessageController internal constructor(
                 }
             }
 
-            is RadioMessageEvent.OnlineDevicesChanged -> currentContext?.let { context ->
-                profileLoader.preload(event.usernames, context.account.key)
-            }
+            // Online-device usernames are display data supplied by the server and
+            // may be device names on older endpoints. Message sender usernames are
+            // authoritative and are preloaded when messages arrive.
+            is RadioMessageEvent.OnlineDevicesChanged -> Unit
 
             RadioMessageEvent.BeforeCacheClear -> invalidateContext()
 

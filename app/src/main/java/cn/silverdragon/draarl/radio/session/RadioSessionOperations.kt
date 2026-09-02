@@ -114,6 +114,7 @@ internal class RadioAccessPointCoordinator(
     private val reconnect: () -> Unit
 ) {
     private var manualSelection = false
+    private var preferredAccessPointId: String? = null
     private var discoveryJob: Job? = null
     private val periodicJob = execution.scope.launch {
         if (execution.periodicDiscoveryIntervalMs <= 0) return@launch
@@ -144,11 +145,37 @@ internal class RadioAccessPointCoordinator(
         }
     }
 
+    fun onAccountChanged(account: RadioSessionAccount?, changed: Boolean) {
+        if (!changed) return
+        cancel()
+        manualSelection = false
+        preferredAccessPointId = account
+            ?.let { dependencies.storage.loadSelectedAccessPoint(it.userId) }
+            ?.takeIf(String::isNotBlank)
+        state.update {
+            it.copy(
+                accessPoints = emptyList(),
+                accessPointProbes = emptyList(),
+                selectedAccessPoint = null,
+                selectingAccessPoint = false
+            )
+        }
+    }
+
     fun select(accessPoint: AccessPoint) {
-        if (state.uiState.selectedAccessPoint?.id == accessPoint.id) return
         manualSelection = true
+        preferredAccessPointId = accessPoint.id
+        if (state.uiState.selectedAccessPoint?.id == accessPoint.id) {
+            state.update { it.copy(autoConnectAllowed = true) }
+            state.account?.userId?.let { userId ->
+                dependencies.storage.saveSelectedAccessPoint(userId, accessPoint.id)
+            } ?: dependencies.storage.saveSelectedAccessPoint(accessPoint.id)
+            return
+        }
         state.update { it.copy(selectedAccessPoint = accessPoint, autoConnectAllowed = true) }
-        dependencies.storage.saveSelectedAccessPoint(accessPoint.id)
+        state.account?.userId?.let { userId ->
+            dependencies.storage.saveSelectedAccessPoint(userId, accessPoint.id)
+        } ?: dependencies.storage.saveSelectedAccessPoint(accessPoint.id)
         if (state.uiState.status.phase != RadioConnectionPhase.DISCONNECTED) reconnect()
     }
 
@@ -170,6 +197,8 @@ internal class RadioAccessPointCoordinator(
             state.uiState.selectedAccessPoint?.let { current ->
                 discovered.firstOrNull { it.id == current.id }
             } ?: selection.selected
+        } else if (preferredAccessPointId != null) {
+            discovered.firstOrNull { it.id == preferredAccessPointId } ?: selection.selected
         } else {
             selection.selected
         }
@@ -181,7 +210,7 @@ internal class RadioAccessPointCoordinator(
                 selectingAccessPoint = false
             )
         }
-        dependencies.storage.saveSelectedAccessPoint(selected.id)
+        dependencies.storage.saveSelectedAccessPoint(context.account.userId, selected.id)
     }
 }
 

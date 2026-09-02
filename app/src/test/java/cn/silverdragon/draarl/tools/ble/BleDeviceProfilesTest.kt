@@ -8,7 +8,10 @@ class BleDeviceProfilesTest {
     @Test
     fun `profile keys and device models are unique`() {
         assertEquals(BleDeviceProfiles.all.size, BleDeviceProfiles.all.map(BleDeviceProfile::key).distinct().size)
-        assertEquals(BleDeviceProfiles.all.size, BleDeviceProfiles.all.map(BleDeviceProfile::deviceModel).distinct().size)
+        assertEquals(
+            BleDeviceProfiles.all.size,
+            BleDeviceProfiles.all.map(BleDeviceProfile::deviceModel).distinct().size
+        )
     }
 
     @Test

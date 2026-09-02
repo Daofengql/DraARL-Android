@@ -1,5 +1,6 @@
 package cn.silverdragon.draarl.radio
 
+import java.io.RandomAccessFile
 import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -53,10 +54,23 @@ class RadioAudioCacheTest {
         assertTrue(directory.listFiles().orEmpty().size == 1)
     }
 
+    @Test
+    fun `deletes oversized cache file without reading it`() {
+        val cache = RadioAudioCache(directory)
+        cache.put("large", rawRecording(byteArrayOf(1)))
+        val file = directory.listFiles().orEmpty().single()
+        RandomAccessFile(file, "rw").use {
+            it.setLength(MAX_RAW_OPUS_RECORDING_BYTES.toLong() + 1)
+        }
+
+        assertNull(cache.get("large"))
+        assertFalse(file.exists())
+    }
+
     private fun rawRecording(frame: ByteArray): ByteArray = RawOpusRecording.encode(
         sampleRate = 16_000,
         channels = 1,
         frameSize = 960,
-        frames = listOf(frame),
+        frames = listOf(frame)
     )
 }

@@ -64,17 +64,36 @@ class RawOpusRecordingTest {
     }
 
     @Test
+    fun `rejects impossible frame count before allocating frame list`() {
+        val bytes = ByteBuffer.allocate(27).order(ByteOrder.LITTLE_ENDIAN).apply {
+            put("OPUS".toByteArray(Charsets.US_ASCII))
+            putShort(1)
+            putInt(16_000)
+            putShort(1)
+            putShort(960)
+            putInt(Int.MAX_VALUE)
+            put(ByteArray(6))
+            putShort(1)
+            put(10)
+        }.array()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            RawOpusRecording.decode(bytes)
+        }
+    }
+
+    @Test
     fun `encodes and decodes raw opus recording`() {
         val frames = listOf(
             byteArrayOf(1, 2, 3),
-            byteArrayOf(4, 5),
+            byteArrayOf(4, 5)
         )
 
         val bytes = RawOpusRecording.encode(
             sampleRate = 16_000,
             channels = 1,
             frameSize = 960,
-            frames = frames,
+            frames = frames
         )
         val recording = RawOpusRecording.decode(bytes)
 
@@ -88,7 +107,7 @@ class RawOpusRecordingTest {
     fun `converts big endian network payload to raw opus recording`() {
         val frames = listOf(
             byteArrayOf(10, 20, 30),
-            byteArrayOf(40, 50),
+            byteArrayOf(40, 50)
         )
         val networkPayload = DraarlProtocol.mergeOpusFrames(frames)
 

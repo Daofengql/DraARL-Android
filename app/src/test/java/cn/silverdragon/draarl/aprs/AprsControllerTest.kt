@@ -59,11 +59,43 @@ class AprsControllerTest {
         val controller = controller(effects = effects)
         controller.onUserChanged(3)
         yield()
+        val stopsBeforeSave = effects.stopCount
 
         controller.onEvent(AprsEvent.SaveConfig(AprsConfig(enabled = false, autoReport = true)))
         yield()
 
-        assertEquals(1, effects.stopCount)
+        assertEquals(stopsBeforeSave + 1, effects.stopCount)
+    }
+
+    @Test
+    fun savedAutoReportConfigurationRestartsBackgroundReporting() = runBlocking {
+        val effects = FakeEffects()
+        val controller = controller(
+            storage = FakeStorage(AprsConfig(enabled = true, autoReport = true, callsign = "BG5DRA")),
+            effects = effects
+        )
+
+        controller.onUserChanged(9)
+        yield()
+
+        assertEquals(listOf(9), effects.startedUserIds)
+        assertEquals(0, effects.stopCount)
+    }
+
+    @Test
+    fun closeStopsBackgroundReporting() = runBlocking {
+        val effects = FakeEffects()
+        val controller = controller(
+            storage = FakeStorage(AprsConfig(enabled = true, autoReport = true, callsign = "BG5DRA")),
+            effects = effects
+        )
+        controller.onUserChanged(9)
+        yield()
+
+        val stopsBeforeClose = effects.stopCount
+        controller.close()
+
+        assertEquals(stopsBeforeClose + 1, effects.stopCount)
     }
 
     @Test

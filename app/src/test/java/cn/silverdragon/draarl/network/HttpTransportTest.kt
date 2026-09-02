@@ -71,6 +71,19 @@ class HttpTransportTest {
     }
 
     @Test
+    fun oversizedChunkedResponseIsRejectedWhileStreaming() = withServer { server, transport ->
+        server.enqueue(
+            MockResponse().setChunkedBody("x".repeat(MAX_RESPONSE_BYTES + 1), 8_192)
+        )
+
+        val error = assertThrows(HttpTransportException::class.java) {
+            transport.execute(HttpRequest(server.url("/oversized").toString(), "GET"))
+        }
+
+        assertTrue(error.message.orEmpty().contains("4 MiB"))
+    }
+
+    @Test
     fun invalidJsonReportsTheResponseStatus() = withServer { server, transport ->
         server.enqueue(MockResponse().setResponseCode(502).setBody("not-json"))
 
@@ -184,8 +197,8 @@ class HttpTransportTest {
 
 private fun ByteArray.indexOfSequence(sequence: ByteArray): Int {
     if (sequence.isEmpty()) return 0
-    for (start in 0..size - sequence.size) {
-        if (sequence.indices.all { offset -> this[start + offset] == sequence[offset] }) return start
+    val match = (0..size - sequence.size).firstOrNull { start ->
+        sequence.indices.all { offset -> this[start + offset] == sequence[offset] }
     }
-    return -1
+    return match ?: -1
 }

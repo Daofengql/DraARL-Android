@@ -12,6 +12,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
@@ -153,18 +154,46 @@ class UdpRadioClientPttTest {
         }
     }
 
-    private fun fixture(captureStarts: Boolean = true, receiveFailure: RuntimeException? = null): Fixture {
+    @Test
+    fun `cw generation is deferred to the radio scheduler`() {
+        val generationCalls = AtomicInteger()
+        val fixture = fixture(
+            executeScheduledTasks = false,
+            cwToneGenerator = { text, wordsPerMinute, toneHz ->
+                generationCalls.incrementAndGet()
+                CwToneGenerator.generate(text, wordsPerMinute, toneHz)
+            }
+        )
+        try {
+            fixture.connect()
+
+            assertTrue(fixture.client.sendCw("CQ", 18, 700))
+
+            assertEquals(0, generationCalls.get())
+            assertTrue(fixture.scheduler.queuedTasks >= 1)
+        } finally {
+            fixture.client.release()
+        }
+    }
+
+    private fun fixture(
+        captureStarts: Boolean = true,
+        receiveFailure: RuntimeException? = null,
+        executeScheduledTasks: Boolean = true,
+        cwToneGenerator: (String, Int, Int) -> CwTone = CwToneGenerator::generate
+    ): Fixture {
         val listener = RecordingListener()
         val store = FakeAudioStore()
         val audio = FakeAudioEngine(captureStarts)
         val transport = FakeUdpTransport(authResponse(), receiveFailure)
-        val scheduler = FakeRadioScheduler()
+        val scheduler = FakeRadioScheduler(executeScheduledTasks)
         val client = UdpRadioClient(
             listener = listener,
             audioRuntime = RadioAudioRuntime(store, audio),
             transportFactory = UdpTransportFactory { _, _, _, _ -> transport },
             clock = RadioClock { FIXED_NOW },
-            scheduler = scheduler
+            scheduler = scheduler,
+            cwToneGenerator = cwToneGenerator
         )
         return Fixture(client, listener, store, audio, transport, scheduler)
     }
@@ -334,12 +363,12 @@ class UdpRadioClientPttTest {
                 return authentication.size
             }
             if (receiveFailurePending.compareAndSet(true, false)) throw requireNotNull(receiveFailure)
-            while (!closed) {
-                val payload = incoming.poll(100, TimeUnit.MILLISECONDS) ?: continue
-                payload.copyInto(buffer)
-                return payload.size
+            var payload: ByteArray? = null
+            while (!closed && payload == null) {
+                payload = incoming.poll(100, TimeUnit.MILLISECONDS)
             }
-            return null
+            payload?.copyInto(buffer)
+            return payload?.size
         }
 
         fun enqueue(payload: ByteArray) {
@@ -351,12 +380,15 @@ class UdpRadioClientPttTest {
         }
     }
 
-    private class FakeRadioScheduler : RadioScheduler {
+    private class FakeRadioScheduler(private val executeImmediately: Boolean) : RadioScheduler {
         var oneShotTasks = 0
         var closed = false
+        var queuedTasks = 0
         val scheduled = CountDownLatch(1)
 
-        override fun execute(task: () -> Unit) = task()
+        override fun execute(task: () -> Unit) {
+            if (executeImmediately) task() else queuedTasks++
+        }
 
         override fun schedule(delayMillis: Long, task: () -> Unit): RadioScheduledTask {
             oneShotTasks++

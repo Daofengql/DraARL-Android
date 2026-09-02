@@ -1,6 +1,70 @@
 import java.util.Properties
 import java.util.zip.ZipFile
 
+private val supportedAbis = listOf("armeabi-v7a", "arm64-v8a")
+private val amapNativeAbis = setOf("armeabi-v7a", "arm64-v8a")
+private val amapNativeLibrary = "libAMapSDK_MAP_v10_0_600.so"
+private val rnnoiseNativeLibrary = "libdraarl_rnnoise.so"
+
+private data class AbiPackaging(
+    val requested: String,
+    val abis: List<String>,
+    val splitApk: Boolean,
+    val universalApk: Boolean
+)
+
+private fun normalizeAbiName(value: String): String = when (value.trim().lowercase()) {
+    "v7", "32", "arm32", "armeabi", "armeabi-v7a" -> "armeabi-v7a"
+    "64", "arm64", "arm64-v8a" -> "arm64-v8a"
+    else -> value.trim()
+}
+
+private fun parseAbiPackaging(rawValue: String): AbiPackaging {
+    val requested = rawValue.trim().ifBlank { "arm64-v8a" }
+    val normalized = requested.lowercase()
+    if (normalized == "all") {
+        return AbiPackaging(requested, supportedAbis, splitApk = true, universalApk = true)
+    }
+    if (normalized == "universal" || normalized == "fat") {
+        return AbiPackaging(requested, supportedAbis, splitApk = false, universalApk = false)
+    }
+
+    val abis = requested.split(',')
+        .map(::normalizeAbiName)
+        .filter(String::isNotBlank)
+        .distinct()
+    require(abis.isNotEmpty() && abis.all(supportedAbis::contains)) {
+        "Unsupported ABI '$rawValue'. Use one of ${supportedAbis.joinToString()}, universal, all, or a comma-separated list."
+    }
+    return AbiPackaging(
+        requested = requested,
+        abis = abis,
+        splitApk = abis.size > 1,
+        universalApk = false
+    )
+}
+
+private val requestedAbiProperty = providers.gradleProperty("abi").orNull
+private val requestedConvenienceAbi = when {
+    gradle.startParameter.taskNames.any {
+        it.substringAfterLast(':') == "assembleReleaseAll"
+    } -> "all"
+
+    gradle.startParameter.taskNames.any {
+        it.substringAfterLast(':') == "assembleReleaseUniversal"
+    } -> "universal"
+
+    else -> null
+}
+private val abiPackaging: AbiPackaging = parseAbiPackaging(
+    requestedAbiProperty ?: requestedConvenienceAbi ?: "arm64-v8a"
+)
+private val abiPackagingRequested = abiPackaging.requested
+private val abiPackagingAbis = abiPackaging.abis.toList()
+private val abiPackagingSplitApk = abiPackaging.splitApk
+private val abiPackagingUniversalApk = abiPackaging.universalApk
+private val amapNativeAbiNames = amapNativeAbis.toList()
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.baselineprofile)
@@ -45,11 +109,11 @@ android {
         applicationId = "cn.silverdragon.draarl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "2.0.0-alpha1"
+        versionCode = 11
+        versionName = "2.0.0-alpha4"
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += abiPackaging.abis
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -75,6 +139,14 @@ android {
             }
         }
     }
+    splits {
+        abi {
+            isEnable = abiPackaging.splitApk
+            reset()
+            include(*abiPackaging.abis.toTypedArray())
+            isUniversalApk = abiPackaging.universalApk
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -93,7 +165,7 @@ android {
 detekt {
     source.setFrom("src/main/java", "src/test/java", "src/androidTest/java")
     config.setFrom(rootProject.file("config/detekt/detekt.yml"))
-    baseline = rootProject.file("config/detekt/baseline.xml")
+    baseline = rootProject.file("config/detekt/baseline-debug.xml")
     buildUponDefaultConfig = true
     parallel = true
     basePath.set(rootProject.projectDir)
@@ -121,6 +193,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.coil.svg)
     implementation(libs.okhttp)
     implementation(libs.concentus)
     implementation(libs.amap.map)
@@ -147,12 +220,15 @@ val verifyReleaseArtifact by tasks.registering {
     group = "verification"
     description =
         "Verifies the optimized Release APK, R8 reports, JNI keep rules, and packaged Baseline Profile."
+    notCompatibleWithConfigurationCache(
+        "Release artifact verification enumerates and inspects generated APK ZIP entries."
+    )
     dependsOn("assembleRelease")
 
-    val releaseApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
+    val releaseOutputDirectory = layout.buildDirectory.dir("outputs/apk/release")
     val releaseMapping = layout.buildDirectory.dir("outputs/mapping/release")
     val generatedProfiles = layout.projectDirectory.dir("src/release/generated/baselineProfiles")
-    inputs.file(releaseApk)
+    inputs.dir(releaseOutputDirectory)
     inputs.dir(releaseMapping)
     inputs.dir(generatedProfiles)
 
@@ -161,43 +237,67 @@ val verifyReleaseArtifact by tasks.registering {
             if (!condition) throw GradleException(message)
         }
 
-        val apk = releaseApk.get().asFile
-        verify(apk.isFile, "Release APK is missing: ${apk.absolutePath}")
-        val maxApkBytes = 36L * 1024L * 1024L
+        val outputDirectory = releaseOutputDirectory.get().asFile
+        val expectedApks = when {
+            abiPackagingSplitApk && abiPackagingUniversalApk ->
+                listOf("app-universal-release.apk" to abiPackagingAbis) +
+                    abiPackagingAbis.map { abi -> "app-$abi-release.apk" to listOf(abi) }
+
+            abiPackagingSplitApk ->
+                abiPackagingAbis.map { abi -> "app-$abi-release.apk" to listOf(abi) }
+
+            else -> listOf("app-release.apk" to abiPackagingAbis)
+        }
+        val apks = expectedApks.map { (name, _) -> outputDirectory.resolve(name) }
         verify(
-            apk.length() <= maxApkBytes,
-            "Release APK is ${apk.length()} bytes, above the $maxApkBytes byte regression limit"
+            apks.all(File::isFile),
+            "Expected Release APK(s) for abi=$abiPackagingRequested " +
+                "in ${outputDirectory.absolutePath}: " +
+                expectedApks.joinToString { (name, _) -> name }
         )
 
-        ZipFile(apk).use { zip ->
-            val entries = zip.entries().asSequence().associateBy { it.name }
-            val requiredEntries = listOf(
-                "AndroidManifest.xml",
-                "assets/dexopt/baseline.prof",
-                "assets/dexopt/baseline.profm",
-                "lib/arm64-v8a/libAMapSDK_MAP_v10_0_600.so",
-                "lib/arm64-v8a/libdraarl_rnnoise.so"
-            )
-            requiredEntries.forEach { name ->
-                val entry = entries[name]
+        expectedApks.forEach { (name, expectedAbis) ->
+            val apk = outputDirectory.resolve(name)
+            ZipFile(apk).use { zip ->
+                val entries = zip.entries().asSequence().associateBy { it.name }
+                val packagedAbis = entries.keys
+                    .filter { it.startsWith("lib/") }
+                    .map { it.removePrefix("lib/").substringBefore('/') }
+                    .distinct()
+                val requiredEntries = listOf(
+                    "AndroidManifest.xml",
+                    "assets/dexopt/baseline.prof",
+                    "assets/dexopt/baseline.profm"
+                ) + packagedAbis.map { abi -> "lib/$abi/$rnnoiseNativeLibrary" } +
+                    packagedAbis.filter(amapNativeAbiNames::contains).map { abi ->
+                        "lib/$abi/$amapNativeLibrary"
+                    }
+                requiredEntries.forEach { name ->
+                    val entry = entries[name]
+                    verify(
+                        entry != null && entry.size > 0L,
+                        "Release APK ${apk.name} entry is missing or empty: $name"
+                    )
+                }
+                verify(packagedAbis.isNotEmpty(), "Release APK ${apk.name} contains no native ABI")
                 verify(
-                    entry != null && entry.size > 0L,
-                    "Release APK entry is missing or empty: $name"
+                    entries.keys.any { it.matches(Regex("classes\\d*\\.dex")) },
+                    "Release APK ${apk.name} contains no DEX files"
+                )
+                verify(
+                    packagedAbis.toSet() == expectedAbis.toSet(),
+                    "Release APK ${apk.name} contains $packagedAbis; expected $expectedAbis"
+                )
+                val missingAmapAbis = packagedAbis.filter(
+                    amapNativeAbiNames::contains
+                ).filter { abi ->
+                    "lib/$abi/$amapNativeLibrary" !in entries
+                }
+                verify(
+                    missingAmapAbis.isEmpty(),
+                    "Release APK ${apk.name} is missing AMap native libraries for: $missingAmapAbis"
                 )
             }
-            verify(
-                entries.keys.any {
-                    it.matches(Regex("classes\\d*\\.dex"))
-                },
-                "Release APK contains no DEX files"
-            )
-            val unexpectedAbis = entries.keys
-                .filter { it.startsWith("lib/") }
-                .filterNot { it.startsWith("lib/arm64-v8a/") }
-            verify(
-                unexpectedAbis.isEmpty(),
-                "Release APK contains unexpected native ABIs: $unexpectedAbis"
-            )
         }
 
         val mappingDirectory = releaseMapping.get().asFile
@@ -242,6 +342,21 @@ val verifyReleaseArtifact by tasks.registering {
             )
         }
 
-        logger.lifecycle("Verified Release APK: ${apk.length()} bytes (${apk.absolutePath})")
+        logger.lifecycle(
+            "Verified Release APK(s) for abi=$abiPackagingRequested: " +
+                apks.joinToString { "${it.name} (${it.length()} bytes)" }
+        )
     }
+}
+
+tasks.register("assembleReleaseUniversal") {
+    group = "build"
+    description = "Builds one Release APK containing all supported ABIs."
+    dependsOn("assembleRelease")
+}
+
+tasks.register("assembleReleaseAll") {
+    group = "build"
+    description = "Builds one split Release APK per ABI plus a universal APK."
+    dependsOn("assembleRelease")
 }

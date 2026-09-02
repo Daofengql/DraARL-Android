@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import cn.silverdragon.draarl.maps.AmapPlace
 import cn.silverdragon.draarl.maps.AmapPlaceService
+import cn.silverdragon.draarl.maps.AmateurRadioZone
+import cn.silverdragon.draarl.maps.AmateurRadioZoneResolver
 import cn.silverdragon.draarl.maps.CoordinateConverter
 import cn.silverdragon.draarl.maps.GeoCoordinate
 import cn.silverdragon.draarl.maps.LastMapLocationStore
@@ -58,17 +60,22 @@ import com.amap.api.maps.AMap
 import com.amap.api.maps.model.LatLng
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal data class LogbookPlaceSelection(
     val qth: String,
     val latitude: Double,
     val longitude: Double,
-    val locator: String
+    val locator: String,
+    val cqZone: Int?,
+    val ituZone: Int?
 )
 
 @Composable
+@Suppress("InjectDispatcher", "CognitiveComplexMethod", "CyclomaticComplexMethod", "LongMethod")
 internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfirm: (LogbookPlaceSelection) -> Unit) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -95,6 +102,7 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
     remember(context) { initializeAmapServices(context) }
     val scope = rememberCoroutineScope()
     val placeService = remember(context) { AmapPlaceService(context) }
+    val zoneResolver = remember(context) { AmateurRadioZoneResolver(context) }
     val cachedWgs84 = remember(context) { LastMapLocationStore(context).load() }
     val cachedGcj02 = remember(cachedWgs84) {
         cachedWgs84?.let {
@@ -247,6 +255,15 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
             if (coordinate != null) {
                 val wgs84 = CoordinateConverter.gcj02ToWgs84(GeoCoordinate(coordinate.latitude, coordinate.longitude))
                 val locator = MaidenheadLocator.encode(wgs84.latitude, wgs84.longitude)
+                var radioZone by remember(wgs84.latitude, wgs84.longitude) { mutableStateOf<AmateurRadioZone?>(null) }
+                var zoneResolving by remember(wgs84.latitude, wgs84.longitude) { mutableStateOf(true) }
+                LaunchedEffect(wgs84.latitude, wgs84.longitude) {
+                    zoneResolving = true
+                    radioZone = withContext(Dispatchers.Default) {
+                        runCatching { zoneResolver.resolve(wgs84.latitude, wgs84.longitude) }.getOrNull()
+                    }
+                    zoneResolving = false
+                }
                 Surface(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                     tonalElevation = 7.dp
@@ -270,6 +287,21 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (zoneResolving) {
+                            Text(
+                                "正在计算 CQ / ITU 分区",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            radioZone?.let { zone ->
+                                Text(
+                                    "CQ ${zone.cq}  ·  ITU ${zone.itu}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         if (error.isNotBlank()) {
                             ToolError(
                                 message = error,
@@ -287,11 +319,13 @@ internal fun LogbookPlacePickerScreen(title: String, onBack: () -> Unit, onConfi
                                         qth = "$placeName · $locator",
                                         latitude = wgs84.latitude,
                                         longitude = wgs84.longitude,
-                                        locator = locator
+                                        locator = locator,
+                                        cqZone = radioZone?.cq,
+                                        ituZone = radioZone?.itu
                                     )
                                 )
                             },
-                            enabled = !resolving,
+                            enabled = !resolving && !zoneResolving,
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("确认此地点") }
                     }

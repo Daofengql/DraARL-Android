@@ -3,6 +3,7 @@ package cn.silverdragon.draarl.concurrency
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -19,6 +20,7 @@ internal class ControllerTaskRunner(
     private val controllerJob = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + controllerJob)
     private var operationJob: Job? = null
+    private val queuedJobs = mutableSetOf<Job>()
     private var generation = 0
     private var closed = false
     private val queueMutex = Mutex()
@@ -47,7 +49,7 @@ internal class ControllerTaskRunner(
 
     fun enqueue(operation: () -> Unit, onFailure: (Throwable) -> Unit = {}) {
         if (closed) return
-        scope.launch {
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             val result = runCatching {
                 queueMutex.withLock { withContext(ioDispatcher) { operation() } }
             }
@@ -56,12 +58,25 @@ internal class ControllerTaskRunner(
                 if (!closed) onFailure(failure)
             }
         }
+        synchronized(queuedJobs) {
+            queuedJobs += job
+        }
+        job.invokeOnCompletion {
+            synchronized(queuedJobs) {
+                queuedJobs -= job
+            }
+        }
+        job.start()
     }
 
     fun cancel() {
         generation++
         operationJob?.cancel()
         operationJob = null
+        synchronized(queuedJobs) {
+            queuedJobs.toList().forEach { it.cancel() }
+            queuedJobs.clear()
+        }
         onRunningChanged(false)
     }
 

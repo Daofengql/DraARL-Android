@@ -91,7 +91,13 @@ class AprsController internal constructor(
             runCatching {
                 withContext(ioDispatcher) { storageMutex.withLock { storage.load(newUserId) } }
             }.onSuccess { config ->
-                if (!closed && userId == newUserId) uiState = uiState.copy(config = config)
+                if (!closed && userId == newUserId) {
+                    uiState = uiState.copy(config = config)
+                    runCatching { syncBackgroundReporting(config, newUserId) }
+                        .onFailure { error ->
+                            effects.showNotice("无法恢复 APRS 后台上报：${effects.friendlyError(error.cause ?: error)}")
+                        }
+                }
             }.onFailure { error ->
                 if (error is CancellationException) throw error
                 if (!closed && userId == newUserId) {

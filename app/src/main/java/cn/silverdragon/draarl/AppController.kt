@@ -75,6 +75,8 @@ import cn.silverdragon.draarl.update.AppUpdateInfo
 import cn.silverdragon.draarl.update.AppUpdateManager
 import cn.silverdragon.draarl.update.AppUpdateStatus
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -83,20 +85,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
-class AppController internal constructor(
-    application: Application,
-    private val ioDispatcher: CoroutineDispatcher
-) :
+class AppController internal constructor(application: Application, private val ioDispatcher: CoroutineDispatcher) :
     AndroidViewModel(application) {
     @Suppress("InjectDispatcher")
     constructor(application: Application) : this(application, Dispatchers.IO)
 
     private val appContext = application.applicationContext
+    private val app = application as DraarlApplication
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val sessionStore = SecureSessionStore(appContext)
+    private val sessionStore = app.sessionStore
     private val messageStore = RadioMessageStore(appContext)
     private val dashboardCache = DashboardCacheController(
         cache = DashboardCacheStore(appContext),
@@ -124,7 +122,8 @@ class AppController internal constructor(
             mainHandler.postDelayed(this, RADIO_SYNC_INTERVAL_MS)
         }
     }
-    private val api: ApiClient = ApiClient(sessionStore) { updatedSession ->
+    private val api: ApiClient = app.apiClient
+    private val removeApiSessionListener = api.addSessionListener { updatedSession ->
         mainHandler.post {
             if (disposed.get()) return@post
             session.onRemoteSessionChanged(updatedSession)
@@ -487,6 +486,7 @@ class AppController internal constructor(
                 close = { publicAuthDelegate.value.close() }
             ),
             AppControllerCloseAction(close = dashboardCache::close),
+            AppControllerCloseAction(close = removeApiSessionListener),
             AppControllerCloseAction(close = session::close),
             AppControllerCloseAction(close = settings::close),
             AppControllerCloseAction(close = aprs::close),
@@ -534,18 +534,14 @@ class AppController internal constructor(
     fun resumePendingAppUpdateInstall() = appUpdateController.resumePendingInstall()
 
     fun refreshAll() {
-        if (api.currentSession() == null) return
+        val accountKey = api.currentSession()?.refreshAccountKey() ?: return
         val generation = refreshAllCoordinator.request() ?: return
         contentLoading = true
-        startRefreshAll(generation)
+        startRefreshAll(generation, accountKey)
     }
 
-    private fun startRefreshAll(generation: Int) {
-        if (disposed.get() || api.currentSession() == null) {
-            cancelRefreshAll()
-            contentLoading = false
-            return
-        }
+    private fun startRefreshAll(generation: Int, accountKey: String) {
+        if (disposed.get() || api.currentSession()?.refreshAccountKey() != accountKey) return
         refreshAllJob = viewModelScope.launch {
             val result = runCatching {
                 appDataRefresher.refresh(
@@ -559,10 +555,14 @@ class AppController internal constructor(
             result.exceptionOrNull()?.let { failure ->
                 if (failure is CancellationException) throw failure
             }
-            if (disposed.get()) return@launch
+            if (disposed.get() || api.currentSession()?.refreshAccountKey() != accountKey) return@launch
             val decision = refreshAllCoordinator.complete(generation)
             val snapshot = result.getOrNull()
-            if (decision.applyResults && api.currentSession() != null && snapshot != null) {
+            if (
+                decision.applyResults &&
+                api.currentSession()?.refreshAccountKey() == accountKey &&
+                snapshot != null
+            ) {
                 devices = snapshot.devices
                 groups = snapshot.groups
                 if (snapshot.defaultDeviceGroup.isSuccess) {
@@ -590,9 +590,9 @@ class AppController internal constructor(
                 session.uiState.user?.id?.let { dashboardCache.store(it, refreshedDashboard) }
             }
             val nextGeneration = decision.nextGeneration
-            if (nextGeneration != null && api.currentSession() != null) {
-                startRefreshAll(nextGeneration)
-            } else if (decision.isIdle || api.currentSession() == null) {
+            if (nextGeneration != null && api.currentSession()?.refreshAccountKey() == accountKey) {
+                startRefreshAll(nextGeneration, accountKey)
+            } else if (decision.isIdle || api.currentSession()?.refreshAccountKey() != accountKey) {
                 refreshAllJob = null
                 contentLoading = false
             }
@@ -1061,6 +1061,8 @@ class AppController internal constructor(
         accessToken = accessToken,
         defaultGroupId = user.lastGroupId.takeIf { it > 0 } ?: 999
     )
+
+    private fun Session.refreshAccountKey(): String = "${baseUrl.trimEnd('/')}#${user.id}"
 
     private fun friendlyError(error: Throwable): String = when (error) {
         is ApiException -> error.message

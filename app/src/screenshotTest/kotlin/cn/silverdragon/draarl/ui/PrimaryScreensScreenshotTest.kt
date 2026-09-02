@@ -24,8 +24,8 @@ import cn.silverdragon.draarl.ui.screens.RadioComposer
 import cn.silverdragon.draarl.ui.screens.RadioConnectionPanel
 import cn.silverdragon.draarl.ui.screens.RadioConnectionPanelState
 import cn.silverdragon.draarl.ui.screens.RadioMessageEmptyFeedback
-import cn.silverdragon.draarl.ui.screens.RadioModeSwitcher
 import cn.silverdragon.draarl.ui.screens.ToolsHome
+import cn.silverdragon.draarl.ui.screens.ZoneReferenceScreen
 import com.android.tools.screenshot.PreviewTest
 
 @PreviewTest
@@ -226,6 +226,30 @@ fun ToolsDarkBaseline() {
 }
 
 @PreviewTest
+@Preview(name = "CQ Zones Light Narrow", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun CqZonesLightBaseline() {
+    BaselineScreen(selectedKey = "tools", darkTheme = false) {
+        ZoneReferenceScreen(onBack = {})
+    }
+}
+
+@PreviewTest
+@Preview(
+    name = "ITU Zones Dark Landscape Large Text",
+    widthDp = 800,
+    heightDp = 480,
+    fontScale = 1.5f,
+    showBackground = true
+)
+@Composable
+fun ItuZonesDarkLargeTextBaseline() {
+    BaselineScreen(selectedKey = "tools", darkTheme = true) {
+        ZoneReferenceScreen(onBack = {}, initialTypeKey = "itu")
+    }
+}
+
+@PreviewTest
 @Preview(
     name = "Tools Error Light Large Text",
     widthDp = 360,
@@ -308,12 +332,6 @@ private fun RadioBaseline(darkTheme: Boolean, hasSyncError: Boolean = false) {
                         modifier = modifier
                     )
                 }
-            )
-            RadioModeSwitcher(
-                mapSelected = false,
-                onMap = {},
-                onMessages = {},
-                modifier = Modifier.fillMaxWidth()
             )
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 RadioMessageEmptyFeedback(

@@ -366,10 +366,12 @@ private class FakeRemote(
     override fun restoreAndValidate(): Session = restoreAction().also { currentSession = it }
 
     override fun detachSessionForLogout(expected: Session?): Session? {
-        val current = currentSession ?: return null
-        if (expected != null && current != expected) return null
-        currentSession = null
-        return current
+        val current = currentSession
+        return when {
+            current == null -> null
+            expected != null && current != expected -> null
+            else -> current.also { currentSession = null }
+        }
     }
 
     override fun revokeSession(session: Session): Result<Unit> {

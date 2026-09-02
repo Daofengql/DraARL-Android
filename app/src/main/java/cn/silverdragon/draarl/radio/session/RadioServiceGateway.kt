@@ -131,7 +131,7 @@ private class AndroidRadioServiceConnectionGateway(context: Context) : RadioServ
     }
 
     override fun stopStartedService() {
-        appContext.startService(RadioConnectionService.disconnectIntent(appContext))
+        appContext.stopService(RadioConnectionService.startIntent(appContext))
     }
 
     override fun connect(config: RadioConnectionConfig): Boolean = binder?.let {

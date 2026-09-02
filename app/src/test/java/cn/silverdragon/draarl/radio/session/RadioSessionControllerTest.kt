@@ -205,6 +205,7 @@ class RadioSessionControllerTest {
     }
 
     @Test
+    @Suppress("CognitiveComplexMethod")
     fun staleAccessPointProbeCannotReplaceNewAccountSelection() = runBlocking {
         val firstProbeStarted = CountDownLatch(1)
         val releaseFirstProbe = CountDownLatch(1)

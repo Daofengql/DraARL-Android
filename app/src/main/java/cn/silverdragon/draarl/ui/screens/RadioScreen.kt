@@ -49,8 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.AppController
 import cn.silverdragon.draarl.data.LocationMessageKind
@@ -168,10 +168,7 @@ private fun RadioMessagesPane(
 }
 
 @Immutable
-private data class RadioMessagesHistoryState(
-    val loading: Boolean,
-    val syncError: String
-)
+private data class RadioMessagesHistoryState(val loading: Boolean, val syncError: String)
 
 @Immutable
 private data class RadioMessagesPaneState(
@@ -260,15 +257,12 @@ private fun RadioMessageLazyColumn(
     }
 }
 
-private fun messageProfile(
-    controller: AppController,
-    message: RadioMessage,
-    publicProfiles: Map<String, User>
-): User? = if (message.mine) {
-    controller.session.uiState.user
-} else {
-    publicProfiles[message.senderUsername.lowercase()]
-}
+private fun messageProfile(controller: AppController, message: RadioMessage, publicProfiles: Map<String, User>): User? =
+    if (message.mine) {
+        controller.session.uiState.user
+    } else {
+        publicProfiles[message.senderUsername.lowercase()]
+    }
 
 @Composable
 private fun RadioMessageListActions(
@@ -454,6 +448,10 @@ fun RadioScreen(
             listState.scrollToItem(messages.lastIndex)
             initialListPositioned = true
         } else if (followLatest && !controller.voiceAutoPlayEnabled) {
+            // Wait for LazyColumn to lay out the new item before resolving its index.
+            // Without this frame, an incoming message can arrive while the list still
+            // reports the previous item count and the scroll request is dropped.
+            withFrameNanos { }
             listState.animateScrollToItem(messages.lastIndex)
         }
     }

@@ -71,7 +71,7 @@ internal class AppUpdateManager(private val context: Context, private val api: U
             resource.resource.resourceKey == ClientResourceKeys.APP_DRAARL &&
                 resource.resource.category == "application"
         } ?: return null
-        if (!item.release.forceUpdate && compareSemver(item.release.version, semver) <= 0) return null
+        if (!item.release.forceUpdate && !isNewerAppRelease(item.release.version, semver)) return null
         requireCompatibleAppUpdateServerContract(manifest, item.release)
         val artifact = item.artifacts.firstOrNull { artifact ->
             artifact.format == "apk" && (artifact.runtime.isBlank() || artifact.runtime == "android")
@@ -89,6 +89,7 @@ internal class AppUpdateManager(private val context: Context, private val api: U
     }
 
     override fun downloadUpdate(update: AppUpdateInfo, onProgress: (Float) -> Unit): File {
+        require(update.artifact.fileSize <= MAX_APK_BYTES) { "更新包超过 256 MiB 限制" }
         val download = api.getClientResourceArtifactDownload(update.artifact.id)
         val url = download.downloadUrl.ifBlank { update.artifact.externalUrl }
         if (url.isBlank()) error("服务器没有返回下载地址")
@@ -140,8 +141,11 @@ internal class AppUpdateManager(private val context: Context, private val api: U
         target.parentFile?.mkdirs()
         val part = File(target.absolutePath + PART_SUFFIX)
         val expectedSize = artifact.fileSize
-        val existingBytes =
-            part.takeIf { it.isFile }?.length()?.takeIf { expectedSize <= 0L || it in 1 until expectedSize } ?: 0L
+        val maximumSize = expectedSize.takeIf { it > 0L } ?: MAX_APK_BYTES
+        val existingBytes = part.takeIf { it.isFile }
+            ?.length()
+            ?.takeIf { it in 1..maximumSize && (expectedSize <= 0L || it < expectedSize) }
+            ?: 0L
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = DOWNLOAD_CONNECT_TIMEOUT_MS
             readTimeout = DOWNLOAD_READ_TIMEOUT_MS
@@ -152,6 +156,12 @@ internal class AppUpdateManager(private val context: Context, private val api: U
             val status = connection.responseCode
             if (status !in 200..299) error("下载更新包失败 ($status)")
             val append = existingBytes > 0L && status == HttpURLConnection.HTTP_PARTIAL
+            if (status == HttpURLConnection.HTTP_PARTIAL &&
+                (!append || !matchesPartialContentRange(connection.getHeaderField("Content-Range"), existingBytes))
+            ) {
+                part.delete()
+                error("更新包断点续传响应无效，请重试")
+            }
             if (!append && part.exists() && !part.delete()) error("无法重置下载缓存")
             val startBytes = if (append) existingBytes else 0L
             connection.inputStream.use { input ->
@@ -163,6 +173,7 @@ internal class AppUpdateManager(private val context: Context, private val api: U
                         if (read < 0) break
                         output.write(buffer, 0, read)
                         written += read
+                        require(written <= maximumSize) { "更新包超过允许的大小" }
                         if (expectedSize > 0L) onProgress((written.toFloat() / expectedSize).coerceIn(0f, 1f))
                     }
                 }
@@ -182,6 +193,7 @@ internal class AppUpdateManager(private val context: Context, private val api: U
 
     private fun verifyDownloadedFile(file: File, artifact: ClientResourceArtifact): Boolean {
         if (!file.isFile) return false
+        if (file.length() !in 1..MAX_APK_BYTES) return false
         if (artifact.fileSize > 0L && file.length() != artifact.fileSize) return false
         if (artifact.sha256.isBlank()) return true
         return file.sha256().equals(artifact.sha256, ignoreCase = true)
@@ -194,6 +206,7 @@ internal class AppUpdateManager(private val context: Context, private val api: U
         private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         private const val DOWNLOAD_CONNECT_TIMEOUT_MS = 15_000
         private const val DOWNLOAD_READ_TIMEOUT_MS = 60_000
+        private const val MAX_APK_BYTES = 256L * 1024L * 1024L
     }
 }
 
@@ -227,6 +240,17 @@ internal fun normalizeVersionForSemver(value: String): String {
 
 internal fun compatibleClientVersionForResourceQuery(version: String): String =
     normalizeVersionForSemver(version).substringBefore('-').substringBefore('+')
+
+internal fun isNewerAppRelease(releaseVersion: String, currentVersion: String): Boolean =
+    compareSemver(releaseVersion, currentVersion) > 0
+
+internal fun matchesPartialContentRange(value: String?, expectedStart: Long): Boolean =
+    PARTIAL_CONTENT_RANGE_REGEX.matchEntire(value.orEmpty().trim())?.let { match ->
+        val start = match.groupValues[1].toLongOrNull()
+        val end = match.groupValues[2].toLongOrNull()
+        val total = match.groupValues[3].takeUnless { it == "*" }?.toLongOrNull()
+        start != null && end != null && start == expectedStart && end >= start && (total == null || total > end)
+    } == true
 
 internal fun requireCompatibleAppUpdateServerContract(
     manifest: ClientResourceManifest,
@@ -344,6 +368,7 @@ private fun File.sha256(): String {
 }
 
 private val SEMVER_REGEX = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$""")
+private val PARTIAL_CONTENT_RANGE_REGEX = Regex("""bytes (\d+)-(\d+)/(\d+|\*)""", RegexOption.IGNORE_CASE)
 private val STRICT_SEMVER_REGEX = Regex(
     """^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"""
 )

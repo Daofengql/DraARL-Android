@@ -732,7 +732,7 @@ internal fun initializeAmapServices(context: Context): Boolean {
 }
 
 internal fun isAmapNativeSupported(): Boolean = runCatching {
-    Build.SUPPORTED_ABIS.any { it == "arm64-v8a" } &&
+    Build.SUPPORTED_ABIS.any { it == "armeabi-v7a" || it == "arm64-v8a" } &&
         Os.sysconf(OsConstants._SC_PAGESIZE) <= AMAP_MAX_PAGE_SIZE_BYTES
 }.getOrDefault(false)
 

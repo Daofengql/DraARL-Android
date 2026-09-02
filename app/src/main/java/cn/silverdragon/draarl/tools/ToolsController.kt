@@ -61,8 +61,22 @@ class ToolsController internal constructor(
     private var presetError by mutableStateOf("")
     val error: String
         get() = when (destination) {
-            ToolDestination.HOME, ToolDestination.BLE, ToolDestination.MAIDENHEAD -> homeError
+            ToolDestination.HOME,
+            ToolDestination.BLE,
+            ToolDestination.MAIDENHEAD,
+            ToolDestination.CONVERTER,
+            ToolDestination.FEEDLINE,
+            ToolDestination.FREQUENCY_PLAN,
+            ToolDestination.CW_CODEC,
+            ToolDestination.PROPAGATION,
+            ToolDestination.ZONE_REFERENCE,
+            ToolDestination.ANTENNA_LENGTH,
+            ToolDestination.SWR_CALCULATOR,
+            ToolDestination.REPEATER_PLANNER,
+            ToolDestination.APRS_CODEC -> homeError
+
             ToolDestination.RELAYS -> relayError
+
             ToolDestination.LOGBOOK, ToolDestination.LOGBOOK_EDITOR -> logbookError
         }
     val presetErrorMessage: String
@@ -318,6 +332,7 @@ class ToolsController internal constructor(
         logbookTasks.cancel()
         presetTasks.cancel()
         draftLoadTasks.cancel()
+        cacheWriteTasks.cancel()
         homeError = ""
         relayError = ""
         logbookError = ""
@@ -367,8 +382,22 @@ class ToolsController internal constructor(
 
     private fun setError(target: ToolDestination, message: String) {
         when (target) {
-            ToolDestination.HOME, ToolDestination.BLE, ToolDestination.MAIDENHEAD -> homeError = message
+            ToolDestination.HOME,
+            ToolDestination.BLE,
+            ToolDestination.MAIDENHEAD,
+            ToolDestination.CONVERTER,
+            ToolDestination.FEEDLINE,
+            ToolDestination.FREQUENCY_PLAN,
+            ToolDestination.CW_CODEC,
+            ToolDestination.PROPAGATION,
+            ToolDestination.ZONE_REFERENCE,
+            ToolDestination.ANTENNA_LENGTH,
+            ToolDestination.SWR_CALCULATOR,
+            ToolDestination.REPEATER_PLANNER,
+            ToolDestination.APRS_CODEC -> homeError = message
+
             ToolDestination.RELAYS -> relayError = message
+
             ToolDestination.LOGBOOK, ToolDestination.LOGBOOK_EDITOR -> logbookError = message
         }
     }

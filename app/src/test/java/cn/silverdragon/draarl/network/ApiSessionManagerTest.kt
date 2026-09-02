@@ -106,6 +106,24 @@ class ApiSessionManagerTest {
     }
 
     @Test
+    fun transientRefreshFailureKeepsSessionForRetry() = withServer { server ->
+        server.enqueue(jsonResponse(401, """{"code":401,"message":"expired"}"""))
+        server.enqueue(jsonResponse(500, """{"code":500,"message":"temporary failure"}"""))
+        val fixture = fixture(server, session = session(server))
+
+        val error = assertThrows(ApiException::class.java) {
+            fixture.manager.execute("GET", RESOURCE_PATH)
+        }
+
+        assertEquals(500, error.code)
+        assertEquals("temporary failure", error.message)
+        assertEquals("access-token", fixture.manager.currentSession()?.accessToken)
+        assertEquals("refresh-token", fixture.storage.current()?.refreshToken)
+        assertEquals(0, fixture.storage.clearCount.get())
+        assertTrue(fixture.sessionChanges.isEmpty())
+    }
+
+    @Test
     fun forceRefreshRenewsTokenEvenWhenCurrentTokenIsFresh() = withServer { server ->
         server.enqueue(jsonResponse(200, refreshResponse("forced-token")))
         val now = 10_000L
@@ -201,6 +219,24 @@ class ApiSessionManagerTest {
         assertEquals("refreshed-token", fixture.manager.currentSession()?.accessToken)
         assertEquals("Updated", fixture.manager.currentSession()?.user?.nickname)
         assertEquals("Updated", fixture.storage.current()?.user?.nickname)
+    }
+
+    @Test
+    fun additionalSessionListenerReceivesUpdatesUntilRemoved() = withServer { server ->
+        server.enqueue(jsonResponse(200, refreshResponse("first-token")))
+        server.enqueue(jsonResponse(200, refreshResponse("second-token")))
+        val fixture = fixture(server, session = session(server))
+        val observedTokens = mutableListOf<String>()
+        val removeListener = fixture.manager.addSessionListener { updated ->
+            updated?.accessToken?.let(observedTokens::add)
+        }
+
+        fixture.manager.accessToken(forceRefresh = true)
+        removeListener()
+        fixture.manager.accessToken(forceRefresh = true)
+
+        assertEquals(listOf("first-token"), observedTokens)
+        assertEquals("second-token", fixture.manager.currentSession()?.accessToken)
     }
 
     private fun fixture(

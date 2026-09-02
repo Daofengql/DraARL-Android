@@ -13,6 +13,7 @@ class HistoricalAudioLoader(
         audioCache.get(cacheKey)?.let { return it }
         require(audioUrl.isNotBlank()) { "本地语音缓存已失效" }
         val bytes = downloader(audioUrl)
+        require(bytes.size <= MAX_RAW_OPUS_RECORDING_BYTES) { "语音记录超过 16 MiB 限制" }
         RawOpusRecording.decode(bytes)
         audioCache.put(cacheKey, bytes)
         return bytes
@@ -34,7 +35,21 @@ class HistoricalAudioLoader(
                     "语音记录重定向到了不安全的地址"
                 }
                 require(status in 200..299) { "语音记录下载失败 ($status)" }
-                connection.inputStream.use { it.readBytes() }
+                val declaredSize = connection.contentLengthLong
+                require(declaredSize <= MAX_RAW_OPUS_RECORDING_BYTES) { "语音记录超过 16 MiB 限制" }
+                connection.inputStream.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var total = 0
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        require(total <= MAX_RAW_OPUS_RECORDING_BYTES) { "语音记录超过 16 MiB 限制" }
+                        output.write(buffer, 0, read)
+                    }
+                    output.toByteArray()
+                }
             } finally {
                 connection.disconnect()
             }

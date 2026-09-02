@@ -10,7 +10,7 @@ data class RelayStation(
     val ownerCallsign: String,
     val location: String,
     val status: Int,
-    val note: String,
+    val note: String
 )
 
 data class LogbookEntry(
@@ -35,15 +35,10 @@ data class LogbookEntry(
     val myAntenna: String = "",
     val notes: String = "",
     val createdAt: String = "",
-    val updatedAt: String = "",
+    val updatedAt: String = ""
 )
 
-data class LogbookPage(
-    val items: List<LogbookEntry>,
-    val total: Int,
-    val page: Int,
-    val pageSize: Int,
-)
+data class LogbookPage(val items: List<LogbookEntry>, val total: Int, val page: Int, val pageSize: Int)
 
 data class RadioPreset(
     val id: Int = 0,
@@ -52,7 +47,7 @@ data class RadioPreset(
     val antenna: String,
     val power: Int? = null,
     val qth: String = "",
-    val sortOrder: Int = 0,
+    val sortOrder: Int = 0
 )
 
 data class LogbookDraft(
@@ -75,7 +70,24 @@ data class LogbookDraft(
     val myQth: String = "",
     val myRadio: String = "",
     val myAntenna: String = "",
-    val notes: String = "",
+    val notes: String = ""
 )
 
-enum class ToolDestination { HOME, BLE, RELAYS, LOGBOOK, LOGBOOK_EDITOR, MAIDENHEAD }
+enum class ToolDestination {
+    HOME,
+    BLE,
+    RELAYS,
+    LOGBOOK,
+    LOGBOOK_EDITOR,
+    MAIDENHEAD,
+    CONVERTER,
+    FEEDLINE,
+    FREQUENCY_PLAN,
+    CW_CODEC,
+    PROPAGATION,
+    ZONE_REFERENCE,
+    ANTENNA_LENGTH,
+    SWR_CALCULATOR,
+    REPEATER_PLANNER,
+    APRS_CODEC
+}

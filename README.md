@@ -1,84 +1,74 @@
 # DraARL Android
 
-DraARL 麟链的 Android 通信客户端。客户端只包含普通用户功能，不包含服务端管理员后台。
+DraARL 麟链的 Android 通信客户端，面向普通用户提供设备与群组管理、实时 PTT、消息、地图、
+APRS 和业余无线电工具。管理后台与服务端不在本仓库内。
 
-## 当前功能
+## 主要能力
 
-- 图片验证码 + HTTP JWT 登录、加密会话存储、access token 自动刷新
-- “设备、群组、PTT、工具、我的”五入口导航，覆盖设备/群组管理、资料与账号安全
-- 通过 `GET /api/access-points` 获取公开中心/边缘 UDP 入口
-- 并行探测边缘节点时延、自动选择最快可达节点并连接，探测不可用时按服务端优先级回退
-- DraARLv1 现代 UDP 幽灵认证，使用安装范围随机 `client_instance_id` 和服务端签发的 Session
-- 同账号多台 Android 可同时在线；2 秒心跳、连接看门狗和重新认证式自动重连
-- 发送/日志频道统一切换，多频道收听路由通过 Session API 原子更新
-- 16 kHz Opus PTT 语音收发、录音与可选 RNNoise 播放降噪，按来源频道和发送者隔离接收流并串行播放
-- 文本、语音和位置消息；高德地图选点、位置预览、距离与方向计算
-- 按账号和群组隔离的本地 SQLite 消息缓存，并与频道消息游标 API 增量对账
-- 蓝牙设备配网、中继台查询、通联日志、电台预设和梅登海德网格工具
-- APRS-IS 手动/后台位置上报，以及主题、显示缩放、存储和 PTT 悬浮窗设置
-- 通过客户端资源 manifest 检查 APK 更新，并二次验证最低服务端版本、幽灵协议版本和能力集合
-- 前台通信服务，支持应用退到后台后保持 UDP 会话
+- 图片验证码登录、加密会话存储和 access token 自动刷新
+- 设备、群组、PTT、工具、我的五个一级入口
+- DraARLv1 UDP 认证、节点优选、多频道收听、心跳和自动重连
+- 16 kHz Opus 语音、文本与位置消息，本地 SQLite 缓存和增量同步
+- 高德地图选点、位置预览、距离与方向计算
+- 蓝牙配网、中继查询、通联日志、电台预设和梅登海德网格工具
+- APRS-IS 手动及后台位置上报
+- 前台通信服务、PTT 悬浮窗和应用内更新
 
-## 工程结构
+## 快速开始
 
-生产应用保持单 `app` 模块，另有测试专用的 `baselineprofile` 模块：
-
-- `app/src/main/java/cn/silverdragon/draarl/ui`：Compose 导航、页面和公共组件
-- `app/src/main/java/cn/silverdragon/draarl/data`：领域模型、本地状态、加密会话与缓存
-- `app/src/main/java/cn/silverdragon/draarl/network`：HTTP 传输、认证会话，以及按领域划分的 API 契约、类型化响应 DTO 与 Mapper
-- `app/src/main/java/cn/silverdragon/draarl/session`：登录、恢复、会话失效和退出清理
-- `app/src/main/java/cn/silverdragon/draarl/settings`：设置状态、持久化和缓存清理协调
-- `app/src/main/java/cn/silverdragon/draarl/radio`、`protocol`：消息状态与同步、节点/UDP 会话、PTT 音频和 DraARL 协议
-- `app/src/main/java/cn/silverdragon/draarl/aprs`：APRS 状态、加密配置、APRS-IS 客户端和后台上报服务
-- `app/src/main/java/cn/silverdragon/draarl/tools`、`maps`：原生工具、地图和定位能力
-- `app/src/main/cpp`：RNNoise 的 JNI/CMake 接入及第三方源码
-- `baselineprofile`：启动路径 Profile 采集，以及冷启动、帧耗时和内存的真机 Macrobenchmark
-
-当前规模、代码分布和维护重点见 [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md)，自动截图范围与
-控件收敛规则见 [`docs/UI_VISUAL_BASELINE.md`](docs/UI_VISUAL_BASELINE.md)，实时电台的状态、资源所有权和
-关闭顺序见 [`docs/UDP_CONNECTION_LIFECYCLE.md`](docs/UDP_CONNECTION_LIFECYCLE.md)，Release 的 R8 配置、
-体积对照和静态验收见 [`docs/RELEASE_OPTIMIZATION.md`](docs/RELEASE_OPTIMIZATION.md)，Compose 重组边界与
-编译器指标见 [`docs/COMPOSE_PERFORMANCE.md`](docs/COMPOSE_PERFORMANCE.md)，依赖升级与 SDK 兼容边界见
-[`docs/DEPENDENCY_UPGRADES.md`](docs/DEPENDENCY_UPGRADES.md)。
-
-## 构建
-
-环境要求：Android SDK 36.1、JDK 17 或更高版本（CI 使用 JDK 17，本地已在 JDK 24 验证）、Android NDK 28.2.13676358 和 CMake 3.22.1。项目 Wrapper 使用 Gradle 9.5.0，Android Gradle Plugin 为 9.3.0。
-
-地图相关功能从 Gradle 属性或 `local.properties` 读取 `AMAP_API_KEY`；未配置时不影响基础通信功能和 Debug 构建，但地图选点与预览不可用。
+要求：JDK 17、Android SDK 36.1、Android NDK 28.2.13676358、CMake 3.22.1。项目使用仓库内的
+Gradle Wrapper，不需要单独安装 Gradle。
 
 ```powershell
-.\gradlew.bat spotlessCheck detektDebug
-.\gradlew.bat testDebugUnitTest validateDebugScreenshotTest lintDebug assembleDebug assembleDebugAndroidTest
-.\gradlew.bat assembleRelease
-.\gradlew.bat :app:verifyReleaseArtifact
-.\gradlew.bat :app:generateReleaseBaselineProfile
-.\gradlew.bat :baselineprofile:connectedBenchmarkReleaseAndroidTest
+.\gradlew.bat assembleDebug
 ```
 
-Profile 生成需要连接 API 28 或更高版本的设备/模拟器；Macrobenchmark 会拒绝模拟器指标，冷启动、帧耗时和内存
-对照必须连接物理设备执行。生成的规则位于 `app/src/release/generated/baselineProfiles`，Release APK 会将其编译到
-`assets/dexopt`。
+Debug APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
-Spotless 只检查相对 `origin/main` 新增或修改的 Kotlin/Gradle 文件；Detekt 使用存量基线，并阻止新增的复杂方法、超长类、吞异常和无明确生命周期的通用线程池。GitHub Actions 对 `main` 和 Pull Request 执行同一组静态检查、截图验证、构建门禁和 Markdown 链接检查。
+地图功能需要在 `local.properties` 或 Gradle 属性中配置 `AMAP_API_KEY`：
 
-调试 APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。Release 默认通过 AGP 9.3 的优化接口启用 R8 与资源收缩，输出到 `app/build/outputs/apk/release/app-release.apk`；未提供 `keystore.properties` 时该 APK 不带发布签名。
+```properties
+AMAP_API_KEY=your-key
+```
 
-## 服务端契约
+未配置 Key 时仍可构建和使用基础通信功能，但地图选点与预览不可用。完整环境、测试、截图和
+常用命令见 [开发指南](docs/guides/DEVELOPMENT.md)。
 
-实现参考 `DraARL-Server/docs/api`、`docs/Protocol.md`、`internal/udphub/jwt_auth.go` 和 Web 普通用户页面。关键链路为：
+## 工程入口
 
-1. `GET /api/captcha` 获取图片验证码，再通过 `POST /api/auth/login` 获取 access/refresh token。
-2. `GET /api/access-points` 获取健康 UDP 入口。
-3. 向优选入口发送 DraARLv1 `Type=1` 版本化 JSON，包含 JWT、稳定的安装实例 UUID 和多收能力。
-4. 认证成功后保存 `session_id` 与 `session_tag`；后续 `Type=2/4/5` 上行在 Reserved 回传 tag。
-5. 下行 `Type=4/5` 从 Reserved 读取真实 `source_group_id`，语音按来源频道和发送者隔离状态。
-6. `PUT /api/radio/sessions/:session_id/routing` 更新唯一发送频道和多个收听频道。
-7. `GET /api/groups/:id/messages` 按频道 ACL 和游标同步消息历史；通信记录接口不再作为聊天历史。
-8. `GET /api/public/client-resources/manifest` 获取 APK 更新，schema 1 清单携带当前服务端契约；客户端在展示更新前再次校验发布所需的最低服务端版本、协议版本和能力。
+仓库包含两个 Gradle 模块：
 
-生产服务端地址集中定义在 `AppConfig.BASE_URL`，固定为 `https://ptt.4l2.cn`，客户端不再提供地址输入框。
+| 模块 | 用途 |
+| --- | --- |
+| `app` | Android 应用、JVM 测试、仪器测试和 Compose 截图测试 |
+| `baselineprofile` | Baseline Profile 生成与 Macrobenchmark |
 
-在线收发以 UDP 实时消息和本地缓存作为最近数据源。服务端已完成的频道消息按
-`server_record_id`、来源频道、发送方、消息类型、内容和时间窗口与本地记录合并；本地新消息仍保留
-3 分钟保护窗口，避免历史同步覆盖尚未写入服务端的实时消息。
+生产代码位于 `app/src/main/java/cn/silverdragon/draarl`。重要边界如下：
+
+| 目录 | 职责 |
+| --- | --- |
+| `ui` | Compose 导航、页面和公共组件 |
+| `session`、`network` | 登录会话、HTTP 传输、Token 刷新和领域 API |
+| `radio`、`protocol` | UDP 会话、消息、PTT 音频、前台服务和 DraARL 协议 |
+| `data` | 领域模型、本地缓存、消息对账和路由模型 |
+| `devices`、`groups`、`profile` | 对应业务领域的 Controller 与数据协调 |
+| `maps`、`aprs`、`tools` | 地图、APRS、BLE 和无线电工具 |
+| `settings`、`update` | 设置持久化、缓存清理和应用更新 |
+
+详细依赖方向、状态所有权和维护风险见 [项目结构](docs/architecture/PROJECT_OVERVIEW.md)。
+
+## 文档
+
+文档从 [docs/README.md](docs/README.md) 进入：
+
+- [开发指南](docs/guides/DEVELOPMENT.md)：环境、配置、构建和测试
+- [项目结构](docs/architecture/PROJECT_OVERVIEW.md)：模块、运行时组件和状态所有权
+- [服务端契约](docs/architecture/SERVER_CONTRACT.md)：HTTP、UDP 和更新清单的客户端边界
+- [UDP 连接生命周期](docs/architecture/UDP_CONNECTION_LIFECYCLE.md)：实时链路状态与资源关闭顺序
+- [UI 视觉基线](docs/engineering/UI_VISUAL_BASELINE.md)：截图测试、视觉约束和评审清单
+- [Compose 性能](docs/engineering/COMPOSE_PERFORMANCE.md)：状态订阅原则与性能验证
+- [Release 指南](docs/operations/RELEASE_OPTIMIZATION.md)：签名、ABI、R8、Profile 和产物验收
+- [依赖升级](docs/operations/DEPENDENCY_UPGRADES.md)：SDK 约束与升级流程
+- [待办事项](TODO.md)：尚未完成的真机或发布验证
+
+第三方数据与许可说明见 [Third-Party Notices](docs/legal/THIRD_PARTY_NOTICES.md)。

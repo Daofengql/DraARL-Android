@@ -13,7 +13,10 @@ class UserJsonMapperTest {
         val mapper = UserJsonMapper { "https://api.example.test" }
         val stringRole = mapper.fromJson(
             JSONObject(
-                """{"id":1,"username":"operator","roles":"admin,user","avatar_thumb":"/avatars/operator.jpg","last_group_id":0}"""
+                """
+                    {"id":1,"username":"operator","roles":"admin,user",
+                    "avatar_thumb":"/avatars/operator.jpg","last_group_id":0}
+                """.trimIndent()
             )
         )
         val arrayRole = mapper.fromJson(

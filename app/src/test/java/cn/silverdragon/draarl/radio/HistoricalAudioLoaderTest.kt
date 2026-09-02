@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class HistoricalAudioLoaderTest {
@@ -42,5 +43,17 @@ class HistoricalAudioLoaderTest {
         assertArrayEquals(recording, loader.load("record:42", "https://s3.example.test/42.raw?signature=two"))
 
         assertEquals(listOf("https://s3.example.test/42.raw?signature=one"), requestedUrls)
+    }
+
+    @Test
+    fun `rejects oversized downloaded recording before caching`() {
+        val loader = HistoricalAudioLoader(RadioAudioCache(directory)) {
+            ByteArray(MAX_RAW_OPUS_RECORDING_BYTES + 1)
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            loader.load("record-large", "https://example.test/large.raw")
+        }
+        assertEquals(0, directory.listFiles().orEmpty().size)
     }
 }

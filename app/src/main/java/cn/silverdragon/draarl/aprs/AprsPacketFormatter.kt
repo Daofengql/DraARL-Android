@@ -24,7 +24,7 @@ object AprsPacketFormatter {
         val longitude = formatLongitude(position.longitude)
         val altitude = position.altitudeMeters
             ?.takeIf { it.isFinite() }
-            ?.let { "/A=${(it * 3.28084).roundToInt().coerceIn(-999_999, 9_999_999).toString().padStart(6, '0')}" }
+            ?.let { "/A=${formatAltitude(it * 3.28084)}" }
             .orEmpty()
         val comment = config.comment.replace(Regex("[\\r\\n|]"), " ").trim().take(43)
         return "$call>APDRA1,TCPIP*:!$latitude${config.symbolTable}$longitude${config.symbolCode}$altitude${if (comment.isBlank()) "" else " $comment"}"
@@ -33,16 +33,51 @@ object AprsPacketFormatter {
     private fun formatLatitude(value: Double): String {
         val direction = if (value < 0) 'S' else 'N'
         val absolute = abs(value)
-        val degrees = absolute.toInt().coerceAtMost(90)
-        val minutes = (absolute - degrees) * 60.0
+        val coordinate = roundedCoordinate(absolute, 90)
+        val degrees = coordinate.first
+        val minutes = coordinate.second
         return String.format(Locale.US, "%02d%05.2f%c", degrees, minutes, direction)
     }
 
     private fun formatLongitude(value: Double): String {
         val direction = if (value < 0) 'W' else 'E'
         val absolute = abs(value)
-        val degrees = absolute.toInt().coerceAtMost(180)
-        val minutes = (absolute - degrees) * 60.0
+        val coordinate = roundedCoordinate(absolute, 180)
+        val degrees = coordinate.first
+        val minutes = coordinate.second
         return String.format(Locale.US, "%03d%05.2f%c", degrees, minutes, direction)
     }
+
+    private fun roundedCoordinate(absolute: Double, maximumDegrees: Int): Pair<Int, Double> {
+        var degrees = absolute.toInt().coerceAtMost(maximumDegrees)
+        var minutes = (((absolute - degrees) * MINUTES_PER_DEGREE) * MINUTE_HUNDREDTHS).roundToInt() /
+            MINUTE_HUNDREDTHS
+        if (minutes >= MINUTES_PER_DEGREE) {
+            if (degrees < maximumDegrees) {
+                degrees++
+                minutes = ZERO_MINUTES
+            } else {
+                minutes = MAX_MINUTES_AT_BOUNDARY
+            }
+        }
+        return degrees to minutes
+    }
+
+    private fun formatAltitude(feet: Double): String {
+        val rounded = feet.roundToInt()
+        return if (rounded < 0) {
+            "-${(-rounded).coerceAtMost(MAX_NEGATIVE_ALTITUDE_FEET).toString().padStart(NEGATIVE_ALTITUDE_WIDTH, '0')}"
+        } else {
+            rounded.coerceAtMost(MAX_POSITIVE_ALTITUDE_FEET).toString().padStart(POSITIVE_ALTITUDE_WIDTH, '0')
+        }
+    }
+
+    private const val MINUTES_PER_DEGREE = 60.0
+    private const val MINUTE_HUNDREDTHS = 100.0
+    private const val ZERO_MINUTES = 0.0
+    private const val MAX_MINUTES_AT_BOUNDARY = 59.99
+    private const val MAX_NEGATIVE_ALTITUDE_FEET = 99_999
+    private const val MAX_POSITIVE_ALTITUDE_FEET = 999_999
+    private const val NEGATIVE_ALTITUDE_WIDTH = 5
+    private const val POSITIVE_ALTITUDE_WIDTH = 6
 }

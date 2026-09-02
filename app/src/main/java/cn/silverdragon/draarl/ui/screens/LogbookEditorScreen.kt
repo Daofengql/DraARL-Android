@@ -65,7 +65,11 @@ internal fun LogbookEditorScreen(tools: ToolsController, onBack: () -> Unit) {
                     if (target == QthPickerTarget.MY) {
                         current.copy(myQth = selection.qth)
                     } else {
-                        current.copy(theirQth = selection.qth)
+                        current.copy(
+                            theirQth = selection.qth,
+                            cqZone = selection.cqZone?.toString().orEmpty(),
+                            ituZone = selection.ituZone?.toString().orEmpty()
+                        )
                     }
                 )
                 qthPickerTarget = null

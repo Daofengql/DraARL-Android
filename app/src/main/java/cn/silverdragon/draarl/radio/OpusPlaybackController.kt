@@ -20,7 +20,8 @@ internal class OpusPlaybackController(
     private val recordingDecoder = OpusFrameDecoder()
     private val liveDecoders = LinkedHashMap<String, OpusFrameDecoder>(8, 0.75f, true)
     private val denoiser = RnnoisePlaybackDenoiser()
-    private var audioTrack: AudioTrack? = null
+
+    @Volatile private var audioTrack: AudioTrack? = null
     private var lastLiveStreamKey = ""
 
     @Volatile private var muted = false
@@ -104,21 +105,15 @@ internal class OpusPlaybackController(
         if (released.get()) return
         muted = value
         if (value) onLevel(0f)
-        executeIfActive(executor, { !released.get() }) {
-            runCatching { audioTrack?.setVolume(if (value) 0f else 1f) }
-        }
+        runCatching { audioTrack?.setVolume(if (value) 0f else 1f) }
     }
 
     fun setDenoiseEnabled(value: Boolean) {
-        executeIfActive(executor, { !released.get() }) {
-            denoiser.setEnabled(value)
-        }
+        if (!released.get()) denoiser.setEnabled(value)
     }
 
     fun setDenoiseWetMix(value: Float) {
-        executeIfActive(executor, { !released.get() }) {
-            denoiser.setWetMix(value)
-        }
+        if (!released.get()) denoiser.setWetMix(value)
     }
 
     fun resetDecoder() {
