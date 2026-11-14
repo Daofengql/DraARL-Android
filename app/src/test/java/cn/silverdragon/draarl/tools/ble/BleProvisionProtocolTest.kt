@@ -9,6 +9,23 @@ import org.junit.Test
 
 class BleProvisionProtocolTest {
     @Test
+    fun unicodeAcrossChunksAndInvalidContinuationCannotCorruptFollowingFrame() {
+        val text = "中文网络名称-".repeat(20)
+        val assembler = BleProvisionProtocol.FrameAssembler()
+        assertNull(assembler.append(byteArrayOf(2, 65)))
+        var result: String? = null
+        BleProvisionProtocol.chunkPayload(text).forEach { frame ->
+            assertTrue(frame.size <= 20)
+            result = assembler.append(frame)
+        }
+        assertEquals(text, result)
+        assembler.append(byteArrayOf(1, 65))
+        assertNull(assembler.append(ByteArray(21)))
+        assertNull(assembler.append(byteArrayOf(2, 66)))
+        assertEquals("ok", assembler.append(byteArrayOf(3, 111, 107)))
+    }
+
+    @Test
     fun `chunks and reassembles an rpc payload`() {
         val payload = """{"id":7,"cmd":"set_wifi","data":{"ssid":"DraARL-Test-Network"}}"""
         val frames = BleProvisionProtocol.chunkPayload(payload)

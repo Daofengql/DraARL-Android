@@ -8,7 +8,7 @@ data class BleDeviceProfile(
     val label: String,
     val description: String,
     val supportsWifi: Boolean,
-    val supportsDraarl: Boolean,
+    val supportsDraarl: Boolean
 )
 
 object BleDeviceProfiles {
@@ -16,11 +16,11 @@ object BleDeviceProfiles {
         BleDeviceProfile(
             key = "devmodel1",
             deviceModel = 1,
-            label = "ESP32 链路盒子（1W 射频版）",
-            description = "Wi-Fi 与 DraARL 预配置",
+            label = "RFBox / Box32",
+            description = "连接后自动识别射频模块，配置 Wi-Fi、音频与 HTTP API",
             supportsWifi = true,
-            supportsDraarl = true,
-        ),
+            supportsDraarl = true
+        )
     )
 
     fun find(key: String): BleDeviceProfile = all.firstOrNull { it.key == key } ?: all.first()
@@ -35,7 +35,7 @@ data class BleProvisionStatus(
     val bleState: String = "未知",
     val authenticated: Boolean = false,
     val rssi: Int? = null,
-    val error: String = "",
+    val error: String = ""
 )
 
 data class BleWifiConfig(
@@ -46,20 +46,41 @@ data class BleWifiConfig(
     val gateway: String = "",
     val subnet: String = "",
     val dns1: String = "",
-    val dns2: String = "",
+    val dns2: String = ""
 )
 
 data class BleServerConfig(
     val callsign: String = "",
     val nodeSsid: Int = 0,
-    val udpHost: String = "ptt.4l2.cn",
-    val udpPort: Int = 60_050,
     val httpApiBaseUrl: String = "https://ptt.4l2.cn",
     val account: String = "",
     val deviceAuthPassword: String = "",
+    val dmrId: Int = 0,
+    val activeEndpoint: String = ""
 )
 
 data class BleProvisionConfig(
     val wifi: BleWifiConfig = BleWifiConfig(),
     val server: BleServerConfig = BleServerConfig(),
+    val deviceModel: Int = 1,
+    val radio: BleRadioConfig = BleRadioConfig()
 )
+
+data class BleRadioConfig(
+    val txFrequencyMhz: String = "439.5000",
+    val rxFrequencyMhz: String = "438.5000",
+    val txToneType: String = "OFF",
+    val txToneIndex: Int = 0,
+    val rxToneType: String = "OFF",
+    val rxToneIndex: Int = 0,
+    val squelch: Int = 4,
+    val wideBand: Boolean = false,
+    val powerHigh: Boolean = false,
+    val adcGainDb: Int = 18,
+    val adcVolume: Int = 100,
+    val dacVolume: Int = 80,
+    val sqlActiveHigh: Boolean = false,
+    val pttActiveHigh: Boolean = false
+)
+
+data class BleWifiNetwork(val ssid: String, val rssi: Int, val secure: Boolean)

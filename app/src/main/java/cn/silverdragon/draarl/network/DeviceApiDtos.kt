@@ -3,6 +3,7 @@ package cn.silverdragon.draarl.network
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
+import cn.silverdragon.draarl.data.DeviceConfiguration
 import cn.silverdragon.draarl.data.DevicePasswordInfo
 import cn.silverdragon.draarl.data.ReplaceableDevice
 import org.json.JSONArray
@@ -24,13 +25,9 @@ internal data class DeviceDto(
     val qth: String,
     val note: String,
     val onlineTime: String,
-    val entryName: String,
     val priority: Int,
     val lastOnlineIp: String,
     val lastOnlineIpLocation: String,
-    val entryId: String,
-    val entryMode: String,
-    val entrySeenAt: String,
     val ownerId: Int,
     val ownerName: String,
     val ownerCallsign: String,
@@ -51,13 +48,9 @@ internal data class DeviceDto(
         qth = qth,
         note = note,
         onlineTime = onlineTime,
-        entryName = entryName,
         priority = priority,
         lastOnlineIp = lastOnlineIp,
         lastOnlineIpLocation = lastOnlineIpLocation,
-        entryId = entryId,
-        entryMode = entryMode,
-        entrySeenAt = entrySeenAt,
         ownerId = ownerId,
         ownerName = ownerName,
         ownerCallsign = ownerCallsign,
@@ -80,13 +73,9 @@ internal data class DeviceDto(
             qth = json.optStringClean("qth"),
             note = json.optStringClean("note"),
             onlineTime = json.optStringClean("online_time"),
-            entryName = json.optStringClean("entry_node_name"),
             priority = json.optInt("priority"),
             lastOnlineIp = json.optStringClean("last_online_ip"),
             lastOnlineIpLocation = json.optStringClean("last_online_ip_location"),
-            entryId = json.optStringClean("entry_node_id"),
-            entryMode = json.optStringClean("entry_mode"),
-            entrySeenAt = json.optStringClean("entry_seen_at"),
             ownerId = json.optInt("owner_id"),
             ownerName = json.optStringClean("owner_name"),
             ownerCallsign = json.optStringClean("owner_callsign"),
@@ -163,7 +152,15 @@ internal object DeviceApiResponseMapper {
 
     fun device(response: JSONObject): DeviceDto = DeviceDto.fromJson(response.requireObject("data"))
 
-    fun config(response: JSONObject) = DeviceConfigDto(jsonStringMap(response.requireObject("data")))
+    fun configuration(response: JSONObject) = DeviceConfiguration(
+        values = jsonStringMap(response.requireObject("data")).filterKeys { !it.startsWith("rf_guard_") },
+        model = response.optNullableInt("dev_model"),
+        supportedKeys = response.optJSONArray("supported_keys")?.let { keys ->
+            (0 until keys.length()).map { keys.getString(it) }.toSet()
+        }
+    )
+
+    fun config(response: JSONObject) = DeviceConfigDto(configuration(response).values)
 
     fun sync(response: JSONObject): DeviceSyncDto {
         val message = response.optJSONObject("data")?.optStringClean("message").orEmpty()

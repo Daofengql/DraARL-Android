@@ -20,17 +20,36 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import cn.silverdragon.draarl.tools.ble.BleServerConfig
 import cn.silverdragon.draarl.tools.ble.BleWifiConfig
+import cn.silverdragon.draarl.tools.ble.BleWifiNetwork
 import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlSettingsGroup
 import cn.silverdragon.draarl.ui.components.DraarlSettingsSectionTitle
 
 @Composable
-internal fun BleWifiForm(config: BleWifiConfig, busy: Boolean, onChange: (BleWifiConfig) -> Unit, onSave: () -> Unit) {
+@Suppress("LongParameterList") // Hoisted form state and its scan/save actions.
+internal fun BleWifiForm(
+    config: BleWifiConfig,
+    busy: Boolean,
+    onChange: (BleWifiConfig) -> Unit,
+    onSave: () -> Unit,
+    networks: List<BleWifiNetwork>,
+    onScan: () -> Unit
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         DraarlSettingsSectionTitle("Wi-Fi 网络", detail = "设备接入网络所需参数")
         DraarlSettingsGroup {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                CommandButton(label = "扫描附近 Wi-Fi", onClick = onScan, enabled = !busy)
+                if (networks.isNotEmpty()) {
+                    BleChoice(
+                        "附近网络",
+                        config.ssid,
+                        networks.associate { it.ssid to "${it.ssid} · ${it.rssi} dBm" }
+                    ) { ssid ->
+                        onChange(config.copy(ssid = ssid, password = if (ssid == config.ssid) config.password else ""))
+                    }
+                }
                 ProvisionField(
                     value = config.ssid,
                     label = "SSID",
@@ -69,7 +88,7 @@ internal fun BleServerForm(
     onSave: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        DraarlSettingsSectionTitle("DraARL 链路", detail = "设备认证与服务地址")
+        DraarlSettingsSectionTitle("DraARL 链路", detail = "只需 HTTP API 地址；账号与设备密码可留空，使用设备绑定码关联账号")
         DraarlSettingsGroup {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ProvisionField(
@@ -95,16 +114,13 @@ internal fun BleServerForm(
                     onValueChange = { onChange(config.copy(nodeSsid = it.toIntOrNull() ?: 0)) }
                 )
                 ProvisionField(
-                    value = config.udpHost,
-                    label = "UDP 主机",
-                    onValueChange = { onChange(config.copy(udpHost = it)) }
-                )
-                ProvisionField(
-                    value = config.udpPort.toString(),
-                    label = "UDP 端口",
+                    value = config.dmrId.toString(),
+                    label = "DMR ID（0 为未设置）",
                     keyboardType = KeyboardType.Number,
-                    onValueChange = { onChange(config.copy(udpPort = it.toIntOrNull() ?: 0)) }
+                    onValueChange = { onChange(config.copy(dmrId = it.toIntOrNull() ?: 0)) }
                 )
+                Text("SSID：0 自动，或 1–99 / 106–254；UDP 地址由 API 获取。")
+                Text("当前接入点：${config.activeEndpoint.ifBlank { "联网后自动获取" }}")
                 ProvisionField(
                     value = config.httpApiBaseUrl,
                     label = "HTTPS API",
@@ -133,7 +149,7 @@ private fun StaticAddressFields(config: BleWifiConfig, onChange: (BleWifiConfig)
 }
 
 @Composable
-private fun ProvisionField(
+internal fun ProvisionField(
     value: String,
     label: String,
     onValueChange: (String) -> Unit,

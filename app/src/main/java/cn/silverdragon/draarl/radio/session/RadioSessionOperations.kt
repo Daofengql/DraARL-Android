@@ -14,7 +14,6 @@ import cn.silverdragon.draarl.radio.AccessPointSelector
 import cn.silverdragon.draarl.radio.RadioConnectionConfig
 import cn.silverdragon.draarl.radio.RadioServiceListener
 import cn.silverdragon.draarl.settings.RadioAudioSettings
-import java.net.URI
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -120,28 +119,35 @@ internal class RadioAccessPointCoordinator(
         if (execution.periodicDiscoveryIntervalMs <= 0) return@launch
         while (isActive) {
             delay(execution.periodicDiscoveryIntervalMs)
-            if (state.account != null) discover()
+            if (state.account != null) discover(reportFailure = false)
         }
     }
 
-    fun discover() {
+    fun discover(reportFailure: Boolean = true) {
         val context = state.context() ?: return
         if (discoveryJob?.isActive == true || state.uiState.selectingAccessPoint) return
         state.update { it.copy(selectingAccessPoint = true) }
         discoveryJob = execution.scope.launch {
-            val discovered = withContext(execution.ioDispatcher) {
-                runCatching(dependencies.remote::loadAccessPoints).getOrElse {
-                    derivedAccessPoint(context.account.baseUrl)?.let(::listOf).orEmpty()
+            try {
+                val result = radioSessionAttempt {
+                    withContext(execution.ioDispatcher) { dependencies.remote.loadAccessPoints() }
                 }
+                if (!state.matches(context)) return@launch
+                val discovered = result.getOrNull().orEmpty()
+                if (discovered.isEmpty()) {
+                    if (reportFailure) {
+                        dependencies.effects.showNotice(
+                            result.exceptionOrNull()?.let(::radioSessionFriendlyError)
+                                ?: "服务端未返回本站 UDP 地址，请检查节点设置"
+                        )
+                    }
+                } else {
+                    applyDiscoveryResult(context, discovered)
+                }
+            } finally {
+                if (state.matches(context)) state.update { it.copy(selectingAccessPoint = false) }
+                discoveryJob = null
             }
-            if (!state.matches(context)) return@launch
-            if (discovered.isEmpty()) {
-                state.update { it.copy(selectingAccessPoint = false) }
-                dependencies.effects.showNotice("服务端没有发布可用的 UDP 入口")
-            } else {
-                applyDiscoveryResult(context, discovered)
-            }
-            discoveryJob = null
         }
     }
 
@@ -165,7 +171,9 @@ internal class RadioAccessPointCoordinator(
     fun select(accessPoint: AccessPoint) {
         manualSelection = true
         preferredAccessPointId = accessPoint.id
-        if (state.uiState.selectedAccessPoint?.id == accessPoint.id) {
+        if (state.uiState.selectedAccessPoint?.let { it.id == accessPoint.id && sameEndpoint(it, accessPoint) } ==
+            true
+        ) {
             state.update { it.copy(autoConnectAllowed = true) }
             state.account?.userId?.let { userId ->
                 dependencies.storage.saveSelectedAccessPoint(userId, accessPoint.id)
@@ -202,6 +210,7 @@ internal class RadioAccessPointCoordinator(
         } else {
             selection.selected
         }
+        val previous = state.uiState.selectedAccessPoint
         state.update {
             it.copy(
                 accessPoints = discovered,
@@ -211,7 +220,15 @@ internal class RadioAccessPointCoordinator(
             )
         }
         dependencies.storage.saveSelectedAccessPoint(context.account.userId, selected.id)
+        val endpointChanged = previous != null && !sameEndpoint(previous, selected)
+        val connected = state.uiState.status.phase != RadioConnectionPhase.DISCONNECTED
+        if (endpointChanged && state.uiState.autoConnectAllowed && connected) {
+            reconnect()
+        }
     }
+
+    private fun sameEndpoint(first: AccessPoint, second: AccessPoint): Boolean =
+        first.host == second.host && first.port == second.port
 }
 
 internal class RadioConnectionCoordinator(
@@ -248,7 +265,7 @@ internal class RadioConnectionCoordinator(
         when {
             account == null || preparingConnection -> Unit
             !account.approved -> dependencies.effects.showNotice("账号审核通过后才能连接在线电台")
-            accessPoint == null -> dependencies.effects.showNotice("正在发现并优选 UDP 入口，请稍候")
+            accessPoint == null -> dependencies.effects.showNotice("正在通过 API 查询本站 UDP 地址，请稍候")
             else -> prepareConnection(accessPoint)
         }
     }
@@ -604,22 +621,9 @@ internal class RadioSessionServiceEventsHandler(
 private fun activeGroupId(account: RadioSessionAccount, state: RadioSessionUiState): Int =
     state.selectedGroupId.takeIf { account.approved } ?: 0
 
-private fun derivedAccessPoint(baseUrl: String): AccessPoint? {
-    val host = runCatching { URI(baseUrl).host }.getOrNull().orEmpty()
-    if (host.isBlank()) return null
-    return AccessPoint(
-        id = "derived-center",
-        displayName = "默认中心入口",
-        host = host,
-        port = DEFAULT_UDP_PORT,
-        priority = Int.MAX_VALUE
-    )
-}
-
 private fun radioSessionFriendlyError(error: Throwable): String = error.message ?: "操作失败，请稍后重试"
 
 private suspend fun <T> radioSessionAttempt(block: suspend () -> T): Result<T> = runCatching { block() }
     .onFailure { error -> if (error is CancellationException) throw error }
 
-private const val DEFAULT_UDP_PORT = 60_050
 private const val ACCESS_POINT_PROBE_INTERVAL_MS = 10_000L

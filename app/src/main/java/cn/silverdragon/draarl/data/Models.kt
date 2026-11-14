@@ -23,7 +23,7 @@ data class User(
     val status: Int = 1, // 1=正常, 0=禁用
     val lastLoginTime: String = "",
     val lastLoginIp: String = "",
-    val lastLoginIpLocation: String = "",
+    val lastLoginIpLocation: String = ""
 ) {
     val displayName: String get() = nickname.ifBlank { callsign.ifBlank { username } }
     val isApproved: Boolean get() = approvalStatus == 1
@@ -35,26 +35,19 @@ data class Session(
     val refreshToken: String,
     val accessExpiresAt: Long,
     val refreshExpiresAt: Long,
-    val user: User,
+    val user: User
 )
 
-data class CaptchaChallenge(
-    val id: String,
-    val imageBase64: String,
-    val expiresInSeconds: Int,
-)
+data class CaptchaChallenge(val id: String, val imageBase64: String, val expiresInSeconds: Int)
 
-data class EmailCodeSession(
-    val sessionId: String,
-    val expiresInSeconds: Int,
-)
+data class EmailCodeSession(val sessionId: String, val expiresInSeconds: Int)
 
 data class RegistrationResult(
     val id: Int,
     val username: String,
     val nickname: String,
     val approvalStatus: Int,
-    val devicePassword: String,
+    val devicePassword: String
 )
 
 data class AccessPoint(
@@ -64,7 +57,7 @@ data class AccessPoint(
     val port: Int,
     val region: String = "",
     val network: String = "",
-    val priority: Int = 100,
+    val priority: Int = 100
 ) {
     val address: String get() = "$host:$port"
 }
@@ -83,18 +76,14 @@ data class Device(
     val qth: String = "",
     val note: String = "",
     val onlineTime: String = "",
-    val entryName: String = "",
     val priority: Int = 0,
     val lastOnlineIp: String = "",
     val lastOnlineIpLocation: String = "",
-    val entryId: String = "",
-    val entryMode: String = "",
-    val entrySeenAt: String = "",
     val ownerId: Int = 0,
     val ownerName: String = "",
     val ownerCallsign: String = "",
     val createdAt: String = "",
-    val updatedAt: String = "",
+    val updatedAt: String = ""
 )
 
 data class Group(
@@ -111,17 +100,12 @@ data class Group(
     val onlineCount: Int = 0,
     val totalCount: Int = 0,
     val createdAt: String = "",
-    val updatedAt: String = "",
+    val updatedAt: String = ""
 ) {
     val isPrivate: Boolean get() = type == 2
 }
 
-data class DevicePasswordInfo(
-    val password: String,
-    val hasPassword: Boolean,
-    val isNew: Boolean,
-    val createdAt: String,
-)
+data class DevicePasswordInfo(val password: String, val hasPassword: Boolean, val isNew: Boolean, val createdAt: String)
 
 data class ReplaceableDevice(
     val deviceId: Int,
@@ -129,7 +113,7 @@ data class ReplaceableDevice(
     val callsign: String,
     val ssid: Int,
     val lastOnlineIp: String = "",
-    val onlineTime: String = "",
+    val onlineTime: String = ""
 )
 
 data class DeviceBindPreview(
@@ -138,7 +122,7 @@ data class DeviceBindPreview(
     val message: String,
     val availableSsids: List<Int>,
     val recommendedSsid: Int,
-    val replaceableDevices: List<ReplaceableDevice>,
+    val replaceableDevices: List<ReplaceableDevice>
 )
 
 data class DeviceBindResult(
@@ -146,7 +130,7 @@ data class DeviceBindResult(
     val ssid: Int?,
     val username: String,
     val devicePassword: String,
-    val dmrId: Int,
+    val dmrId: Int
 )
 
 data class OnlineDevice(
@@ -159,14 +143,10 @@ data class OnlineDevice(
     val ghost: Boolean,
     val disableSend: Boolean,
     val disableReceive: Boolean,
-    val lastActivity: String,
+    val lastActivity: String
 )
 
-data class CommunicationStats(
-    val totalCount: Int = 0,
-    val totalSize: Long = 0,
-    val totalDurationMs: Long = 0,
-)
+data class CommunicationStats(val totalCount: Int = 0, val totalSize: Long = 0, val totalDurationMs: Long = 0)
 
 data class CommunicationRecord(
     val id: Int,
@@ -181,14 +161,14 @@ data class CommunicationRecord(
     val durationMs: Long,
     val messageType: Int,
     val text: String,
-    val audioUrl: String,
+    val audioUrl: String
 )
 
 data class CommunicationRecordPage(
     val records: List<CommunicationRecord>,
     val total: Int,
     val page: Int,
-    val pageSize: Int,
+    val pageSize: Int
 ) {
     val hasMore: Boolean get() = page * pageSize < total
 }
@@ -204,7 +184,7 @@ data class RadioSession(
     val txGroupId: Int,
     val rxGroupIds: List<Int>,
     val disableSend: Boolean,
-    val disableReceive: Boolean,
+    val disableReceive: Boolean
 )
 
 data class ChannelMessageSender(
@@ -214,7 +194,7 @@ data class ChannelMessageSender(
     val nickname: String,
     val ssid: Int,
     val model: Int,
-    val ghost: Boolean,
+    val ghost: Boolean
 )
 
 data class ChannelMessage(
@@ -230,20 +210,20 @@ data class ChannelMessage(
     val text: String,
     val audioUrl: String,
     val status: Int,
-    val isAutoBroadcast: Boolean = false,
+    val isAutoBroadcast: Boolean = false
 )
 
 data class ChannelMessagePage(
     val messages: List<ChannelMessage>,
     val nextCursor: String,
     val hasMore: Boolean,
-    val serverTime: String,
+    val serverTime: String
 )
 
 data class PlatformInfo(
     val name: String = "DraARL 麟链",
     val version: String = "",
-    val protocolVersion: String = "DraARLv1",
+    val protocolVersion: String = "DraARLv1"
 )
 
 enum class RadioConnectionPhase {
@@ -253,7 +233,7 @@ enum class RadioConnectionPhase {
     AUTHENTICATING,
     CONNECTED,
     RECONNECTING,
-    ERROR,
+    ERROR
 }
 
 data class RadioStatus(
@@ -267,7 +247,7 @@ data class RadioStatus(
     val receiveGroupIds: List<Int> = emptyList(),
     val transmitting: Boolean = false,
     val speaker: String = "",
-    val error: String = "",
+    val error: String = ""
 ) {
     val connected: Boolean get() = phase == RadioConnectionPhase.CONNECTED
 }
@@ -292,13 +272,15 @@ data class RadioMessage(
     val serverRecordId: Int? = null,
     val syncState: RadioMessageSyncState = RadioMessageSyncState.LOCAL,
     val groupId: Int = 0, // 0 表示未知，用于兼容旧数据
-    val played: Boolean = false,
+    val played: Boolean = false
 )
 
 val RadioMessage.isAutoBroadcast: Boolean
     get() = senderUsername.equals(SYSTEM_BROADCAST_USERNAME, ignoreCase = true) ||
-        (senderCallsign.equals(SYSTEM_BROADCAST_CALLSIGN, ignoreCase = true) &&
-            senderSsid == SYSTEM_BROADCAST_SSID)
+        (
+            senderCallsign.equals(SYSTEM_BROADCAST_CALLSIGN, ignoreCase = true) &&
+                senderSsid == SYSTEM_BROADCAST_SSID
+            )
 
 const val SYSTEM_BROADCAST_USERNAME = "system-broadcast"
 const val SYSTEM_BROADCAST_NICKNAME = "自动播报"
@@ -311,14 +293,10 @@ data class DashboardData(
     val groups: Int = 0,
     val communications: Int = 0,
     val communicationDurationMs: Long = 0,
-    val communicationTrend: List<DailyCommunicationStats> = emptyList(),
+    val communicationTrend: List<DailyCommunicationStats> = emptyList()
 )
 
-data class DailyCommunicationStats(
-    val date: String,
-    val count: Int,
-    val durationMs: Long,
-)
+data class DailyCommunicationStats(val date: String, val count: Int, val durationMs: Long)
 
 fun deviceModelName(model: Int): String = when (model) {
     1 -> "ESP32 射频版"

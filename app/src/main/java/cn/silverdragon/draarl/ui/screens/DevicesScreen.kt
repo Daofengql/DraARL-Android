@@ -487,7 +487,6 @@ private fun DeviceDetailDialog(
                 Spacer(Modifier.height(18.dp))
                 DeviceValueRow("设备型号", deviceModelName(device.model))
                 DeviceValueRow("所在群组", groupName.ifBlank { if (device.groupId == 0) "未分组" else "群组 ${device.groupId}" })
-                DeviceValueRow("入口节点", device.entryName.ifBlank { "-" })
                 DeviceValueRow("最新 IP", device.lastOnlineIp.ifBlank { "-" })
                 if (device.lastOnlineIpLocation.isNotBlank()) DeviceValueRow("IP 归属", device.lastOnlineIpLocation)
                 if (device.qth.isNotBlank()) DeviceValueRow("位置", device.qth)
@@ -642,16 +641,17 @@ private fun RenameDeviceDialog(device: Device, busy: Boolean, onDismiss: () -> U
 
 @Composable
 private fun DeviceConfigDialog(controller: AppController, device: Device, onClose: () -> Unit) {
+    val model = controller.deviceManagement.configModel ?: device.model
+    val radio = model == 1
+    val boardIo = model == 2
+    val configReady =
+        controller.deviceManagement.configDeviceId == device.id && controller.deviceManagement.configLoaded
     var txFreq by remember(device.id) { mutableStateOf("") }
     var rxFreq by remember(device.id) { mutableStateOf("") }
     var sameFrequency by remember(device.id) { mutableStateOf(true) }
     var squelch by remember(device.id) { mutableFloatStateOf(0f) }
     var highPower by remember(device.id) { mutableStateOf(false) }
     var wideBandwidth by remember(device.id) { mutableStateOf(false) }
-    var rfGuard by remember(device.id) { mutableStateOf(false) }
-    var singleLimit by remember(device.id) { mutableStateOf("60") }
-    var guardWindow by remember(device.id) { mutableStateOf("300") }
-    var windowLimit by remember(device.id) { mutableStateOf("180") }
     var adcGain by remember(device.id) { mutableFloatStateOf(0f) }
     var adcVolume by remember(device.id) { mutableFloatStateOf(80f) }
     var dacVolume by remember(device.id) { mutableFloatStateOf(80f) }
@@ -672,10 +672,6 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
         squelch = config["sql_level"]?.toFloatOrNull()?.coerceIn(0f, 8f) ?: 0f
         highPower = config["power_level"] == "3"
         wideBandwidth = config["tx_bandwidth"] == "2"
-        rfGuard = config["rf_guard_enabled"] == "1"
-        singleLimit = config["rf_guard_single_tx_limit_s"] ?: "60"
-        guardWindow = config["rf_guard_window_s"] ?: "300"
-        windowLimit = config["rf_guard_max_tx_in_window_s"] ?: "180"
         adcGain = config["adc_gain_db"]?.toFloatOrNull()?.coerceIn(0f, 24f) ?: 0f
         adcVolume = config["adc_volume"]?.toFloatOrNull()?.coerceIn(0f, 100f) ?: 80f
         dacVolume = config["dac_volume"]?.toFloatOrNull()?.coerceIn(0f, 100f) ?: 80f
@@ -718,82 +714,78 @@ private fun DeviceConfigDialog(controller: AppController, device: Device, onClos
                         Text("设备当前离线，配置会保存到服务器，并在上线后自动同步。", modifier = Modifier.padding(12.dp))
                     }
                 }
-                Text("频率与发射", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    txFreq,
-                    { txFreq = it.filter { char -> char.isDigit() || char == '.' } },
-                    label = { Text("发射频率 MHz") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("收发同频", modifier = Modifier.weight(1f))
-                    Switch(sameFrequency, { sameFrequency = it })
+                Text(deviceModelName(model), style = MaterialTheme.typography.bodySmall)
+                if (!radio && !boardIo) {
+                    Text("此型号暂不支持远程参数配置。")
                 }
-                if (!sameFrequency) {
+                if (!configReady && !controller.deviceManagement.busy) {
+                    OutlinedButton(onClick = { controller.deviceManagement.loadConfig(device.id) }) { Text("重新加载配置") }
+                }
+                if (radio) {
+                    Text("频率与发射", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
-                        rxFreq,
-                        { rxFreq = it.filter { char -> char.isDigit() || char == '.' } },
-                        label = { Text("接收频率 MHz") },
+                        txFreq,
+                        { txFreq = it.filter { char -> char.isDigit() || char == '.' } },
+                        label = { Text("发射频率 MHz") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                }
-                ValueSlider("静噪等级", squelch, 0f..8f, 7) { squelch = it }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!highPower, { highPower = false }, { Text("低功率") })
-                    FilterChip(highPower, { highPower = true }, { Text("高功率") })
-                    FilterChip(!wideBandwidth, { wideBandwidth = false }, { Text("窄带") })
-                    FilterChip(wideBandwidth, { wideBandwidth = true }, { Text("宽带") })
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("射频保护")
-                        Text(
-                            "限制连续和窗口内发射时长",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("收发同频", modifier = Modifier.weight(1f))
+                        Switch(sameFrequency, { sameFrequency = it })
+                    }
+                    if (!sameFrequency) {
+                        OutlinedTextField(
+                            rxFreq,
+                            { rxFreq = it.filter { char -> char.isDigit() || char == '.' } },
+                            label = { Text("接收频率 MHz") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
-                    Switch(rfGuard, { rfGuard = it })
-                }
-                if (rfGuard) {
-                    NumericConfigField("单次发射上限（秒）", singleLimit) { singleLimit = it }
-                    NumericConfigField("统计窗口（秒）", guardWindow) { guardWindow = it }
-                    NumericConfigField("窗口累计上限（秒）", windowLimit) { windowLimit = it }
+                    ValueSlider("静噪等级", squelch, 0f..8f, 7) { squelch = it }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(!highPower, { highPower = false }, { Text("低功率") })
+                        FilterChip(highPower, { highPower = true }, { Text("高功率") })
+                        FilterChip(!wideBandwidth, { wideBandwidth = false }, { Text("窄带") })
+                        FilterChip(wideBandwidth, { wideBandwidth = true }, { Text("宽带") })
+                    }
                 }
                 HorizontalDivider()
                 Text("音频与接口", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                ValueSlider("ADC 增益 dB", adcGain, 0f..24f, 23) { adcGain = it }
-                ValueSlider("输入音量", adcVolume, 0f..100f, 19) { adcVolume = it }
-                ValueSlider("输出音量", dacVolume, 0f..100f, 19) { dacVolume = it }
-                DeviceSwitchRow("SQL 高电平有效", "接收信号检测极性", sqlActiveHigh, false) { sqlActiveHigh = it }
-                DeviceSwitchRow("PTT 高电平有效", "发射控制极性", pttActiveHigh, false) { pttActiveHigh = it }
+                if (radio || boardIo) {
+                    ValueSlider("ADC 增益 dB", adcGain, 0f..24f, 7) { adcGain = it }
+                    ValueSlider("输入音量", adcVolume, 0f..100f, 19) { adcVolume = it }
+                    ValueSlider("输出音量", dacVolume, 0f..100f, 19) { dacVolume = it }
+                }
+                if (boardIo) {
+                    DeviceSwitchRow("SQL 高电平有效", "接收信号检测极性", sqlActiveHigh, false) { sqlActiveHigh = it }
+                    DeviceSwitchRow("PTT 高电平有效", "发射控制极性", pttActiveHigh, false) { pttActiveHigh = it }
+                }
                 Button(
                     onClick = {
                         val updated = controller.deviceManagement.config.toMutableMap().apply {
-                            put("tx_freq", mhzToHz(txFreq))
-                            put("rx_freq", mhzToHz(if (sameFrequency) txFreq else rxFreq))
-                            put("sql_level", squelch.toInt().toString())
-                            put("power_level", if (highPower) "3" else "1")
-                            put("tx_bandwidth", if (wideBandwidth) "2" else "1")
-                            put("rf_guard_enabled", if (rfGuard) "1" else "0")
-                            put("rf_guard_single_tx_limit_s", singleLimit)
-                            put("rf_guard_window_s", guardWindow)
-                            put("rf_guard_max_tx_in_window_s", windowLimit)
+                            if (radio) {
+                                put("tx_freq", mhzToHz(txFreq))
+                                put("rx_freq", mhzToHz(if (sameFrequency) txFreq else rxFreq))
+                                put("sql_level", squelch.toInt().toString())
+                                put("power_level", if (highPower) "3" else "1")
+                                put("tx_bandwidth", if (wideBandwidth) "2" else "1")
+                            }
                             put("adc_gain_db", adcGain.toInt().toString())
                             put("adc_volume", adcVolume.toInt().toString())
                             put("dac_volume", dacVolume.toInt().toString())
-                            put("sql_active_high", if (sqlActiveHigh) "1" else "0")
-                            put("ptt_active_high", if (pttActiveHigh) "1" else "0")
+                            if (boardIo) {
+                                put("sql_active_high", if (sqlActiveHigh) "1" else "0")
+                                put("ptt_active_high", if (pttActiveHigh) "1" else "0")
+                            }
                         }
                         controller.deviceManagement.saveConfig(device, updated, onClose)
                     },
-                    enabled = !controller.deviceManagement.busy &&
-                        txFreq.isNotBlank() &&
-                        (sameFrequency || rxFreq.isNotBlank()),
+                    enabled = configReady && !controller.deviceManagement.busy && (radio || boardIo) &&
+                        (!radio || (txFreq.isNotBlank() && (sameFrequency || rxFreq.isNotBlank()))),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                 ) {
                     Text(if (device.online) "保存并同步" else "保存配置")
@@ -818,18 +810,6 @@ private fun ValueSlider(
         }
         Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps)
     }
-}
-
-@Composable
-private fun NumericConfigField(label: String, value: String, onChange: (String) -> Unit) {
-    OutlinedTextField(
-        value,
-        { onChange(it.filter(Char::isDigit)) },
-        label = { Text(label) },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth()
-    )
 }
 
 @Composable
@@ -916,6 +896,7 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
     val context = LocalContext.current
     val preview = controller.deviceManagement.bindPreview
     val result = controller.deviceManagement.bindResult
+    val retrySeconds = controller.deviceManagement.bindingRetrySeconds
 
     LaunchedEffect(preview) {
         if (preview != null) {
@@ -940,14 +921,15 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
                         replacement?.deviceId
                     )
                 },
-                enabled = !controller.deviceManagement.busy && (ssid.isNotBlank() || replacement != null),
+                enabled = !controller.deviceManagement.busy && retrySeconds == 0 &&
+                    (ssid.isNotBlank() || replacement != null),
                 style = CommandStyle.PRIMARY
             )
 
             else -> DraarlAction(
                 label = "下一步",
                 onClick = { controller.deviceManagement.lookupBindCode(code) },
-                enabled = !controller.deviceManagement.busy && code.length == 6,
+                enabled = !controller.deviceManagement.busy && retrySeconds == 0 && code.length == 6,
                 style = CommandStyle.PRIMARY
             )
         }
@@ -956,6 +938,7 @@ private fun DynamicBindDialog(controller: AppController, onClose: () -> Unit) {
             modifier = Modifier.padding(18.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            if (retrySeconds > 0) Text("请等待 $retrySeconds 秒后重试，当前填写内容已保留。")
             when {
                 result != null -> DeviceBindingResultContent(
                     result = result,

@@ -44,7 +44,7 @@ internal fun AccessPointDialog(state: AccessPointDialogState, onSelect: (AccessP
         state.probes.associateBy { it.accessPoint.id }
     }
     DraarlDialog(
-        title = "选择边缘节点",
+        title = "本站节点",
         onDismissRequest = onDismiss,
         dismissAction = DraarlAction("关闭", onDismiss)
     ) {
@@ -67,7 +67,7 @@ internal fun AccessPointDialog(state: AccessPointDialogState, onSelect: (AccessP
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(point.displayName, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-                        val meta = listOf(point.region, point.network).filter(String::isNotBlank).joinToString(" · ")
+                        val meta = point.address
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -80,7 +80,7 @@ internal fun AccessPointDialog(state: AccessPointDialogState, onSelect: (AccessP
                                     maxLines = 1
                                 )
                             }
-                            LatencyText(probe?.latencyMs, prefix = "ICMP ")
+                            if (probe != null) LatencyText(probe.latencyMs, prefix = "ICMP ")
                         }
                     }
                     if (selected) Icon(Icons.Default.Check, contentDescription = "当前节点")

@@ -16,11 +16,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.BluetoothDisabled
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material3.HorizontalDivider
@@ -36,15 +34,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import cn.silverdragon.draarl.tools.ToolsController
 import cn.silverdragon.draarl.tools.ble.BleConnectionPhase
 import cn.silverdragon.draarl.tools.ble.BleDeviceInfo
-import cn.silverdragon.draarl.tools.ble.BleDeviceProfile
-import cn.silverdragon.draarl.tools.ble.BleDeviceProfiles
+import cn.silverdragon.draarl.tools.ble.BleProvisionController
 import cn.silverdragon.draarl.ui.components.CommandButton
 import cn.silverdragon.draarl.ui.components.CommandStyle
 import cn.silverdragon.draarl.ui.components.DraarlAction
@@ -65,7 +61,6 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
     val context = LocalContext.current
     var dynamicCode by remember { mutableStateOf("") }
     var showDevices by remember { mutableStateOf(false) }
-    var showProfiles by remember { mutableStateOf(false) }
     var permissionError by remember { mutableStateOf("") }
     val permissions = remember { requiredBlePermissions() }
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -96,9 +91,8 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                     DraarlSettingsRow(
                         item = DraarlSettings(
                             icon = Icons.Default.SettingsInputAntenna,
-                            title = ble.selectedProfile.label,
-                            detail = ble.selectedProfile.description,
-                            onClick = { showProfiles = true }
+                            title = ble.deviceTypeLabel(),
+                            detail = ble.selectedProfile.description
                         ),
                         enabled = !ble.busy && ble.status.phase !in setOf(
                             BleConnectionPhase.CONNECTING,
@@ -149,7 +143,14 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                             permissionLauncher.launch(permissions)
                         }
                     },
-                    enabled = !ble.busy,
+                    enabled =
+                        !ble.busy &&
+                            ble.status.phase !in
+                            setOf(
+                                BleConnectionPhase.READY,
+                                BleConnectionPhase.CONNECTING,
+                                BleConnectionPhase.DISCOVERING
+                            ),
                     modifier = Modifier.weight(1f),
                     style = CommandStyle.PRIMARY,
                     leadingIcon = Icons.AutoMirrored.Filled.BluetoothSearching
@@ -175,7 +176,7 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    DraarlSettingsSectionTitle("设备认证", detail = "验证后读取当前配置")
+                    DraarlSettingsSectionTitle("蓝牙认证", detail = "输入设备蓝牙页面显示的验证码，与服务器绑定码不同")
                     DraarlSettingsGroup {
                         Column(
                             Modifier.fillMaxWidth().padding(12.dp),
@@ -184,7 +185,10 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
                             OutlinedTextField(
                                 value = dynamicCode,
                                 onValueChange = { dynamicCode = it.filter(Char::isDigit).take(6) },
-                                label = { Text("6 位动态码") },
+                                label = { Text("6 位蓝牙验证码") },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                                ),
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
@@ -202,16 +206,29 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
             }
         }
         if (ble.status.authenticated) {
+            item {
+                CommandButton(
+                    label = "重新读取设备配置",
+                    onClick = ble::loadConfig,
+                    enabled = !ble.busy,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+        }
+        if (ble.status.authenticated && ble.configLoaded) {
             if (ble.selectedProfile.supportsWifi) {
                 item {
                     BleWifiForm(
                         config = ble.config.wifi,
                         busy = ble.busy,
                         onChange = ble::updateWifi,
-                        onSave = ble::saveWifi
+                        onSave = ble::saveWifi,
+                        networks = ble.wifiNetworks,
+                        onScan = ble::scanWifi
                     )
                 }
             }
+            item { BleRadioForm(ble.config.deviceModel, ble.config.radio, ble.busy, ble::updateRadio, ble::saveRadio) }
             if (ble.selectedProfile.supportsDraarl) {
                 item {
                     BleServerForm(
@@ -239,17 +256,12 @@ internal fun BleProvisionScreen(tools: ToolsController, onBack: () -> Unit) {
             }
         )
     }
-    if (showProfiles) {
-        DeviceProfileDialog(
-            profiles = BleDeviceProfiles.all,
-            selectedKey = ble.selectedProfileKey,
-            onDismiss = { showProfiles = false },
-            onSelect = { profile ->
-                ble.selectProfile(profile.key)
-                showProfiles = false
-            }
-        )
-    }
+}
+
+private fun BleProvisionController.deviceTypeLabel(): String = when {
+    !configLoaded -> selectedProfile.label
+    config.deviceModel == 1 -> "RFBox / SA818 射频模式"
+    else -> "RFBox / 网络与外接射频模式"
 }
 
 @Composable
@@ -276,69 +288,6 @@ private fun BleStatusPanel(
             }
         }
     }
-}
-
-@Composable
-private fun DeviceProfileDialog(
-    profiles: List<BleDeviceProfile>,
-    selectedKey: String,
-    onDismiss: () -> Unit,
-    onSelect: (BleDeviceProfile) -> Unit
-) {
-    DraarlDialog(
-        title = "选择设备类型",
-        onDismissRequest = onDismiss,
-        dismissAction = DraarlAction("取消", onDismiss)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            profiles.forEachIndexed { index, profile ->
-                DeviceProfileRow(
-                    profile = profile,
-                    selected = profile.key == selectedKey,
-                    showDivider = index < profiles.lastIndex,
-                    onSelect = onSelect
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeviceProfileRow(
-    profile: BleDeviceProfile,
-    selected: Boolean,
-    showDivider: Boolean,
-    onSelect: (BleDeviceProfile) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(
-                selected = selected,
-                role = Role.RadioButton,
-                onClick = { onSelect(profile) }
-            )
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                profile.label,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                profile.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (selected) Icon(Icons.Default.Check, contentDescription = "当前设备类型")
-    }
-    if (showDivider) HorizontalDivider()
 }
 
 @Composable

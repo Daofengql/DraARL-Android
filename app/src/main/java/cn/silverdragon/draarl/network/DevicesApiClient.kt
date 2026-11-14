@@ -3,6 +3,7 @@ package cn.silverdragon.draarl.network
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
+import cn.silverdragon.draarl.data.DeviceConfiguration
 import cn.silverdragon.draarl.data.DevicePasswordInfo
 import org.json.JSONObject
 
@@ -81,11 +82,13 @@ private class DeviceManagementApiClient(private val requester: ApiJsonRequester)
 }
 
 private class DeviceProvisioningApiClient(private val requester: ApiJsonRequester) : DeviceProvisioningApi {
-    override fun getDeviceConfig(deviceId: Int): Map<String, String> = requester.executeMapped(
+    override fun getDeviceConfig(deviceId: Int): Map<String, String> = getDeviceConfiguration(deviceId).values
+
+    override fun getDeviceConfiguration(deviceId: Int): DeviceConfiguration = requester.executeMapped(
         "GET",
         "/api/devices/$deviceId/config",
-        mapper = DeviceApiResponseMapper::config
-    ).values
+        mapper = DeviceApiResponseMapper::configuration
+    )
 
     override fun updateDeviceConfig(deviceId: Int, config: Map<String, String>): Map<String, String> {
         val body = JSONObject().apply { config.forEach(::put) }

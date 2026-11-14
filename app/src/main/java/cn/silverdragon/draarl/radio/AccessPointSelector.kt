@@ -26,6 +26,10 @@ object AccessPointSelector {
         probePoint: (AccessPoint) -> AccessPointProbe = ::probe
     ): AccessPointSelection {
         require(points.isNotEmpty())
+        if (points.size == 1) {
+            // ICMP reachability does not determine whether the site's UDP service is usable.
+            return AccessPointSelection(points.single(), emptyList(), measured = false)
+        }
         val permits = Semaphore(minOf(points.size, MAX_PARALLEL_PROBES))
         val probes = coroutineScope {
             points.map { point ->

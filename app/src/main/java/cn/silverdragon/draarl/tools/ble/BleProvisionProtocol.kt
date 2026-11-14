@@ -1,7 +1,7 @@
 package cn.silverdragon.draarl.tools.ble
 
-import org.json.JSONObject
 import java.util.UUID
+import org.json.JSONObject
 
 object BleProvisionProtocol {
     val SERVICE_UUID: UUID = UUID.fromString("6d22f67d-7287-4f4e-8548-b362f9b1f001")
@@ -39,30 +39,50 @@ object BleProvisionProtocol {
             wifiState = values['w']?.let(WIFI_STATES::get) ?: previous.wifiState,
             bleState = values['b']?.let(BLE_STATES::get) ?: previous.bleState,
             authenticated = values['a']?.let { it == "1" } ?: previous.authenticated,
-            rssi = values['r']?.toIntOrNull() ?: previous.rssi,
+            rssi = values['r']?.toIntOrNull() ?: previous.rssi
         )
     }
 
     class FrameAssembler {
         private val buffer = ArrayList<Byte>()
+        private var started = false
 
         @Synchronized
         fun append(frame: ByteArray): String? {
-            if (frame.isEmpty()) return null
+            if (frame.isEmpty() || frame.size > CHUNK_PAYLOAD + 1) {
+                clear()
+                return null
+            }
             val flags = frame[0].toInt() and 0xff
-            if (flags and CHUNK_START != 0) buffer.clear()
+            if (flags and (CHUNK_START or CHUNK_END).inv() != 0) {
+                clear()
+                return null
+            }
+            if (flags and CHUNK_START != 0) {
+                buffer.clear()
+                started = true
+            }
+            if (!started) return null
+            if (buffer.size + frame.size - 1 > MAX_RESPONSE_BYTES) {
+                clear()
+                return null
+            }
             for (index in 1 until frame.size) buffer += frame[index]
             if (flags and CHUNK_END == 0) return null
-            return buffer.toByteArray().toString(Charsets.UTF_8).also { buffer.clear() }
+            return buffer.toByteArray().toString(Charsets.UTF_8).also { clear() }
         }
 
         @Synchronized
-        fun clear() = buffer.clear()
+        fun clear() {
+            buffer.clear()
+            started = false
+        }
     }
 
     private const val CHUNK_PAYLOAD = 19
     private const val CHUNK_START = 0x01
     private const val CHUNK_END = 0x02
+    private const val MAX_RESPONSE_BYTES = 65536
     private val WIFI_STATES = mapOf("0" to "Idle", "1" to "未配置", "2" to "连接中", "3" to "已连接", "4" to "连接失败")
     private val BLE_STATES = mapOf("0" to "已禁用", "1" to "广播中", "2" to "已连接")
 }

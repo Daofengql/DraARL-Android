@@ -9,6 +9,14 @@ import org.junit.Test
 
 class AccessPointSelectorTest {
     @Test
+    fun singleNodeCanConnectWhenIcmpIsBlocked() = runBlocking {
+        val point = accessPoint("central", priority = 100)
+        val selection = AccessPointSelector.select(listOf(point)) { error("Single node must not need ICMP") }
+        assertEquals(point, selection.selected)
+        assertFalse(selection.measured)
+    }
+
+    @Test
     fun selectsLowestMeasuredLatencyBeforeConfiguredPriority() = runBlocking {
         val primary = accessPoint("primary", priority = 1)
         val edge = accessPoint("edge", priority = 20)

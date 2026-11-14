@@ -13,6 +13,7 @@ import cn.silverdragon.draarl.data.DailyCommunicationStats
 import cn.silverdragon.draarl.data.Device
 import cn.silverdragon.draarl.data.DeviceBindPreview
 import cn.silverdragon.draarl.data.DeviceBindResult
+import cn.silverdragon.draarl.data.DeviceConfiguration
 import cn.silverdragon.draarl.data.DevicePasswordInfo
 import cn.silverdragon.draarl.data.EmailCodeSession
 import cn.silverdragon.draarl.data.Group
@@ -119,6 +120,8 @@ interface DeviceManagementApi {
 
 interface DeviceProvisioningApi {
     fun getDeviceConfig(deviceId: Int): Map<String, String>
+
+    fun getDeviceConfiguration(deviceId: Int): DeviceConfiguration = DeviceConfiguration(getDeviceConfig(deviceId))
 
     fun updateDeviceConfig(deviceId: Int, config: Map<String, String>): Map<String, String>
 

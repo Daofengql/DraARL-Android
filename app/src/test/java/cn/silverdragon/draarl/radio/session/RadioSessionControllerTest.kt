@@ -343,6 +343,27 @@ class RadioSessionControllerTest {
         val effects: FakeEffects
     )
 
+    @Test
+    fun selectedNodeEndpointChangeReconnectsEvenWhenIdIsUnchanged() = runBlocking {
+        val point = accessPoint("central")
+        val fixture = fixture(selectedPoint = point)
+        try {
+            fixture.controller.onAccountChanged(account())
+            fixture.controller.selectAccessPoint(point)
+            fixture.controller.connect()
+            yield()
+            fixture.connection.emitStatus(RadioStatus(phase = RadioConnectionPhase.CONNECTED))
+            yield()
+            val updated = point.copy(port = point.port + 1)
+            fixture.controller.selectAccessPoint(updated)
+            yield()
+            assertEquals(updated, fixture.connection.connectionConfigs.last().accessPoint)
+            assertEquals(2, fixture.connection.connectionConfigs.size)
+        } finally {
+            fixture.controller.close()
+        }
+    }
+
     private class FakeRemote(
         private val accessPoints: List<AccessPoint> = emptyList(),
         private val freshTokens: ArrayDeque<String> = ArrayDeque(),

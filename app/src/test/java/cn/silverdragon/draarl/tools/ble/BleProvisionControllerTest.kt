@@ -7,6 +7,42 @@ import org.junit.Test
 
 class BleProvisionControllerTest {
     @Test
+    fun failedReloadHidesPreviouslyLoadedConfiguration() {
+        val client = FakeBleProvisionClient()
+        val dispatcher = QueuedMainDispatcher()
+        val controller = controller(client, dispatcher)
+        controller.loadConfig()
+        client.completeConfig(Result.success(BleProvisionConfig()))
+        dispatcher.runAll()
+        assertTrue(controller.configLoaded)
+
+        controller.loadConfig()
+        assertFalse(controller.configLoaded)
+        client.completeConfig(Result.failure(IllegalStateException("读取超时")))
+        dispatcher.runAll()
+        assertFalse(controller.configLoaded)
+        assertEquals("读取超时", controller.error)
+    }
+
+    @Test
+    fun connectionFailureIsVisibleInTheSettingsScreen() {
+        val client = FakeBleProvisionClient()
+        val dispatcher = QueuedMainDispatcher()
+        var emitStatus: (BleProvisionStatus) -> Unit = {}
+        val controller = BleProvisionController(
+            clientFactory = BleProvisionClientFactory { onStatus, _ ->
+                emitStatus = onStatus
+                client
+            },
+            mainDispatcher = dispatcher
+        )
+        emitStatus(BleProvisionStatus(phase = BleConnectionPhase.ERROR, error = "蓝牙连接失败 (133)"))
+        dispatcher.runAll()
+        assertEquals("蓝牙连接失败 (133)", controller.error)
+        assertFalse(controller.configLoaded)
+    }
+
+    @Test
     fun disconnectDropsLateConfigResult() {
         val client = FakeBleProvisionClient()
         val dispatcher = QueuedMainDispatcher()

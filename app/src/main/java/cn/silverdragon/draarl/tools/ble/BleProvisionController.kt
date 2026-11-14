@@ -29,6 +29,10 @@ class BleProvisionController internal constructor(
         private set
     var config by mutableStateOf(BleProvisionConfig())
         private set
+    var configLoaded by mutableStateOf(false)
+        private set
+    var wifiNetworks by mutableStateOf<List<BleWifiNetwork>>(emptyList())
+        private set
     var selectedProfileKey by mutableStateOf(BleDeviceProfiles.all.first().key)
         private set
     val selectedProfile: BleDeviceProfile
@@ -40,7 +44,13 @@ class BleProvisionController internal constructor(
     var error by mutableStateOf("")
         private set
     private val client = clientFactory.create(
-        onStatus = { value -> post { status = value } },
+        onStatus = { value ->
+            post {
+                status = value
+                if (value.phase != BleConnectionPhase.READY) configLoaded = false
+                if (value.error.isNotBlank()) error = value.error
+            }
+        },
         onDevices = { value -> post { devices = value } }
     )
 
@@ -57,6 +67,9 @@ class BleProvisionController internal constructor(
     fun connect(device: BleDeviceInfo) {
         if (closed.get()) return
         invalidatePendingOperation()
+        config = BleProvisionConfig()
+        configLoaded = false
+        wifiNetworks = emptyList()
         runAction {
             client.connect(device.address, device.name)
             busy = false
@@ -66,6 +79,7 @@ class BleProvisionController internal constructor(
     fun disconnect() {
         if (closed.get()) return
         invalidatePendingOperation()
+        configLoaded = false
         client.disconnect()
         message = ""
     }
@@ -81,12 +95,14 @@ class BleProvisionController internal constructor(
     }
 
     fun loadConfig() = runAction(keepBusy = true) {
+        configLoaded = false
         val generation = operationGeneration.get()
         client.loadConfig { result ->
             postOperation(generation) {
                 busy = false
                 result.onSuccess {
                     config = it
+                    configLoaded = true
                     error = ""
                     message = "已读取设备配置"
                 }.onFailure(::setError)
@@ -96,6 +112,31 @@ class BleProvisionController internal constructor(
 
     fun updateWifi(value: BleWifiConfig) {
         config = config.copy(wifi = value)
+    }
+
+    fun scanWifi() = runAction(keepBusy = true) {
+        val generation = operationGeneration.get()
+        client.scanWifi { result ->
+            postOperation(generation) {
+                busy = false
+                result.onSuccess {
+                    wifiNetworks = it
+                    message =
+                        if (it.isEmpty()) "未发现网络，可手动输入隐藏 SSID，或稍后重新扫描" else "已扫描到 ${it.size} 个网络"
+                }.onFailure(::setError)
+            }
+        }
+    }
+
+    fun updateRadio(value: BleRadioConfig) {
+        config = config.copy(radio = value)
+    }
+
+    fun saveRadio() = runAction(keepBusy = true) {
+        val generation = operationGeneration.get()
+        client.saveRadio(config.deviceModel, config.radio) { result ->
+            postResult(generation, result, "射频与音频配置已写入")
+        }
     }
 
     fun selectProfile(key: String) {
@@ -124,12 +165,8 @@ class BleProvisionController internal constructor(
 
     fun saveServer() {
         val server = config.server
-        if (server.account.isBlank() || server.deviceAuthPassword.isBlank()) {
-            error = "请输入 DraARL 账号和设备认证密码"
-            return
-        }
-        if (!server.httpApiBaseUrl.startsWith("https://")) {
-            error = "HTTP API 地址必须使用 HTTPS"
+        runCatching { BleConfigCodec.serverPayload(server) }.onFailure {
+            setError(it)
             return
         }
         runAction(keepBusy = true) {
@@ -200,6 +237,8 @@ internal fun interface BleProvisionClientFactory {
     fun create(onStatus: (BleProvisionStatus) -> Unit, onDevices: (List<BleDeviceInfo>) -> Unit): BleProvisionClient
 }
 
+// One method per wire operation keeps the real client and test doubles aligned.
+@Suppress("TooManyFunctions")
 internal interface BleProvisionClient {
     fun currentStatus(): BleProvisionStatus
     fun startScan()
@@ -208,6 +247,12 @@ internal interface BleProvisionClient {
     fun disconnect()
     fun authenticate(code: String, callback: (Result<Unit>) -> Unit)
     fun loadConfig(callback: (Result<BleProvisionConfig>) -> Unit)
+    fun scanWifi(callback: (Result<List<BleWifiNetwork>>) -> Unit) {
+        callback(Result.failure(UnsupportedOperationException("不支持扫描")))
+    }
+    fun saveRadio(model: Int, config: BleRadioConfig, callback: (Result<Unit>) -> Unit) {
+        callback(Result.failure(UnsupportedOperationException("不支持射频配置")))
+    }
     fun saveWifi(config: BleWifiConfig, callback: (Result<Unit>) -> Unit)
     fun saveServer(config: BleServerConfig, callback: (Result<Unit>) -> Unit)
     fun close()
@@ -230,6 +275,7 @@ private class AndroidBleProvisionMainDispatcher : BleProvisionMainDispatcher {
     }
 }
 
+@Suppress("TooManyFunctions")
 private class AndroidBleProvisionClient(
     context: Context,
     onStatus: (BleProvisionStatus) -> Unit,
@@ -244,6 +290,9 @@ private class AndroidBleProvisionClient(
     override fun disconnect() = delegate.disconnect()
     override fun authenticate(code: String, callback: (Result<Unit>) -> Unit) = delegate.authenticate(code, callback)
     override fun loadConfig(callback: (Result<BleProvisionConfig>) -> Unit) = delegate.loadConfig(callback)
+    override fun scanWifi(callback: (Result<List<BleWifiNetwork>>) -> Unit) = delegate.scanWifi(callback)
+    override fun saveRadio(model: Int, config: BleRadioConfig, callback: (Result<Unit>) -> Unit) =
+        delegate.saveRadio(model, config, callback)
     override fun saveWifi(config: BleWifiConfig, callback: (Result<Unit>) -> Unit) = delegate.saveWifi(config, callback)
     override fun saveServer(config: BleServerConfig, callback: (Result<Unit>) -> Unit) =
         delegate.saveServer(config, callback)
