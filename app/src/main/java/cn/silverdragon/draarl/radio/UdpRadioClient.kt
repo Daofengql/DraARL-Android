@@ -11,6 +11,10 @@ import cn.silverdragon.draarl.protocol.DraarlProtocol
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class RadioConnectionConfig(
@@ -59,6 +63,12 @@ class UdpRadioClient internal constructor(
     private val connectionExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "draarl-udp-connect")
     }
+    private val recordingExecutor = ThreadPoolExecutor(
+        1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(4),
+        { runnable -> Thread(runnable, "draarl-recording-cache") }
+    )
+    private val recordingDrops = AtomicLong()
+    private val recordingWriteMaxMs = AtomicLong()
     private val sessionMonitor = UdpSessionMonitor(
         scheduler = scheduler,
         clock = clock,
@@ -149,7 +159,7 @@ class UdpRadioClient internal constructor(
         stopSessionTasks()
         pttCoordinator.cancel()
         stopPlayback()
-        finishAllIncomingVoices().forEach(listener::onMessage)
+        finishAllIncomingVoices()
         closeTransport()
         connectionExecutor.execute { establish(attempt) }
     }
@@ -178,7 +188,7 @@ class UdpRadioClient internal constructor(
         stopSessionTasks()
         pttCoordinator.cancel()
         stopPlayback()
-        finishAllIncomingVoices().forEach(listener::onMessage)
+        finishAllIncomingVoices()
         closeTransport()
         sessionState.updateStatus { RadioStatus(phase = RadioConnectionPhase.DISCONNECTED) }
     }
@@ -418,6 +428,7 @@ class UdpRadioClient internal constructor(
         sessionState.dispatch(UdpConnectionEvent.Close)
         audioEngine.release()
         connectionExecutor.shutdownNow()
+        recordingExecutor.shutdown()
         sessionTasks.close()
     }
 
@@ -644,7 +655,7 @@ class UdpRadioClient internal constructor(
             )
         )
         result.actions.filterIsInstance<IncomingVoiceAction.Complete>().forEach { action ->
-            listener.onMessage(completeIncomingVoice(action.voice))
+            completeIncomingVoiceAsync(action.voice)
         }
         if (result.startsPlaybackSession) stopPlayback()
         result.actions.filterIsInstance<IncomingVoiceAction.Play>().forEach { action ->
@@ -863,15 +874,17 @@ class UdpRadioClient internal constructor(
 
     private fun expireIncomingVoice(now: Long, currentGeneration: Int) {
         val result = incomingVoiceAssembler.expire(now)
-        val completedMessages = mutableListOf<RadioMessage>()
+        var completed = false
         result.actions.forEach { action ->
             when (action) {
-                is IncomingVoiceAction.Complete -> completedMessages += completeIncomingVoice(action.voice)
+                is IncomingVoiceAction.Complete -> {
+                    completeIncomingVoiceAsync(action.voice)
+                    completed = true
+                }
                 is IncomingVoiceAction.Play -> playIncomingVoice(action, currentGeneration)
             }
         }
-        completedMessages.forEach(listener::onMessage)
-        if (completedMessages.isNotEmpty()) {
+        if (completed) {
             val activeSpeaker = result.activeSpeaker?.let { speaker ->
                 formatRadioIdentity(speaker.identity, speaker.ssid)
             }.orEmpty()
@@ -894,7 +907,7 @@ class UdpRadioClient internal constructor(
         listener.onTransmitLevel(0f)
         stopSessionTasks()
         pttCoordinator.cancel()
-        finishAllIncomingVoices().forEach(listener::onMessage)
+        finishAllIncomingVoices()
         closeTransport()
         if (!updateStatusIfActive(reconnectGeneration) {
                 it.copy(phase = RadioConnectionPhase.RECONNECTING, error = reason, transmitting = false)
@@ -1029,11 +1042,21 @@ class UdpRadioClient internal constructor(
         }
     }
 
-    private fun finishAllIncomingVoices(): List<RadioMessage> =
-        incomingVoiceAssembler.finishAll().map(::completeIncomingVoice)
+    private fun finishAllIncomingVoices() =
+        incomingVoiceAssembler.finishAll().forEach(::completeIncomingVoiceAsync)
 
-    private fun completeIncomingVoice(voice: CompletedIncomingVoice): RadioMessage {
+    private fun completeIncomingVoiceAsync(voice: CompletedIncomingVoice) {
         audioEngine.playback.endStream(voice.key.playbackKey)
+        val submitted = executeIfActive(recordingExecutor, { true }) {
+            listener.onMessage(completeIncomingVoice(voice, cache = true))
+        }
+        if (!submitted) {
+            recordingDrops.incrementAndGet()
+            listener.onMessage(completeIncomingVoice(voice, cache = false))
+        }
+    }
+
+    private fun completeIncomingVoice(voice: CompletedIncomingVoice, cache: Boolean): RadioMessage {
         val endedAt = voice.lastPacketAt + VOICE_PACKET_DURATION_MS
         val messageId = UUID.randomUUID().toString()
         return RadioMessage(
@@ -1046,7 +1069,7 @@ class UdpRadioClient internal constructor(
             timestamp = voice.startedAt,
             mine = false,
             durationMs = (endedAt - voice.startedAt).coerceAtLeast(VOICE_PACKET_DURATION_MS),
-            audioCacheKey = cacheNetworkRecording(messageId, voice.networkPayload),
+            audioCacheKey = if (cache) cacheNetworkRecording(messageId, voice.networkPayload) else "",
             groupId = voice.source.groupId
         )
     }
@@ -1072,13 +1095,20 @@ class UdpRadioClient internal constructor(
     private fun cacheNetworkRecording(messageId: String, payload: ByteArray): String {
         if (payload.isEmpty()) return ""
         val cacheKey = "message:$messageId"
-        return runCatching {
+        val startedAt = System.nanoTime()
+        val key = runCatching {
             audioCache.put(cacheKey, RawOpusRecording.fromNetworkPayload(payload))
             cacheKey
         }.onFailure {
             reportNonFatal(it.message ?: "语音缓存失败", generation())
         }.getOrDefault("")
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
+        recordingWriteMaxMs.accumulateAndGet(elapsedMs, ::maxOf)
+        if (elapsedMs >= 100) System.err.println("DraARL recording cache write: ${elapsedMs}ms on ${Thread.currentThread().name}")
+        return key
     }
+
+    internal fun recordingCacheStats(): Pair<Long, Long> = recordingDrops.get() to recordingWriteMaxMs.get()
 
     private fun networkPayloadDurationMs(payload: ByteArray): Long =
         DraarlProtocol.splitOpusFrames(payload).size.toLong() *

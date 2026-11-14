@@ -23,6 +23,13 @@ internal class OpusPlaybackController(
 
     @Volatile private var audioTrack: AudioTrack? = null
     private var lastLiveStreamKey = ""
+    private var lastLiveWriteNanos = 0L
+    private val startupSilence = ShortArray(OpusAudioFormat.SAMPLE_RATE * 60 / 1_000)
+    private data class LivePacket(val key: String, val frames: List<ByteArray>, val onError: (String) -> Unit)
+    private val liveQueue = LivePlaybackQueue<LivePacket>(executor, { !released.get() }, { packet, reset ->
+        playLivePacket(packet, reset)
+    })
+    internal val droppedBacklog: Int get() = liveQueue.droppedBacklog.get()
 
     @Volatile private var muted = false
 
@@ -31,26 +38,35 @@ internal class OpusPlaybackController(
         if (streamKey.isBlank()) return
         val frames = DraarlProtocol.splitOpusFrames(mergedFrames)
         if (frames.isEmpty()) return
-        val submitted = executeIfActive(executor, { !released.get() }) {
-            runCatching {
-                val track = obtainTrack()
-                val decoder = liveDecoder(streamKey)
-                if (lastLiveStreamKey != streamKey) {
-                    denoiser.reset()
-                    lastLiveStreamKey = streamKey
-                }
-                for (frame in frames) {
-                    if (released.get()) break
-                    writeFrame(track, frame, decoder)
-                }
-            }.onFailure { error ->
-                if (!released.get()) {
-                    onLevel(0f)
-                    onError(error.message ?: "语音播放失败")
-                }
+        val submitted = liveQueue.submit(LivePacket(streamKey, frames, onError))
+        if (!submitted && !released.get()) onError("语音播放线程不可用")
+    }
+
+    private fun playLivePacket(packet: LivePacket, resetAfterDrop: Boolean) {
+        if (released.get() || muted) return
+        val (streamKey, frames, onError) = packet
+        runCatching {
+            val track = obtainTrack()
+            val decoder = liveDecoder(streamKey)
+            if (resetAfterDrop || lastLiveStreamKey != streamKey) {
+                denoiser.reset()
+                lastLiveStreamKey = streamKey
+            }
+            val now = System.nanoTime()
+            if (lastLiveWriteNanos == 0L || now - lastLiveWriteNanos > 400_000_000L) {
+                track.write(startupSilence, 0, startupSilence.size, AudioTrack.WRITE_BLOCKING)
+            }
+            for (frame in frames) {
+                if (released.get()) break
+                writeFrame(track, frame, decoder)
+                lastLiveWriteNanos = System.nanoTime()
+            }
+        }.onFailure { error ->
+            if (!released.get()) {
+                onLevel(0f)
+                onError(error.message ?: "语音播放失败")
             }
         }
-        if (!submitted && !released.get()) onError("语音播放线程不可用")
     }
 
     fun endLiveStream(streamKey: String) {
@@ -118,11 +134,13 @@ internal class OpusPlaybackController(
 
     fun resetDecoder() {
         if (released.get()) return
+        liveQueue.clear()
         onLevel(0f)
         executeIfActive(executor, { !released.get() }) {
             recordingDecoder.reset()
             liveDecoders.clear()
             lastLiveStreamKey = ""
+            lastLiveWriteNanos = 0L
             denoiser.reset()
             runCatching { audioTrack?.flush() }
         }
@@ -130,6 +148,7 @@ internal class OpusPlaybackController(
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
+        liveQueue.clear()
         onLevel(0f)
         val cleanup = Runnable {
             val track = audioTrack

@@ -24,6 +24,33 @@ import org.junit.Test
 
 class UdpRadioClientPttTest {
     @Test
+    fun `slow recording cache does not block UDP audio and its backlog stays bounded`() {
+        val writing = CountDownLatch(1)
+        val resume = CountDownLatch(1)
+        val threads = CopyOnWriteArrayList<String>()
+        val fixture = fixture(onStorePut = {
+            threads += Thread.currentThread().name
+            writing.countDown()
+            resume.await()
+        })
+        try {
+            fixture.connect()
+            val payload = DraarlProtocol.mergeOpusFrames(List(2) { byteArrayOf(7, 8, 9) })
+            fixture.transport.enqueue(voicePacket(payload))
+            assertTrue(fixture.audio.streamPlayed.await(2, TimeUnit.SECONDS))
+            for (index in 1..40) fixture.transport.enqueue(voicePacket(payload, "REMOTE$index"))
+            assertTrue(writing.await(2, TimeUnit.SECONDS))
+            fixture.transport.enqueue(voicePacket(payload))
+            assertTrue(fixture.audio.secondStreamPlayed.await(2, TimeUnit.SECONDS))
+            assertEquals("draarl-recording-cache", threads.first())
+            assertTrue(fixture.client.recordingCacheStats().first > 0)
+        } finally {
+            resume.countDown()
+            fixture.client.release()
+        }
+    }
+
+    @Test
     fun `incoming voice plays live and settles when session disconnects`() {
         val fixture = fixture()
         try {
@@ -180,10 +207,11 @@ class UdpRadioClientPttTest {
         captureStarts: Boolean = true,
         receiveFailure: RuntimeException? = null,
         executeScheduledTasks: Boolean = true,
+        onStorePut: () -> Unit = {},
         cwToneGenerator: (String, Int, Int) -> CwTone = CwToneGenerator::generate
     ): Fixture {
         val listener = RecordingListener()
-        val store = FakeAudioStore()
+        val store = FakeAudioStore(onStorePut)
         val audio = FakeAudioEngine(captureStarts)
         val transport = FakeUdpTransport(authResponse(), receiveFailure)
         val scheduler = FakeRadioScheduler(executeScheduledTasks)
@@ -230,12 +258,12 @@ class UdpRadioClientPttTest {
         )
     }
 
-    private fun voicePacket(payload: ByteArray): ByteArray = DraarlProtocol.encode(
+    private fun voicePacket(payload: ByteArray, callsign: String = "BG0REMOTE"): ByteArray = DraarlProtocol.encode(
         type = DraarlProtocol.TYPE_OPUS_16K,
         data = payload,
         username = "remote",
         ssid = 102,
-        callsign = "BG0REMOTE",
+        callsign = callsign,
         reserved = 7
     )
 
@@ -273,12 +301,13 @@ class UdpRadioClientPttTest {
         override fun onCwPreviewState(active: Boolean) = Unit
     }
 
-    private class FakeAudioStore : RadioAudioStore {
+    private class FakeAudioStore(private val onPut: () -> Unit = {}) : RadioAudioStore {
         val entries = ConcurrentHashMap<String, ByteArray>()
 
         override fun get(key: String): ByteArray? = entries[key]
 
         override fun put(key: String, bytes: ByteArray) {
+            onPut()
             entries[key] = bytes
         }
 
@@ -294,6 +323,7 @@ class UdpRadioClientPttTest {
         private var errorCallback: ((String) -> Unit)? = null
         var releaseCount = 0
         val streamPlayed = CountDownLatch(1)
+        val secondStreamPlayed = CountDownLatch(2)
         val streamed = CopyOnWriteArrayList<Pair<String, ByteArray>>()
         val endedStreams = CopyOnWriteArrayList<String>()
 
@@ -312,6 +342,7 @@ class UdpRadioClientPttTest {
             override fun playStream(streamKey: String, mergedFrames: ByteArray, onError: (String) -> Unit) {
                 streamed += streamKey to mergedFrames.copyOf()
                 streamPlayed.countDown()
+                secondStreamPlayed.countDown()
             }
             override fun endStream(streamKey: String) {
                 endedStreams += streamKey
